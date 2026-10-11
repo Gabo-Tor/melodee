@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
-  "product": "FM-1_91010",
+  "version": "1.2.1",
+  "product": "FM-1_91021",
   "pkg": {
-    "dual": "../../firmware/melodee-1.1.0.fwsc",
-    "single": "../../firmware/melodee-1.1.0-1core.fwsc"
+    "dual": "../../firmware/melodee-1.2.1.fwsc",
+    "single": "../../firmware/melodee-1.2.1-1core.fwsc"
   }
 }
