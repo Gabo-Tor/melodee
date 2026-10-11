@@ -1,9 +1,9 @@
 {
-  "version": "next-a6db751",
+  "version": "next-16daf99",
   "product": "FM-1_900",
   "branch": "next",
-  "commit": "a6db751377c5ef4e43ec2d5a1fc483c36cdb426e",
-  "builtAt": "2026-10-11T08:43:34Z",
+  "commit": "16daf99ea797f2e4f6b5e40065942df3648d08b9",
+  "builtAt": "2026-10-11T22:21:35Z",
   "pkg": {
     "dual": "../../firmware/melodee-nightly.fwsc",
     "clock320": "../../firmware/melodee-nightly-320.fwsc"
