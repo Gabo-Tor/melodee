@@ -870,7 +870,7 @@ const selection = () => {     /* the release, or a channel ("nightly-dual": meta
 const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
 const log = (t) => { $("log").textContent += t + "\n"; };
 let image = null;
-const meta = {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}, "nightly": {"version": "next-fbc6971", "product": "FM-1_900", "branch": "next", "commit": "fbc69717d9855542f6b109616ab8b0ad28783777", "builtAt": "2026-10-13T16:38:43Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}};
+const meta = {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}, "nightly": {"version": "next-de7740b", "product": "FM-1_900", "branch": "next", "commit": "de7740bd6c0d55e4f77464fd34565e9e3b9954ea", "builtAt": "2026-10-13T16:49:20Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}};
 $("nightly-options").hidden = !meta.nightly;
 if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
 const images = {};                // a build ("dual", "nightly-single" ..) -> its package's image, each fetched once
