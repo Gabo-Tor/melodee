@@ -39,6 +39,12 @@
   <p><label><input type="radio" name="build" id="build-dual" checked> <span data-t="dual"></span></label><br>
     <label><input type="radio" name="build" id="build-single"> <span data-t="single"></span></label></p>
   <p class="small" data-t="singleWhy"></p>
+  <section id="rc-options" hidden>
+    <p><strong data-t="rcTitle"></strong> · <span id="rc-version"></span></p>
+    <p><label><input type="radio" name="build" id="build-rc-dual"> <span data-t="rc-dual"></span></label><br>
+      <label><input type="radio" name="build" id="build-rc-single"> <span data-t="rc-single"></span></label></p>
+    <p class="small" data-t="rcWhy"></p>
+  </section>
   <section id="nightly-options" hidden>
     <p><strong data-t="nightlyTitle"></strong></p>
     <p><label><input type="radio" name="build" id="build-nightly-dual"> <span data-t="nightly-dual"></span></label><br>
@@ -768,6 +774,9 @@ const TEXT = {
     intro: "FM-1 を USB で接続してください。（Chrome か Edge で使えます）",
     warn: "書き込み中は USB を抜かないでください。",
     install: "インストール", other: "English",
+    rcTitle: "リリース候補", "rc-dual": "RC（デュアルコア）", "rc-single": "RC（シングルコア）",
+    "rc-dualTag": "リリース候補・デュアルコア", "rc-singleTag": "リリース候補・シングルコア",
+    rcWhy: "次のリリースのテスト版です。標準を選んでインストールすると安定版へ戻せます。",
     nightlyTitle: "Nightly（next）", "nightly-dual": "Nightly（デュアルコア）",
     "nightly-single": "Nightly（シングルコア）", "nightly-dualTag": "nightly・デュアルコア", "nightly-singleTag": "nightly・シングルコア",
     nightlyWhy: "next の開発版です。動作クロックは本体の HOME 長押しメニュー「OVERCLOCK」で選べます（初期値 360 MHz）。インストール前にエディタで全体バックアップを保存してください。標準版を選ぶとリリース版へ戻せます。",
@@ -808,6 +817,9 @@ const TEXT = {
     intro: "Connect the FM-1 by USB. (Works in Chrome or Edge.)",
     warn: "Do not unplug the USB cable while writing.",
     install: "Install", other: "日本語",
+    rcTitle: "Release candidate", "rc-dual": "RC — dual core", "rc-single": "RC — single core",
+    "rc-dualTag": "release candidate, dual core", "rc-singleTag": "release candidate, single core",
+    rcWhy: "Preview of the next release, available for testing. Choose Standard to return to stable.",
     nightlyTitle: "Nightly (next)", "nightly-dual": "Nightly — dual core",
     "nightly-single": "Nightly — single core", "nightly-dualTag": "nightly, dual core", "nightly-singleTag": "nightly, single core",
     nightlyWhy: "Development builds from next. Pick the clock on the FM-1 in the HOME-held menu's OVERCLOCK (360 MHz by default). Save a complete backup in the editor before installing. Choose Standard to return to the release.",
@@ -861,7 +873,7 @@ applyLang();
 $("stock-skip-backup").addEventListener("change", applyLang);
 const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; };
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
-const buildIds = ["dual", "single", "nightly-dual", "nightly-single"];
+const buildIds = ["dual", "single", "rc-dual", "rc-single", "nightly-dual", "nightly-single"];
 const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
 const selection = () => {     /* the release, or a channel ("nightly-dual": meta.nightly's dual-core package) */
   const kind = build(), dash = kind.indexOf("-");
@@ -870,7 +882,9 @@ const selection = () => {     /* the release, or a channel ("nightly-dual": meta
 const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
 const log = (t) => { $("log").textContent += t + "\n"; };
 let image = null;
-const meta = {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}, "nightly": {"version": "next-de7740b", "product": "FM-1_900", "branch": "next", "commit": "de7740bd6c0d55e4f77464fd34565e9e3b9954ea", "builtAt": "2026-10-13T16:49:20Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}};
+const meta = {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}, "nightly": {"version": "next-de7740b", "product": "FM-1_900", "branch": "next", "commit": "de7740bd6c0d55e4f77464fd34565e9e3b9954ea", "builtAt": "2026-10-13T16:49:20Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}, "rc": {"version": "1.4.0-rc.1", "product": "FM-1_91040", "branch": "next", "commit": "fbc69717d9855542f6b109616ab8b0ad28783777", "builtAt": "2026-10-13T16:40:02.502753+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.0-rc.1.fwsc", "single": "../../firmware/melodee-1.4.0-rc.1-1core.fwsc"}}};
+$("rc-options").hidden = !meta.rc;
+if (meta.rc) $("rc-version").textContent = meta.rc.version;
 $("nightly-options").hidden = !meta.nightly;
 if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
 const images = {};                // a build ("dual", "nightly-single" ..) -> its package's image, each fetched once
@@ -887,7 +901,7 @@ async function choose() {
   image = null; $("go").disabled = true;
   try {
     if (!images[kind]) {
-      if (!channel) throw new Error("Nightly is not available yet");
+      if (!channel) throw new Error(kind.startsWith("rc-") ? "Release candidate is not available yet" : "Nightly is not available yet");
       const url = channel.pkg[key] + (channel.commit ? "?commit=" + channel.commit : ""), r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
       const pkg = new Uint8Array(await r.arrayBuffer());
