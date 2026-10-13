@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0-rc.2",
+  "version": "1.4.0-rc.3",
   "product": "FM-1_91040",
   "branch": "next",
-  "commit": "8c2fcf1090c1aec626d4c2e3a54cdc335e768e30",
-  "builtAt": "2026-10-13T18:46:46.916772+00:00",
+  "commit": "4fe8f0fa7530762ec66fad825c9c4883a47df447",
+  "builtAt": "2026-10-13T20:39:47.868151+00:00",
   "pkg": {
-    "dual": "../../firmware/melodee-1.4.0-rc.2.fwsc",
-    "single": "../../firmware/melodee-1.4.0-rc.2-1core.fwsc"
+    "dual": "../../firmware/melodee-1.4.0-rc.3.fwsc",
+    "single": "../../firmware/melodee-1.4.0-rc.3-1core.fwsc"
   }
 }
