@@ -339,7 +339,8 @@ async function buildMelodeePackage(stockBytes, appBytes, product) {
 }
 
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 //
 // The FM-1 USB-MIDI update protocol over WebMIDI (after tools/fm1_install.py).
 // Step 1: the running firmware (official
@@ -528,7 +529,7 @@ class Updater {
     const ota = await this.waitFor((id) => id.model === "ota-" + model, 30000);
     if (!ota) throw fail("noloader", "the update loader did not appear. Replug the USB cable and press Install again: the device stays in update mode until it is finished.");
     const s2 = await this.write(ota, image, step);
-    if (!s2.finished) throw fail(s2.lost ? "lost" : "stopped", `the loader ${s2.lost ? "was disconnected" : "stopped"} after ${s2.served} requests. Replug and press Install again to resume.`);
+    if (!s2.finished) throw fail(s2.lost ? "lost" : "stopped", `the loader ${s2.lost ? "was disconnected" : "stopped"} after ${s2.served} requests. Reconnect and press Install again. With boot-protected firmware, power on holding OCT− alone if needed; three short key-light flashes mean update mode.`);
     step("reboot");
     await sleep(3000);
     const back = await this.waitFor((id) => !IS_OTA(id), 40000);
@@ -797,7 +798,7 @@ const TEXT = {
     singleWhy: "シングルコア版は、標準版でクラッシュする FM-1 のためのものです（赤い MELODEE CRASH 画面、フリーズ、書き込みモードでの再起動）。FM-1 の 2 つ目のコアを起動しません（公式ファームウェアも使っていません）。PROPHET の最大発音数は 8 から 5 になり、重い FM6・PROPHET の音色は早めに処理の上限に達します。標準版に戻すには、標準を選んでインストールしてください。",
     editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
     direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
-    brick: "インストール後に起動しない場合は、USB の状態に応じた復旧手順を確認してください（公式 V15 への復旧にも対応）:",
+    brick: "起動保護付きファームウェアの更新が中断した場合は、電源を入れ直すか、OCT− だけを押しながら電源を入れてください。キーのライトが短く3回点滅したら更新モードです。USB を接続し直して、もう一度インストールしてください。以前のファームウェアや長い1回の点滅の場合は、USB 復旧手順を確認してください:",
     recoveryLink: "USB 復旧手順とダウンロード",
     beta: "Melodee の不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
     back: "M-VAVEから公式FM-1 V15を取得し、未変更のFM-1.fwscを選んでください。ファイルはこのブラウザ内で検証し、サーバーへ送りません。",
@@ -841,7 +842,7 @@ const TEXT = {
     singleWhy: "The single-core build is for FM-1s that crash with the standard build (a red MELODEE CRASH screen, freezes, or restarts into update mode). It never starts the FM-1's second core, which the official firmware does not use either. PROPHET then plays up to five voices instead of eight, and heavy FM6 and PROPHET sounds reach the CPU limit sooner. To go back, choose Standard and install again.",
     editor: "Editor (after installing: edit sounds and sequences from the computer)",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
-    brick: "If the FM-1 does not start after installation, follow the recovery steps for its USB mode (including official V15 recovery):",
+    brick: "If an update is interrupted on firmware with boot protection, switch the FM-1 on again (or hold OCT− alone while switching on). Three short key-light flashes mean update mode: reconnect USB and press Install again. Older firmware and one long flash need the USB recovery instructions:",
     recoveryLink: "USB recovery instructions and downloads",
     beta: "Please report Melodee problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
     back: "Get official FM-1 V15 from M-VAVE and select the unmodified FM-1.fwsc. The browser validates it locally; it is not sent to a server.",
@@ -897,7 +898,7 @@ const selection = () => {     /* the release, or a channel ("nightly-dual": meta
 const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
 const log = (t) => { const box = $("log"); box.textContent += t + "\n"; box.scrollTop = box.scrollHeight; };
 let image = null;
-const meta = {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc", "single": "../../firmware/melodee-1.3.4-1core.fwsc"}, "nightly": {"version": "next-c717cf5", "product": "FM-1_900", "branch": "next", "commit": "c717cf5c32ba62ae430ba9e7caa0e5d61d5907b4", "builtAt": "2026-10-14T04:45:32Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}, "rc": {"version": "1.4.0-rc.3", "product": "FM-1_91040", "branch": "next", "commit": "4fe8f0fa7530762ec66fad825c9c4883a47df447", "builtAt": "2026-10-13T20:39:47.868151+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.0-rc.3.fwsc", "single": "../../firmware/melodee-1.4.0-rc.3-1core.fwsc"}}, "releases": [{"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc", "single": "../../firmware/melodee-1.3.4-1core.fwsc"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc", "single": "../../firmware/melodee-1.3.3-1core.fwsc"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc", "single": "../../firmware/melodee-1.3.1-1core.fwsc"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc", "single": "../../firmware/melodee-1.3.0-1core.fwsc"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc", "single": "../../firmware/melodee-1.2.1-1core.fwsc"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc", "single": "../../firmware/melodee-1.1.0-1core.fwsc"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc", "single": "../../firmware/melodee-1.0.2-1core.fwsc"}}]};
+const meta = {"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc", "single": "../../firmware/melodee-1.3.5-1core.fwsc"}, "nightly": {"version": "next-c717cf5", "product": "FM-1_900", "branch": "next", "commit": "c717cf5c32ba62ae430ba9e7caa0e5d61d5907b4", "builtAt": "2026-10-14T04:45:32Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc", "single": "../../firmware/melodee-nightly-1core.fwsc"}}, "rc": {"version": "1.4.0-rc.3", "product": "FM-1_91040", "branch": "next", "commit": "4fe8f0fa7530762ec66fad825c9c4883a47df447", "builtAt": "2026-10-13T20:39:47.868151+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.0-rc.3.fwsc", "single": "../../firmware/melodee-1.4.0-rc.3-1core.fwsc"}}, "releases": [{"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc", "single": "../../firmware/melodee-1.3.5-1core.fwsc"}}, {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc", "single": "../../firmware/melodee-1.3.4-1core.fwsc"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc", "single": "../../firmware/melodee-1.3.3-1core.fwsc"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc", "single": "../../firmware/melodee-1.3.2-1core.fwsc"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc", "single": "../../firmware/melodee-1.3.1-1core.fwsc"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc", "single": "../../firmware/melodee-1.3.0-1core.fwsc"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc", "single": "../../firmware/melodee-1.2.1-1core.fwsc"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc", "single": "../../firmware/melodee-1.1.0-1core.fwsc"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc", "single": "../../firmware/melodee-1.0.2-1core.fwsc"}}]};
 function releaseOptions() {
   const selected = $("release").value || meta.version;
   $("release").replaceChildren(...(meta.releases || [meta]).map(r => {
