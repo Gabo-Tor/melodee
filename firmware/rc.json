@@ -5,7 +5,6 @@
   "commit": "714033f7b897cecc8e7d8d77f2b4cbc8666c9124",
   "builtAt": "2026-10-14T20:20:23.996209+00:00",
   "pkg": {
-    "dual": "../../firmware/melodee-1.4.0-rc.4.fwsc",
-    "single": "../../firmware/melodee-1.4.0-rc.4-1core.fwsc"
+    "dual": "../../firmware/melodee-1.4.0-rc.4.fwsc"
   }
 }
