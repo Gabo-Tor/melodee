@@ -3,7 +3,7 @@
   "product": "FM-1_900",
   "branch": "nightly",
   "commit": "e884dd466af1ff96743718ad1d4afb4d7510d595",
-  "builtAt": "2026-10-15T06:03:15Z",
+  "builtAt": "2026-10-15T07:22:22Z",
   "pkg": {
     "dual": "../../firmware/melodee-nightly.fwsc",
     "single": "../../firmware/melodee-nightly-1core.fwsc"
