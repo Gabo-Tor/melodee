@@ -116,9 +116,29 @@ static int bank_tests(void)
     bad+=check("8192 allocation/release transitions stay aligned, inside one bank and disjoint",valid);
     audio_resources_reset();return bad;
 }
+static int resize_tests(void)
+{
+    int bad=0;audio_resources_reset();
+    uint8_t *a=resource_get(RES_ENGINE0,64),*b=resource_get(RES_NOTE_HISTORY,64);
+    memset(b,0x5a,64);resource_release(RES_ENGINE0);
+    uint8_t *grown=resource_resize(RES_NOTE_HISTORY,256);
+    int valid=grown==a;
+    for(uint32_t i=0;i<256u&&valid;i++)valid&=grown[i]==(i<64u?0x5a:0);
+    bad+=check("preserving growth can overlap its old block and zeroes only the new tail",valid);
+    resource_resize(RES_NOTE_HISTORY,33);
+    bad+=check("shrinking preserves address, bytes and word alignment",resource[RES_NOTE_HISTORY].ptr==grown&&resource[RES_NOTE_HISTORY].size==36u&&grown[35]==0x5a);
+    uint32_t large=(uint32_t)(resource_banks[RESOURCE_BANKS-1u].end-resource_banks[RESOURCE_BANKS-1u].start);
+    uint8_t *moved=resource_resize(RES_NOTE_HISTORY,large);
+    valid=moved==resource_banks[RESOURCE_BANKS-1u].start;
+    for(uint32_t i=0;i<large&&valid;i++)valid&=moved[i]==(i<36u?0x5a:0);
+    bad+=check("preserving growth moves between disjoint SRAM banks",valid);
+    bad+=check("failed resize leaves pointer, size and contents available for retry",!resource_resize(RES_NOTE_HISTORY,UINT32_MAX)&&resource[RES_NOTE_HISTORY].ptr==moved&&resource[RES_NOTE_HISTORY].size==large&&moved[35]==0x5a);
+    bad+=check("zero resize releases history",!resource_resize(RES_NOTE_HISTORY,0)&&!resource[RES_NOTE_HISTORY].size);
+    audio_resources_reset();return bad;
+}
 int main(void)
 {
-    resource_host_cache_enabled=0;int bad=bank_tests();
+    resource_host_cache_enabled=0;int bad=bank_tests()+resize_tests();
     uint32_t sram_capacity=RESOURCE_CAPACITY;
     resource_host_cache_enabled=1;bad+=bank_tests();
     bad+=check("validated data-cache bank adds 28 KiB, the UI's 14 KiB apart",RESOURCE_CAPACITY==sram_capacity+28672u-UI_CACHE_BYTES && ui_cache()==_resource_cache_start);

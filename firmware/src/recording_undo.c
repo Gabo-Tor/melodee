@@ -5,12 +5,13 @@
  * including when they reuse a slot formerly belonging to this pattern. The
  * audio owner allocates the bounded snapshot; no per-sample history work. */
 typedef struct {
-    recorded_note_t notes[RECORD_MAX];
     step_t steps[NSTEP];
     motion_store_t motion;
     int16_t timing[4];
     uint32_t pattern_gen, signature;
     uint8_t valid, active, redo, track, bank, engine;
+    uint16_t note_count;
+    recorded_note_t notes[RECORD_MAX]; /* variable allocation tail */
 } recording_undo_t;
 static recording_undo_t *recording_undo_ptr;
 
@@ -50,14 +51,11 @@ static void recording_undo_capture(track_t *t)
         /* Only one pattern can own the slot during overlapping takes. */
         if(u->track!=trk_index(t)){recording_undo_skip|=bit;return;}
     }
-    recording_undo_ptr=resource_get(RES_RECORD_UNDO,sizeof(recording_undo_t));
+    uint32_t owner=recording_owner(t),count=note_history_count((int)owner);
+    recording_undo_ptr=resource_get(RES_RECORD_UNDO,__builtin_offsetof(recording_undo_t,notes)+note_history_bytes(count));
     u=recording_undo_ptr;
     if(!u){recording_undo_lost=1;recording_undo_skip|=bit;return;}
-    uint32_t owner=recording_owner(t);
-    for(uint32_t i=0;i<RECORD_MAX;i++){
-        if(recording[i].vel&&recorded_owner(&recording[i])==owner)u->notes[i]=recording_snapshot(i);
-        else memset(&u->notes[i],0,sizeof u->notes[i]);
-    }
+    u->note_count=(uint16_t)count;note_history_capture(u->notes,count,(int)owner);
     memcpy(u->steps,t->step,sizeof u->steps);
     memcpy(u->timing,&t->p[P_SLEN],sizeof u->timing);
     motion_snapshot_track(t,&u->motion);
@@ -89,15 +87,20 @@ static int recording_undo_apply(int redo)
     if(u->active||rec_on(t))return 2;
     if(u->signature!=recording_undo_signature(t))return 0;
     if(u->redo!=(uint32_t)redo)return 0;
+    /* Expansion is private history work. Refuse atomically if audio has
+     * acquired the spare capacity since this sparse snapshot was captured. */
+    recording_undo_t *grown=resource_resize(RES_RECORD_UNDO,sizeof *u);
+    if(!grown)return 4;
+    u=recording_undo_ptr=grown;note_history_expand(u->notes,u->note_count);u->note_count=RECORD_MAX;
     uint32_t owner=recording_owner(t),blocked=0,free=0;
     for(uint32_t i=0;i<RECORD_MAX;i++){
         int other=recording[i].vel&&recorded_owner(&recording[i])!=owner;
         blocked+=u->notes[i].vel&&other;
         free+=!u->notes[i].vel&&!other;
     }
-    if(blocked>free||motion.count-motion_count(t)+u->motion.count>MOTION_MAX)return 3;
+    if(blocked>free||motion.count-motion_count(t)+u->motion.count>MOTION_MAX)goto full;
     motion_store_t current;motion_snapshot_track(t,&current);
-    if(motion_replace_track(t,&u->motion))return 3;
+    if(motion_replace_track(t,&u->motion))goto full;
     u->motion=current;
     recording_stop(t);seq_release(t);
     /* Relocate only saved events whose old slots now belong to another bank.
@@ -117,5 +120,11 @@ static int recording_undo_apply(int redo)
     t->rh_n=t->rh_ties=t->rskip_n=0;
     recording_fraction[trk_index(t)]=0;
     recording_reindex();u->redo^=1u;u->signature=recording_undo_signature(t);
+    u->note_count=(uint16_t)note_history_pack(u->notes);
+    resource_resize(RES_RECORD_UNDO,__builtin_offsetof(recording_undo_t,notes)+note_history_bytes(u->note_count));
     return 1;
+full:
+    u->note_count=(uint16_t)note_history_pack(u->notes);
+    resource_resize(RES_RECORD_UNDO,__builtin_offsetof(recording_undo_t,notes)+note_history_bytes(u->note_count));
+    return 3;
 }

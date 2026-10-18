@@ -3,12 +3,13 @@
 /* Fractional manual edits and range transforms use the existing precise event
  * format. One bounded snapshot makes conversion, move and copy atomic/undoable. */
 typedef struct {
-    recorded_note_t notes[RECORD_MAX];
     step_t steps[NSTEP];
     uint32_t generation, pattern_gen, signature;
     motion_store_t motion;
     uint8_t valid, redo, track, cursor, len, clear;
     uint8_t slen;                /* LEN to swap in too (a doubled pattern), 0 = LEN stays */
+    uint16_t note_count;
+    recorded_note_t notes[RECORD_MAX]; /* variable allocation tail */
 } note_transaction_t;
 static note_transaction_t *note_transaction_ptr;
 #define note_transaction (*note_transaction_ptr)
@@ -38,19 +39,28 @@ static void note_onset(recorded_note_t *r,int32_t shift,uint32_t len,uint32_t qu
 }
 static int note_transaction_begin_track(track_t *t)
 {
-    note_transaction_ptr=resource_get(RES_NOTE_HISTORY,sizeof(note_transaction_t));
+    recording_prune(t);
+    uint32_t count=note_history_count(-1);
+    note_transaction_ptr=resource_get(RES_NOTE_HISTORY,__builtin_offsetof(note_transaction_t,notes)+note_history_bytes(count));
     if(!note_transaction_ptr){ui_message("NO EDIT MEMORY");return 0;}
 
-    recording_prune(t);
-    memcpy(note_transaction.notes,recording,sizeof recording);
+    note_transaction.note_count=(uint16_t)count;note_history_capture(note_transaction.notes,count,-1);
     memcpy(note_transaction.steps,t->step,sizeof note_transaction.steps);
     note_transaction.track=(uint8_t)trk_index(t);note_transaction.pattern_gen=t->pattern_gen;
     note_transaction.cursor=ui.cursor;note_transaction.len=(uint8_t)step_pattern_len(t);
     note_transaction.valid=1;note_transaction.redo=note_transaction.clear=note_transaction.slen=0;return 1;
 }
 static int note_transaction_begin(void){return note_transaction_begin_track(TSEL);}
+static void note_transaction_pack(void)
+{
+    if(note_transaction.note_count==RECORD_MAX){
+        note_transaction.note_count=(uint16_t)note_history_pack(note_transaction.notes);
+        resource_resize(RES_NOTE_HISTORY,__builtin_offsetof(note_transaction_t,notes)+note_history_bytes(note_transaction.note_count));
+    }
+}
 static void note_transaction_end(void)
 {
+    note_transaction_pack();
     note_transaction.generation=recording_generation;note_transaction.signature=steps_sig(&trk[note_transaction.track]);
     step_history_clear();ui.force=1;
 }
@@ -67,12 +77,16 @@ static int note_tools_history(int redo)
     if(note_transaction.pattern_gen!=t->pattern_gen||note_transaction.len!=step_pattern_len(t)||
        note_transaction.generation!=recording_generation||note_transaction.signature!=steps_sig(t)||
        (song.playing&&rec_on(t)))return 0;
+    fm1_irq_off();
+    note_transaction_t *grown=resource_resize(RES_NOTE_HISTORY,sizeof *grown);
+    if(!grown){fm1_irq_on();ui_message("NO EDIT MEMORY");return 1;}
+    note_transaction_ptr=grown;note_history_expand(note_transaction.notes,note_transaction.note_count);note_transaction.note_count=RECORD_MAX;
     if(note_transaction.clear){
         motion_store_t current;motion_snapshot_track(t,&current);
-        if(motion_replace_track(t,&note_transaction.motion)){ui_message("MOTION FULL");return 1;}
+        if(motion_replace_track(t,&note_transaction.motion)){note_transaction_pack();fm1_irq_on();ui_message("MOTION FULL");return 1;}
         note_transaction.motion=current;
     }
-    fm1_irq_off();recording_stop(t);
+    recording_stop(t);
     note_swap(recording,note_transaction.notes,sizeof recording);
     note_swap(t->step,note_transaction.steps,sizeof note_transaction.steps);
     if(note_transaction.slen){uint8_t len=(uint8_t)t->p[P_SLEN];t->p[P_SLEN]=note_transaction.slen;note_transaction.slen=len;note_transaction.len=(uint8_t)step_pattern_len(t);}
@@ -191,7 +205,15 @@ static void note_transform(int32_t delta,uint32_t quantum,int mode)
     for(uint32_t i=0;i<RECORD_MAX;i++)if(selected[i/8u]&(1u<<(i%8u))){recorded_note_t r;note_assign(&r,&recording[i]);note_onset(&r,shift,len,quantize?quantum:0);uint32_t view=recording_view(TSEL,&r);
         if(!(TSEL->step[view].flags&SF_RECORDED)){uint32_t source=recording_view(TSEL,&recording[i]);metadata[view]=TSEL->step[source].probability|((uint16_t)TSEL->step[source].flags<<8);}
         if(notes_manual_occupied(TSEL,view)){
-        memcpy(recording,note_transaction.notes,sizeof recording);memcpy(TSEL->step,note_transaction.steps,sizeof note_transaction.steps);recording_reindex();cursor_set(note_transaction.cursor);ui.note_pick=0;note_transaction.valid=0;fm1_irq_on();ui_message("STEP OCCUPIED");return;}}
+        /* Restore a sparse snapshot directly: rollback never needs a larger
+         * allocation, including when the working arena is now exhausted. */
+        uint32_t n=0,count=note_transaction.note_count;const uint8_t *map=(const uint8_t *)note_transaction.notes+count*sizeof(recorded_note_t);
+        for(uint32_t j=0;j<RECORD_MAX;j++){
+            if(count==RECORD_MAX)recording[j]=note_transaction.notes[j];
+            else if(map[j/8u]&(1u<<(j%8u)))recording[j]=note_transaction.notes[n++];
+            else memset(&recording[j],0,sizeof recording[j]);
+        }
+        memcpy(TSEL->step,note_transaction.steps,sizeof note_transaction.steps);recording_reindex();cursor_set(note_transaction.cursor);ui.note_pick=0;note_transaction.valid=0;fm1_irq_on();ui_message("STEP OCCUPIED");return;}}
     uint32_t focus=RECORD_MAX;
     uint8_t moved[RECORD_MAX/8u];memset(moved,0,sizeof moved);
     for(uint32_t i=0;i<RECORD_MAX;i++)if(selected[i/8u]&(1u<<(i%8u))){recorded_note_t r=recording_snapshot(i);note_onset(&r,shift,len,quantize?quantum:0);uint32_t dest=i;

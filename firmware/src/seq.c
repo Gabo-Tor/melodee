@@ -341,6 +341,7 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 }
 
 #include "recording.c"
+#include "note_history.c"
 #include "recording_undo.c"
 
 /* Capture: every note played (keys, MIDI, a chord's notes) while the transport runs and no track is recording,
