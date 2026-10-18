@@ -235,7 +235,7 @@ static void pt_song(void)
 #if NPAT > 8u
 static void patterns_draw16(void)
 {
-    cv_begin(240,20,T_BG);cv_text_on(32,ty_y(10,TY_LB),TY_LB,"1-8 / 9-16",T_MID,T_BG);cv_blit(0,H_HEAD);
+    cv_begin(240,20,T_BG);cv_blit(0,H_HEAD);
     for(uint32_t k=0;k<trk_n();k++){
         const track_t *t=&trk[k];uint16_t tc=t->p[P_MUTE]?T_DIM:T_TRK(k);
         uint32_t sig=steps_hash(t)^t->pattern_gen*977u^t->pattern*7919u^t->pattern_next*131u^(k==song.sel?8192u:0u)^ux.gen*31u^ux.pal*1031u^(uint32_t)t->p[P_MUTE]*8192u;
