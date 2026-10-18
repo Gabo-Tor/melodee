@@ -38,7 +38,10 @@ SECTIONS
     _resource_data_start = _bss_end;
     _resource_data_end = ORIGIN(RAM) + LENGTH(RAM);
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
-    .audio_text : { _audio_start = .; *(.audio_text*) . = ALIGN(4); _audio_end = .; } > POOL AT > XIP
+    .audio_text : { _audio_start = .; *(.audio_text*)
+        /* The backend can synthesize libc calls after IR relocation. Keep
+         * these resident entry points at the high end, within XIP call range. */
+        *(.audio_libc*) . = ALIGN(4); _audio_end = .; } > POOL AT > XIP
     _audio_load = LOADADDR(.audio_text);
     _guard_ram_end = SIZEOF(.audio_text) ? _audio_end : _dsp_end;
     .cpu1_stacks (NOLOAD) : {
