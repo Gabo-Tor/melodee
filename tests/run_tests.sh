@@ -197,6 +197,15 @@ ui_renders() {
     mkdir -p build/ui_new/ppm build/ui_slot
     step "UI renders: layout lint (every screen and palette, every page, engine and column value), MONO gray, draw cost" \
         "$OUT/ui_render" build/ui_new build/ui_slot
+    build ui_render_whole ui_render -O1 -w -DMELODEE_USB_AUDIO=1 -DMELODEE_CANVAS_ROWS=124 \
+        -Ibuild/gen -Ifirmware/src -Itests || return
+    # Fresh reference images avoid stale names from earlier versions; ui_new
+    # also contains generated manual assets which this check need not remove.
+    rm -rf build/ui_band_reference build/ui_band_slot
+    mkdir -p build/ui_band_reference/ppm build/ui_band_slot
+    step "UI canvas: whole-canvas reference" "$OUT/ui_render_whole" build/ui_band_reference build/ui_band_slot
+    step "UI canvas: exact band replay pixels" python3 tests/canvas_bands_compare.py build/ui_new build/ui_band_reference
+    step "UI canvas: exact rolling frames" python3 tests/canvas_bands_compare.py build/ui_slot build/ui_band_slot
     if [ $PIL = 1 ]; then
         python3 tests/ui_render.py build/ui_new build/ui_slot || fail "tests/ui_render.py"
         python3 tools/ui_mockcmp.py build/ui_new build/ui_mock || fail "tools/ui_mockcmp.py" # redesign parity (docs/design): a report, no gate yet

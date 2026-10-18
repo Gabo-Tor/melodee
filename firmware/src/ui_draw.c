@@ -1013,33 +1013,35 @@ static void draw_confirm(void)
     for (top = 0; top < h; top += sh) {                 /* (in slices: a canvas holds 132 rows of it) */
         int32_t y = ty;
         for (k = 0, sh = 0; k < nc; k++)
-            if (cut[k] > top && cut[k] - top <= (int32_t)(CV_MAX / DLG_W))
+            if (cut[k] > top && cut[k] - top <= (int32_t)(CV_LOGICAL_MAX / DLG_W))
                 sh = cut[k] - top;
         if (!sh)
-            sh = h - top < (int32_t)(CV_MAX / DLG_W) ? h - top : (int32_t)(CV_MAX / DLG_W);
-        cv_begin(DLG_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        cv_rrect(0, 0, DLG_W, h, 12, T_LINE, T_BG);
-        cv_rrect(1, 1, DLG_W - 2, h - 2, 11, T_SURF, T_LINE);
-        if (!pk)
-            cv_icon_mid(DLG_W / 2 - 8, 18, 16, ui.confirm == CF_CLEAR_MOTION ? ICON_X_MOTION_DEL : ICON_X_WARN, T_THEME,
-                        T_SURF);
-        for (i = 0; i < nq; i++, y += 24)
-            cv_text_c(DLG_W / 2, y, tf, q[i], T_TEXT, T_SURF);
-        for (i = 0, y += 6; i < nd; i++, y += 20)
-            cv_text_c(DLG_W / 2, y, lf, d[i], T_MID, T_SURF);
-        {   /* OCT-: no, OCT+: yes (the track's colour) */
-            int32_t by = h - 46, cy = by + 17;
-            cv_rrect(12, by, 96, 34, 8, T_LINE, T_SURF);
-            cv_rrect(13, by + 1, 94, 32, 7, T_PANEL, T_LINE);
-            cv_icon_mid(60 - text_w(tf, no) / 2 - 12, cy, 16, ICON_X_UNDO, T_MID, T_PANEL);
-            cv_text_on(60 - text_w(tf, no) / 2 + 8, ty_y(cy, tf), tf, no, T_MID, T_PANEL);
-            cv_rrect(116, by, 96, 34, 8, T_THEME, T_SURF);
-            cv_icon_mid(164 - text_w(tf, yes) / 2 - 12, cy, 16, ICON_X_CHECK, T_INK, T_THEME);
-            cv_text_on(164 - text_w(tf, yes) / 2 + 8, ty_y(cy, tf), tf, yes, T_INK, T_THEME);
+            sh = h - top < (int32_t)(CV_LOGICAL_MAX / DLG_W) ? h - top : (int32_t)(CV_LOGICAL_MAX / DLG_W);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (DLG_W)) {
+            cv_begin_band(DLG_W,(uint32_t)sh,T_BG,band);y=ty;
+            cv_oy = -top;
+            cv_rrect(0, 0, DLG_W, h, 12, T_LINE, T_BG);
+            cv_rrect(1, 1, DLG_W - 2, h - 2, 11, T_SURF, T_LINE);
+            if (!pk)
+                cv_icon_mid(DLG_W / 2 - 8, 18, 16, ui.confirm == CF_CLEAR_MOTION ? ICON_X_MOTION_DEL : ICON_X_WARN, T_THEME,
+                            T_SURF);
+            for (i = 0; i < nq; i++, y += 24)
+                cv_text_c(DLG_W / 2, y, tf, q[i], T_TEXT, T_SURF);
+            for (i = 0, y += 6; i < nd; i++, y += 20)
+                cv_text_c(DLG_W / 2, y, lf, d[i], T_MID, T_SURF);
+            {   /* OCT-: no, OCT+: yes (the track's colour) */
+                int32_t by = h - 46, cy = by + 17;
+                cv_rrect(12, by, 96, 34, 8, T_LINE, T_SURF);
+                cv_rrect(13, by + 1, 94, 32, 7, T_PANEL, T_LINE);
+                cv_icon_mid(60 - text_w(tf, no) / 2 - 12, cy, 16, ICON_X_UNDO, T_MID, T_PANEL);
+                cv_text_on(60 - text_w(tf, no) / 2 + 8, ty_y(cy, tf), tf, no, T_MID, T_PANEL);
+                cv_rrect(116, by, 96, 34, 8, T_THEME, T_SURF);
+                cv_icon_mid(164 - text_w(tf, yes) / 2 - 12, cy, 16, ICON_X_CHECK, T_INK, T_THEME);
+                cv_text_on(164 - text_w(tf, yes) / 2 + 8, ty_y(cy, tf), tf, yes, T_INK, T_THEME);
+            }
+            cv_oy = 0;
+            cv_blit_band(DLG_X, (uint32_t)(y0 + top));
         }
-        cv_oy = 0;
-        cv_blit(DLG_X, (uint32_t)(y0 + top));
     }
 }
 
@@ -1117,13 +1119,15 @@ static void draw_toast(void)
         return;
     n = text_lines(m, l, 3u, BOX_W - 20, TY_TX);
     h = 10 + (int32_t)n * 24;
-    cv_begin(BOX_W, (uint32_t)h, T_BG);
-    cv_rrect(0, 0, BOX_W, h, 8, T_LINE, T_BG);
-    cv_rrect(1, 1, BOX_W - 2, h - 2, 7, T_SURF, T_LINE);
-    for (i = 0; i < n; i++)
-        cv_free_hint(10, 5 + (int32_t)i * 24, l[i], T_TEXT, T_SURF, BOX_W - 20);
-    GFX_HOOK_COVER(BOX_X, H_HEAD + 2, BOX_X + BOX_W, H_HEAD + 2 + h);
-    cv_blit(BOX_X, H_HEAD + 2);
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)h); band += CV_MAX / (BOX_W)) {
+        cv_begin_band(BOX_W,(uint32_t)h,T_BG,band);
+        cv_rrect(0, 0, BOX_W, h, 8, T_LINE, T_BG);
+        cv_rrect(1, 1, BOX_W - 2, h - 2, 7, T_SURF, T_LINE);
+        for (i = 0; i < n; i++)
+            cv_free_hint(10, 5 + (int32_t)i * 24, l[i], T_TEXT, T_SURF, BOX_W - 20);
+        GFX_HOOK_COVER(BOX_X, H_HEAD + 2, BOX_X + BOX_W, H_HEAD + 2 + h);
+        cv_blit_band(BOX_X, H_HEAD + 2);
+    }
     toast_shown = 1;
 }
 static void ui_draw_frame(void);

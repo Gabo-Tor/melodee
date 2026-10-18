@@ -110,7 +110,7 @@ static void stage_wave(uint16_t c, int32_t top, int32_t h)
     uint32_t w = scope_w, i, trig = 1;
     int32_t peak = 1500, x, py = 0, cy = (top + h / 2) * 16 - 16;
     for (i = 0; i < SCOPE_N; i++) {
-        snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
+        if(!cv_top)snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
         if (snap[i] > peak) peak = snap[i];
         else if (-snap[i] > peak) peak = -snap[i];
     }
@@ -290,15 +290,17 @@ static void stage_shape(void)
 {
     int32_t pv[4];
     uint32_t pic = stage_picture(pv);
-    cv_begin(240, H_GRAPH, T_BG);
-    cv_bg = T_BG;
-    if (pic == SP_FILTER)
-        stage_filter(pv[0], pv[1], ux_mix(T_BG, T_THEME, 70), 8, H_GRAPH - 8);
-    else if (pic == SP_ENV)
-        graph_adsr_v(pv[0], pv[1], pv[2], pv[3], 8, H_GRAPH - 8, ux_mix(T_BG, T_THEME, 70));
-    else
-        stage_wave(ux_mix(T_BG, T_THEME, 70), 8, H_GRAPH - 16);
-    cv_blit(0, Y_GRAPH);
+    for (uint32_t band = 0; band < (uint32_t)(H_GRAPH); band += CV_MAX / (240)) {
+        cv_begin_band(240,H_GRAPH,T_BG,band);
+        cv_bg = T_BG;
+        if (pic == SP_FILTER)
+            stage_filter(pv[0], pv[1], ux_mix(T_BG, T_THEME, 70), 8, H_GRAPH - 8);
+        else if (pic == SP_ENV)
+            graph_adsr_v(pv[0], pv[1], pv[2], pv[3], 8, H_GRAPH - 8, ux_mix(T_BG, T_THEME, 70));
+        else
+            stage_wave(ux_mix(T_BG, T_THEME, 70), 8, H_GRAPH - 16);
+        cv_blit_band(0, Y_GRAPH);
+    }
 }
 
 /* ------------------------------------------------------- the rows --- */
@@ -409,9 +411,9 @@ static void stage_rec_paint(int32_t ox, int32_t oy, int32_t w, int32_t h, int32_
         return;
     for (x = 0; x < rb; x++)
         f[x] = (uint8_t)((uint32_t)((rb - x) * (rb - x)) * 3u * lv / (uint32_t)(rb * rb));
-    for (y = 0; y < (int32_t)cv_h; y++) {
+    for (y = (int32_t)cv_top; y < (int32_t)(cv_top+cv_rows); y++) {
         int32_t Y = oy + y - cv_oy, dy = Y < h - 1 - Y ? Y : h - 1 - Y;
-        uint16_t *row = cv_px + (uint32_t)y * cv_w;
+        uint16_t *row = cv_px + ((uint32_t)y-cv_top) * cv_w;
         if (dy < 0)
             continue;
         for (x = 0; x < (int32_t)cv_w; x++) {
@@ -538,57 +540,61 @@ static void stage_row(uint32_t k)
     if (!ui.force && sig == stage.col[k]) {
         if (g != stage.grid[k] && !idle) {              /* the steps or the playhead: the steps only */
             stage.grid[k] = g;
-            cv_begin((uint32_t)lay.w, (uint32_t)lay.h, bg);
-            stage_rec_paint(tx, sy, BOX_W, h, 8, lv);   /* (the border where they reach it) */
-            stage_steps(t, ph, tc, bg, 0, 0, &lay);
-            cv_blit((uint32_t)(BOX_X + tx), (uint32_t)(y + sy));
+            for (uint32_t band = 0; band < (uint32_t)((uint32_t)lay.h); band += CV_MAX / ((uint32_t)lay.w)) {
+                cv_begin_band((uint32_t)lay.w,(uint32_t)lay.h,bg,band);
+                stage_rec_paint(tx, sy, BOX_W, h, 8, lv);   /* (the border where they reach it) */
+                stage_steps(t, ph, tc, bg, 0, 0, &lay);
+                cv_blit_band((uint32_t)(BOX_X + tx), (uint32_t)(y + sy));
+            }
         }
         return;
     }
     stage.col[k] = sig;
     stage.grid[k] = g;
-    for (top = 0; top < h; top += (int32_t)(CV_MAX / BOX_W)) {   /* (a tall row: in slices) */
-        int32_t sh = h - top < (int32_t)(CV_MAX / BOX_W) ? h - top : (int32_t)(CV_MAX / BOX_W);
-        cv_begin(BOX_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        if (sel) {                                      /* (the selected: outlined in its colour) */
-            cv_rrect(0, 0, BOX_W, h, 8, tc, T_BG);
-            cv_rrect(2, 2, BOX_W - 4, h - 4, 6, bg, tc);
-        } else {
-            cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
-        }
-        stage_rec_paint(0, 0, BOX_W, h, 8, lv);         /* armed: the red border */
-        cv_rrect(6, h / 2 - cs / 2 - ny, cs, cs, 7, tc, bg);   /* the numeral */
-        cv_text_c(6 + cs / 2, ty_y(h / 2 - ny, cs > 30 ? TY_VL : TY_TX), cs > 30 ? TY_VL : TY_TX, d, T_INK, tc);
-        if (arm)                                        /* armed: a REC dot on its corner */
-            cv_disc(6 + cs - 2, h / 2 - cs / 2 - ny + 2, 9, T_REC, 0);
-        cv_free_text(tx, by, nf, nm, pending ? T_ACCENT : mute ? T_DIM : T_TEXT, bg, room);
-        if (l2[0])
-            cv_free_text(tx, by + nf->h - 4, nf, l2, pending ? T_ACCENT : mute ? T_DIM : T_TEXT, bg, BOX_W - 6 - tx);
-        {   /* the role, then the pattern (a pill in the track's colour), the next one waiting for the bar dashed */
-            int32_t lx = steps_row ? tx : BOX_W - 6 - pills - (showrole ? text_w(lf, role) + 8 : 0), cy = pcy,
-                    ly = ty_y(cy, lf), re = BOX_W - 6;
-            if (showrole)
-                lx = cv_text_on(lx, ly, lf, role, tc, bg) + 8;
-            if (!idle) {
-                cv_rrect(lx, cy - 8, pw, 16, 4, tc, bg);
-                cv_text_on(lx + 4, ly, lf, pt, T_INK, tc);
-                lx += pw + 4;
-                if (next) {
-                    cv_dashed(lx, cy - 8, pw, 16, 4, tc);
-                    cv_text_on(lx + 4, ly, lf, pn, tc, bg);
-                    lx += pw + 4;
-                }
+    for (top = 0; top < h; top += (int32_t)(CV_LOGICAL_MAX / BOX_W)) {   /* (a tall row: in slices) */
+        int32_t sh = h - top < (int32_t)(CV_LOGICAL_MAX / BOX_W) ? h - top : (int32_t)(CV_LOGICAL_MAX / BOX_W);
+        for (uint32_t band = 0; band < (uint32_t)(sh); band += CV_MAX / (BOX_W)) {
+            cv_begin_band(BOX_W,sh,T_BG,band);
+            cv_oy = -top;
+            if (sel) {                                      /* (the selected: outlined in its colour) */
+                cv_rrect(0, 0, BOX_W, h, 8, tc, T_BG);
+                cv_rrect(2, 2, BOX_W - 4, h - 4, 6, bg, tc);
+            } else {
+                cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
             }
-            for (i = 0; i < nx; i++)                    /* (one track: what plays besides) */
-                cv_free_text(tx, ty_y(cy + 18 * (int32_t)(i + 1u), lf), lf, ml[i], tc, bg, re - tx);
-            (void)lx;
+            stage_rec_paint(0, 0, BOX_W, h, 8, lv);         /* armed: the red border */
+            cv_rrect(6, h / 2 - cs / 2 - ny, cs, cs, 7, tc, bg);   /* the numeral */
+            cv_text_c(6 + cs / 2, ty_y(h / 2 - ny, cs > 30 ? TY_VL : TY_TX), cs > 30 ? TY_VL : TY_TX, d, T_INK, tc);
+            if (arm)                                        /* armed: a REC dot on its corner */
+                cv_disc(6 + cs - 2, h / 2 - cs / 2 - ny + 2, 9, T_REC, 0);
+            cv_free_text(tx, by, nf, nm, pending ? T_ACCENT : mute ? T_DIM : T_TEXT, bg, room);
+            if (l2[0])
+                cv_free_text(tx, by + nf->h - 4, nf, l2, pending ? T_ACCENT : mute ? T_DIM : T_TEXT, bg, BOX_W - 6 - tx);
+            {   /* the role, then the pattern (a pill in the track's colour), the next one waiting for the bar dashed */
+                int32_t lx = steps_row ? tx : BOX_W - 6 - pills - (showrole ? text_w(lf, role) + 8 : 0), cy = pcy,
+                        ly = ty_y(cy, lf), re = BOX_W - 6;
+                if (showrole)
+                    lx = cv_text_on(lx, ly, lf, role, tc, bg) + 8;
+                if (!idle) {
+                    cv_rrect(lx, cy - 8, pw, 16, 4, tc, bg);
+                    cv_text_on(lx + 4, ly, lf, pt, T_INK, tc);
+                    lx += pw + 4;
+                    if (next) {
+                        cv_dashed(lx, cy - 8, pw, 16, 4, tc);
+                        cv_text_on(lx + 4, ly, lf, pn, tc, bg);
+                        lx += pw + 4;
+                    }
+                }
+                for (i = 0; i < nx; i++)                    /* (one track: what plays besides) */
+                    cv_free_text(tx, ty_y(cy + 18 * (int32_t)(i + 1u), lf), lf, ml[i], tc, bg, re - tx);
+                (void)lx;
+            }
+            if (!idle) {
+                stage_steps(t, ph, tc, bg, tx, sy, &lay);
+            }
+            cv_oy = 0;
+            cv_blit_band(BOX_X, (uint32_t)(y + top));
         }
-        if (!idle) {
-            stage_steps(t, ph, tc, bg, tx, sy, &lay);
-        }
-        cv_oy = 0;
-        cv_blit(BOX_X, (uint32_t)(y + top));
     }
 }
 
@@ -604,16 +610,18 @@ static void stage_free(uint32_t k, uint32_t *drawn)
     if (stage.out || (!ui.force && sig == *drawn))
         return;
     *drawn = sig;
-    for (top = 0; top < h; top += (int32_t)(CV_MAX / BOX_W)) {   /* (a tall row: in slices) */
-        int32_t sh = h - top < (int32_t)(CV_MAX / BOX_W) ? h - top : (int32_t)(CV_MAX / BOX_W);
-        cv_begin(BOX_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
-        cv_rrect(6, h / 2 - cs / 2, cs, cs, 7, nc, bg);
-        cv_text_c(6 + cs / 2, ty_y(h / 2, cs > 30 ? TY_VL : TY_TX), cs > 30 ? TY_VL : TY_TX, d, T_DIM, nc);
-        cv_free_text(tx, ty_y(h / 2, nf), nf, "Add track", T_DIM, bg, BOX_W - 6 - tx);
-        cv_oy = 0;
-        cv_blit(BOX_X, (uint32_t)(y + top));
+    for (top = 0; top < h; top += (int32_t)(CV_LOGICAL_MAX / BOX_W)) {   /* (a tall row: in slices) */
+        int32_t sh = h - top < (int32_t)(CV_LOGICAL_MAX / BOX_W) ? h - top : (int32_t)(CV_LOGICAL_MAX / BOX_W);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (BOX_W)) {
+            cv_begin_band(BOX_W,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
+            cv_rrect(6, h / 2 - cs / 2, cs, cs, 7, nc, bg);
+            cv_text_c(6 + cs / 2, ty_y(h / 2, cs > 30 ? TY_VL : TY_TX), cs > 30 ? TY_VL : TY_TX, d, T_DIM, nc);
+            cv_free_text(tx, ty_y(h / 2, nf), nf, "Add track", T_DIM, bg, BOX_W - 6 - tx);
+            cv_oy = 0;
+            cv_blit_band(BOX_X, (uint32_t)(y + top));
+        }
     }
 }
 

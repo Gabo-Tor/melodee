@@ -63,7 +63,16 @@ static uint32_t ty_pixel(void);
 #define GFX_HOOK_CELL(x0, y0, x1, y1) ((void)0)    /* a cell, card, row or button (cv_rrect): a box touching it lies inside it */
 #endif
 
-#define CV_MAX (240u * 124u)      /* the graph strip is 240 x 124 */
+#ifndef GFX_HOOK_LIMIT
+#define GFX_HOOK_LIMIT(w,h) ((void)0)
+#endif
+#define CV_LOGICAL_MAX (240u * 124u)
+#ifndef MELODEE_CANVAS_ROWS
+#define MELODEE_CANVAS_ROWS 64u
+#endif
+/* Host oracle also renders with the former whole-canvas allocation. */
+_Static_assert(MELODEE_CANVAS_ROWS>=64u && MELODEE_CANVAS_ROWS<=124u,"canvas band and shared project scratch");
+#define CV_MAX (240u * MELODEE_CANVAS_ROWS)
 /* Most regions (cards, header, footer) fit the small second canvas. Draw
  * there while SPI reads the first; large graphs reuse the full canvas only
  * after its transfer finishes. No second full-screen-sized allocation. */
@@ -88,6 +97,9 @@ static void *cv_work(void)
     return cv_primary_u.work;
 }
 static uint32_t cv_w, cv_h;
+/* Logical canvas coordinates are stable across physical RGB565 bands. */
+static uint32_t cv_top, cv_rows;
+static uint8_t cv_band_sending;
 static uint16_t cv_bg;           /* what cv_begin cleared the canvas to */
 static uint8_t cv_scroll;        /* 1: drawing a scrolled view (its text may run past the canvas) */
 static int32_t cv_oy;            /* y offset for graph drawing */
@@ -212,6 +224,7 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
 {
     uint32_t i, n;
     uint16_t s = swap16(bg);
+    GFX_HOOK_LIMIT(w,h);
     if (w * h > CV_MAX)
         h = CV_MAX / w;
     n = w * h;
@@ -222,7 +235,7 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
     }
     GFX_HOOK_BEGIN();
     cv_w = w;
-    cv_h = h;
+    cv_h = h;cv_top=0;cv_rows=h;
     cv_cy0 = 0;
     cv_cy1 = (int16_t)h;
     cv_bg = bg;
@@ -234,6 +247,11 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
 /* cv_dim: a canvas goes out darkened (72 % toward BG): the page under a question (ui_draw.c); cv_under: the page under
  * a popup, dimmed or not (a knob's picker: not), its texts covered on purpose (the lint's flag 16) */
 static uint8_t cv_dim, cv_under;
+static void cv_begin_band(uint32_t w,uint32_t h,uint16_t bg,uint32_t top)
+{
+    uint32_t rows=CV_MAX/w;if(rows>h-top)rows=h-top;
+    cv_begin(w,rows,bg);cv_h=h;cv_cy1=(int16_t)h;cv_top=top;
+}
 static uint16_t mix565(uint16_t bg, uint16_t fg, uint32_t a);
 static void cv_dim_rows(uint32_t r0)
 {
@@ -246,7 +264,9 @@ static void cv_dim_rows(uint32_t r0)
  * before (the same x, y, w, h) sends only what changed: DF_N such places keep 32-bit hashes of their 4-row bands and
  * 8-column blocks as last sent, and a blit sends the dirty band runs x the dirty block runs. Anything else written
  * over a place (another canvas, a fill: gfx_fill) marks the bands and blocks it covered dirty: sent again next time */
-#define DF_N 9u                                         /* (tests/ui_render.c's LCD audit: as much sent as with 14) */
+/* Physical bands fit fewer hashes each. Spend that saving on enough places
+ * for the extra bands, preserving responsive redraws with less total state. */
+#define DF_N (MELODEE_CANVAS_ROWS==124u ? 9u : 14u)
 #ifndef DF_MIN
 #define DF_MIN 2048u                                    /* (smaller canvases: sent whole) */
 #endif
@@ -254,7 +274,7 @@ static void cv_dim_rows(uint32_t r0)
 #define DF_BLK 8u
 #define DF_NB (240u / DF_BAND)
 #define DF_NK (240u / DF_BLK)
-#define DF_SLOTS 76u                                    /* a canvas's bands, then its blocks: at most 60 + 16 (CV_MAX) */
+#define DF_SLOTS (MELODEE_CANVAS_ROWS==124u ? 76u : 48u)
 #define DF_FITS() ((cv_h + DF_BAND - 1u) / DF_BAND + (cv_w + DF_BLK - 1u) / DF_BLK <= DF_SLOTS)
 static struct { uint64_t pb; uint32_t pk; uint8_t x, y, w, h, on; uint16_t use; } df_key[DF_N];   /* pb, pk: bands and
                                                                                     * blocks drawn over since (dirty) */
@@ -493,7 +513,7 @@ static void cv_blit(uint32_t x, uint32_t y)
     uint32_t big = cv_w * cv_h >= DF_MIN && DF_FITS();
     if (fq_n)
         fq_cover(x, y, cv_w, cv_h);
-    GFX_HOOK_BLIT(x, y, 0u);
+    if(!cv_band_sending)GFX_HOOK_BLIT(x, y, 0u);
     if (cv_dim)
         cv_dim_rows(0);
     GFX_HOOK_WHOLE(x, y, 0u, 0);
@@ -514,7 +534,7 @@ static void cv_blit_from(uint32_t x, uint32_t y, uint32_t r0)
 {
     if (fq_n && r0 < cv_h)
         fq_cover(x, y + r0, cv_w, cv_h - r0);
-    GFX_HOOK_BLIT(x, y, r0);
+    if(!cv_band_sending)GFX_HOOK_BLIT(x, y, r0);
     if (cv_dim && r0 < cv_h)
         cv_dim_rows(r0);
     GFX_HOOK_WHOLE(x, y, r0, 0);
@@ -540,14 +560,14 @@ static void cv_blit_spans(uint32_t x, uint32_t y, uint32_t a0, uint32_t aw, uint
     df_hash();
     e = df_find(x, y);
     if (e >= DF_N) {                                    /* (nothing known there: all of it) */
-        GFX_HOOK_BLIT(x, y, 0u);
+        if(!cv_band_sending)GFX_HOOK_BLIT(x, y, 0u);
         df_damage(x, y, cv_w, cv_h, DF_N);
         lcd_blit(x, y, cv_w, cv_h, cv_px);
         cv_flight = cv_px;
         df_keep(x, y);
         return;
     }
-    GFX_HOOK_BLIT(x, y, 0u);
+    if(!cv_band_sending)GFX_HOOK_BLIT(x, y, 0u);
     if (df_key[e].pb || df_key[e].pk) {                 /* (drawn over since: what changed, found) */
         df_diff(x, y);
         return;
@@ -560,6 +580,19 @@ static void cv_blit_spans(uint32_t x, uint32_t y, uint32_t a0, uint32_t aw, uint
     if (b0 < cv_w && bw)
         df_send(x, y, b0, bw < cv_w - b0 ? bw : cv_w - b0, 0, cv_h, e);
 }
+
+static void cv_blit_band_from(uint32_t x,uint32_t y,uint32_t r0)
+{
+    uint32_t top=cv_top,rows=cv_rows;
+    if(!top)GFX_HOOK_BLIT(x,y,r0);
+    cv_h=rows;cv_top=0;cv_band_sending=1;
+    if(top+rows>r0){
+        if(r0>top)cv_blit_from(x,y+top,r0-top);
+        else cv_blit(x,y+top);
+    }
+    cv_band_sending=0;
+}
+static void cv_blit_band(uint32_t x,uint32_t y){cv_blit_band_from(x,y,0);}
 
 static void gfx_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)   /* every fill from here on */
 {
@@ -585,8 +618,8 @@ static void gfx_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 static inline void cv_pset(int32_t x, int32_t y, uint16_t c)
 {
     y += cv_oy;
-    if ((uint32_t)x < cv_w && (uint32_t)y < cv_h)
-        cv_px[(uint32_t)y * cv_w + (uint32_t)x] = swap16(c);
+    if ((uint32_t)x < cv_w && (uint32_t)y >= cv_top && (uint32_t)y < cv_top+cv_rows)
+        cv_px[((uint32_t)y-cv_top) * cv_w + (uint32_t)x] = swap16(c);
 }
 
 static void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
@@ -596,15 +629,15 @@ static void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
     y += cv_oy;                             /* clipped once, then filled row by row */
     if (x < 0)
         x = 0;
-    if (y < 0)
-        y = 0;
+    if (y < (int32_t)cv_top)
+        y = (int32_t)cv_top;
     if (x1 > (int32_t)cv_w)
         x1 = (int32_t)cv_w;
-    if (y1 > (int32_t)cv_h)
-        y1 = (int32_t)cv_h;
+    if (y1 > (int32_t)(cv_top+cv_rows))
+        y1 = (int32_t)(cv_top+cv_rows);
     for (; y < y1; y++)
         for (i = x; i < x1; i++)
-            cv_px[(uint32_t)y * cv_w + (uint32_t)i] = sc;
+            cv_px[((uint32_t)y-cv_top) * cv_w + (uint32_t)i] = sc;
 }
 
 /* a 1 px outline */
@@ -661,7 +694,7 @@ static uint32_t rr_cov(int32_t r, int32_t i, int32_t j)
 static void cv_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t c, uint16_t under)
 {
     int32_t i, j;
-    GFX_HOOK_CELL(x, y + cv_oy, x + w, y + h + cv_oy);   /* (the lint: what is drawn on it stays inside it) */
+    if(!cv_top)GFX_HOOK_CELL(x, y + cv_oy, x + w, y + h + cv_oy);   /* (the lint: what is drawn on it stays inside it) */
     if (r > w / 2) r = w / 2;
     if (r > h / 2) r = h / 2;
     if (r < 1) {
@@ -691,14 +724,14 @@ static void cv_disc(int32_t cx, int32_t cy, int32_t d, uint16_t c, int ring)
     for (y = cy + cv_oy - d / 2 - 1; y <= cy + cv_oy + d / 2 + 1; y++)
         for (x = cx - d / 2 - 1; x <= cx + d / 2 + 1; x++) {
             int32_t n = 0, i, j;
-            if ((uint32_t)x >= cv_w || (uint32_t)y >= cv_h) continue;
+            if ((uint32_t)x >= cv_w || (uint32_t)y < cv_top || (uint32_t)y >= cv_top+cv_rows) continue;
             for (j = 0; j < 4; j++)
                 for (i = 0; i < 4; i++) {
                     int32_t dx = x * 8 + 1 + 2 * i - qx, dy = y * 8 + 1 + 2 * j - qy, q = dx * dx + dy * dy;
                     n += q <= r * r && !(ring && q < ri * ri);
                 }
             if (n) {
-                uint16_t *p = &cv_px[(uint32_t)y * cv_w + (uint32_t)x];
+                uint16_t *p = &cv_px[((uint32_t)y-cv_top) * cv_w + (uint32_t)x];
                 *p = swap16(mix565(swap16(*p), c, (uint32_t)n * 2u));
             }
         }
@@ -715,8 +748,8 @@ static void cv_vspan_aa(int32_t x, int32_t a, int32_t b, uint16_t c)
     for (y = lo >> 4; y <= (hi - 1) >> 4; y++) {
         int32_t py = y + cv_oy, top = y * 16, cov = (hi < top + 16 ? hi : top + 16) - (lo > top ? lo : top);
         uint16_t *p;
-        if ((uint32_t)py >= cv_h || cov <= 0) continue;
-        p = &cv_px[(uint32_t)py * cv_w + (uint32_t)x];
+        if ((uint32_t)py < cv_top || (uint32_t)py >= cv_top+cv_rows || cov <= 0) continue;
+        p = &cv_px[((uint32_t)py-cv_top) * cv_w + (uint32_t)x];
         *p = swap16(mix565(swap16(*p), c, (uint32_t)cov * 2u));
     }
 }
@@ -813,11 +846,11 @@ static void cv_alpha(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t
     for (gy = 0; gy < h; gy++) {
         int32_t py = y + (int32_t)gy;
         uint16_t *row;
-        if (py < cv_cy0 || py >= cv_cy1) {
+        if (py < cv_cy0 || py >= cv_cy1 || (uint32_t)py < cv_top || (uint32_t)py >= cv_top+cv_rows) {
             k += w;
             continue;
         }
-        row = cv_px + (uint32_t)py * cv_w;
+        row = cv_px + ((uint32_t)py-cv_top) * cv_w;
         for (gx = 0; gx < w; gx++, k++) {
             uint32_t v = (d[k >> 1] >> ((k & 1u) ? 0 : 4)) & 15u;
             int32_t px = x + (int32_t)gx;
@@ -855,7 +888,7 @@ static void cv_alpha_hc(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint
     y += cv_oy;
     for (gy = 0; gy < h; gy++) {
         int32_t py = y + (int32_t)gy;
-        uint16_t *row = py < cv_cy0 || py >= cv_cy1 ? 0 : cv_px + (uint32_t)py * cv_w;
+        uint16_t *row = py < cv_cy0 || py >= cv_cy1 || (uint32_t)py < cv_top || (uint32_t)py >= cv_top+cv_rows ? 0 : cv_px + ((uint32_t)py-cv_top) * cv_w;
         uint32_t gx = 0;
         while (gx < w) {
             uint32_t n;
@@ -919,9 +952,9 @@ static void cv_pix(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t s, con
             for (j = 0; j < s; j++) {                    /* the run, s rows of n * s pixels */
                 int32_t py = y + (int32_t)(gy * s + j), px = x + (int32_t)(gx * s), e = px + (int32_t)(n * s);
                 uint16_t *row;
-                if (py < cv_cy0 || py >= cv_cy1)
+                if (py < cv_cy0 || py >= cv_cy1 || (uint32_t)py < cv_top || (uint32_t)py >= cv_top+cv_rows)
                     continue;
-                row = cv_px + (uint32_t)py * cv_w;
+                row = cv_px + ((uint32_t)py-cv_top) * cv_w;
                 if (px < 0) px = 0;
                 if (e > (int32_t)cv_w) e = (int32_t)cv_w;
                 for (; px < e; px++)
@@ -1081,7 +1114,7 @@ static int32_t cv_text_flags(int32_t x, int32_t y, const aafont_t *f, const char
         }
         if (cv_dim || cv_under)                      /* (the page under a question: covered on purpose) */
             flags |= 16u;
-        GFX_HOOK_TEXT(x0, y0 + cv_oy, x1, y1 + cv_oy, s0, flags);
+        if(!cv_top)GFX_HOOK_TEXT(x0, y0 + cv_oy, x1, y1 + cv_oy, s0, flags);
     }
     (void)s0;
     return x + ((pen + 8) >> 4);
@@ -1267,3 +1300,7 @@ static void draw_text_box(uint32_t x, uint32_t y, uint32_t w, const aafont_t *f,
 {
     draw_text_line(x, y, w, f, s, c, T_BG, align);
 }
+
+#ifdef GFX_HOOK_LIMIT_SOURCE
+#define cv_begin(w,h,bg) (GFX_HOOK_LIMIT_SOURCE(w,h,__FILE__,__LINE__),cv_begin(w,h,bg))
+#endif

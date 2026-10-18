@@ -71,43 +71,45 @@ static void scales_draw(void)
         scv.list = sig;
         for (top = 0; top < h; top += 124) {            /* (in two slices: a canvas holds 124 rows) */
             int32_t sh = h - top < 124 ? h - top : 124;
-            cv_begin(240, (uint32_t)sh, T_BG);
-            cv_oy = -top;
-            if (!total || rank >= total)
-                cv_text_c(120, ty_y(h / 2, tf), tf, !total ? (ui.scale_family == SCALE_FAMILIES + 1u ? "No favourites" :
-                          "No scales") : "Not in this family", T_MID, T_BG);
-            for (d = -2; d <= 2 && total && rank < total; d++) {
-                int32_t at = (int32_t)rank + d, y = d < 0 ? (d + 2) * SC_ROW : 2 * SC_ROW + SC_CARD + (d - 1) * SC_ROW;
-                uint32_t id;
-                if (at < 0 || at >= (int32_t)total)
-                    continue;
-                uint16_t hc;                            /* (each family its shade of the track's colour) */
-                id = scale_picker_at((uint32_t)at);
-                hc = T_KNOB(SCALE_FAMILY[id]);
-                scales_name(b, id, sizeof b);
-                if (!d) {                               /* the card */
-                    char dt[24];
-                    uint16_t bg = ux_mix(T_BG, hc, 18);
-                    y = 2 * SC_ROW;
-                    cv_rrect(BOX_X, y, BOX_W, SC_CARD - 2, 8, bg, T_BG);
-                    cv_free_text(12, ty_y(y + 18, ty_fit(tf, b, 222)), ty_fit(tf, b, 222), b, T_TEXT, bg, 222);
-                    fmt_int(dt, SCALE_DEGREES[id]);
-                    str_cpy(dt + str_len(dt), SCALE_FAMILY[id] == 6u ? " notes \xB7 non-octave" : " notes \xB7 octave", 20);
-                    cv_text_on(12, ty_y(y + 42, lf), lf, dt, hc, bg);
-                    cv_icon_mid(212, y + 42, 16, scale_favorite(id) ? ICON_X_STAR : ICON_X_STAR_O,
-                                scale_favorite(id) ? hc : T_DIM, bg);
-                    continue;
+            for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (240)) {
+                cv_begin_band(240,(uint32_t)sh,T_BG,band);
+                cv_oy = -top;
+                if (!total || rank >= total)
+                    cv_text_c(120, ty_y(h / 2, tf), tf, !total ? (ui.scale_family == SCALE_FAMILIES + 1u ? "No favourites" :
+                              "No scales") : "Not in this family", T_MID, T_BG);
+                for (d = -2; d <= 2 && total && rank < total; d++) {
+                    int32_t at = (int32_t)rank + d, y = d < 0 ? (d + 2) * SC_ROW : 2 * SC_ROW + SC_CARD + (d - 1) * SC_ROW;
+                    uint32_t id;
+                    if (at < 0 || at >= (int32_t)total)
+                        continue;
+                    uint16_t hc;                            /* (each family its shade of the track's colour) */
+                    id = scale_picker_at((uint32_t)at);
+                    hc = T_KNOB(SCALE_FAMILY[id]);
+                    scales_name(b, id, sizeof b);
+                    if (!d) {                               /* the card */
+                        char dt[24];
+                        uint16_t bg = ux_mix(T_BG, hc, 18);
+                        y = 2 * SC_ROW;
+                        cv_rrect(BOX_X, y, BOX_W, SC_CARD - 2, 8, bg, T_BG);
+                        cv_free_text(12, ty_y(y + 18, ty_fit(tf, b, 222)), ty_fit(tf, b, 222), b, T_TEXT, bg, 222);
+                        fmt_int(dt, SCALE_DEGREES[id]);
+                        str_cpy(dt + str_len(dt), SCALE_FAMILY[id] == 6u ? " notes \xB7 non-octave" : " notes \xB7 octave", 20);
+                        cv_text_on(12, ty_y(y + 42, lf), lf, dt, hc, bg);
+                        cv_icon_mid(212, y + 42, 16, scale_favorite(id) ? ICON_X_STAR : ICON_X_STAR_O,
+                                    scale_favorite(id) ? hc : T_DIM, bg);
+                        continue;
+                    }
+                    cv_free_text(12, ty_y(y + SC_ROW / 2 - 1, ty_fit(tf, b, 220)), ty_fit(tf, b, 220), b,
+                                 ux_mix(T_BG, hc, d == 1 || d == -1 ? 78 : 45), T_BG, 220);
                 }
-                cv_free_text(12, ty_y(y + SC_ROW / 2 - 1, ty_fit(tf, b, 220)), ty_fit(tf, b, 220), b,
-                             ux_mix(T_BG, hc, d == 1 || d == -1 ? 78 : 45), T_BG, 220);
+                if (total > 1u && rank < total) {           /* where it is */
+                    int32_t th = 24, ty = (int32_t)rank * (h - th) / (int32_t)(total - 1u);
+                    cv_rect(238, 0, 2, h, T_LINE);
+                    cv_rect(238, ty, 2, th, T_THEME);
+                }
+                cv_oy = 0;
+                cv_blit_band(0, (uint32_t)(SC_BODY_Y + top));
             }
-            if (total > 1u && rank < total) {           /* where it is */
-                int32_t th = 24, ty = (int32_t)rank * (h - th) / (int32_t)(total - 1u);
-                cv_rect(238, 0, 2, h, T_LINE);
-                cv_rect(238, ty, 2, th, T_THEME);
-            }
-            cv_oy = 0;
-            cv_blit(0, (uint32_t)(SC_BODY_Y + top));
         }
     }
 }

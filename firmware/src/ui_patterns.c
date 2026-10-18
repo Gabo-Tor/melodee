@@ -210,25 +210,27 @@ static void pt_song(void)
     if (!ui.force && sig == ptv.song)
         return;
     ptv.song = sig;
-    cv_begin(240, 240 - PT_SONG_Y, T_BG);
-    cv_text_on(8, ty_y(19, TY_LB), TY_LB, jamrows ? "JAM" : "SONG", T_MID, T_BG);
-    if (!n) {
-        cv_text_on(62, ty_y(19, TY_LB), TY_LB, "Empty", T_DIM, T_BG);
-    } else {
-        first = cur > 2u ? cur - 2u : 0u;
-        if (n > 6u && first > n - 6u)
-            first = n - 6u;
-        if (n <= 6u)
-            first = 0;
-        for (i = first; i < first + 6u && i < n; i++) {
-            int32_t x = 62 + 29 * (int32_t)(i - first);
-            int on = i == cur;
-            char l[2] = {row_letter(pat, i), 0};
-            cv_rrect(x, 7, 26, 24, 6, on ? T_TEXT : T_SURF, T_BG);
-            cv_text_c(x + 13, ty_y(19, TY_LB), TY_LB, l, on ? T_BG : T_MID, on ? T_TEXT : T_SURF);
+    for (uint32_t band = 0; band < (uint32_t)(240 - PT_SONG_Y); band += CV_MAX / (240)) {
+        cv_begin_band(240,240 - PT_SONG_Y,T_BG,band);
+        cv_text_on(8, ty_y(19, TY_LB), TY_LB, jamrows ? "JAM" : "SONG", T_MID, T_BG);
+        if (!n) {
+            cv_text_on(62, ty_y(19, TY_LB), TY_LB, "Empty", T_DIM, T_BG);
+        } else {
+            first = cur > 2u ? cur - 2u : 0u;
+            if (n > 6u && first > n - 6u)
+                first = n - 6u;
+            if (n <= 6u)
+                first = 0;
+            for (i = first; i < first + 6u && i < n; i++) {
+                int32_t x = 62 + 29 * (int32_t)(i - first);
+                int on = i == cur;
+                char l[2] = {row_letter(pat, i), 0};
+                cv_rrect(x, 7, 26, 24, 6, on ? T_TEXT : T_SURF, T_BG);
+                cv_text_c(x + 13, ty_y(19, TY_LB), TY_LB, l, on ? T_BG : T_MID, on ? T_TEXT : T_SURF);
+            }
         }
+        cv_blit_band(0, PT_SONG_Y);
     }
-    cv_blit(0, PT_SONG_Y);
 }
 static void patterns_draw(void)
 {

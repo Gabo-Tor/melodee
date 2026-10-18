@@ -278,15 +278,17 @@ static void pv_panel(int32_t y, int32_t h, void (*fn)(int32_t h))
     int32_t top;
     for (top = 0; top < h; top += PV_SLICE) {
         int32_t sh = h - top < PV_SLICE ? h - top : PV_SLICE;
-        cv_begin(PV_PANEL_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        pv.slice0 = top;
-        cv_rrect(0, 0, PV_PANEL_W, h, 6, T_PANEL, T_BG);
-        cv_bg = T_PANEL;
-        pv_nbox = 0;
-        fn(h);
-        cv_oy = 0;
-        cv_blit(PV_PANEL_X, (uint32_t)(y + top));
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (PV_PANEL_W)) {
+            cv_begin_band(PV_PANEL_W,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            pv.slice0 = top;
+            cv_rrect(0, 0, PV_PANEL_W, h, 6, T_PANEL, T_BG);
+            cv_bg = T_PANEL;
+            pv_nbox = 0;
+            fn(h);
+            cv_oy = 0;
+            cv_blit_band(PV_PANEL_X, (uint32_t)(y + top));
+        }
     }
 }
 /* a canvas drawn (at x 0, row y) for its playhead alone: sent only where it was and is, columns from .. from+w-1 and
@@ -696,15 +698,17 @@ static void pv_picture(void)
         return;
     pv.panel = sig;                                     /* (PATTERN, the step playing alone moved: cv_blit sends its */
     pv.pplay = pp;                                      /*  two dots) */
-    cv_begin(240, (uint32_t)h, T_BG);
-    cv_rrect(PV_PANEL_X, 0, PV_PANEL_W, h, 6, T_PANEL, T_BG);
-    cv_bg = T_PANEL;
-    if (pic == 5u) pv_arp(h);
-    else if (pic == 6u) pv_steps(h);
-    else if (pic == 3u) pv_filter(cut, res, h);
-    else if (pic == 9u) pv_fx(h);
-    else stage_wave(T_THEME, 8, h - 16);
-    cv_blit(0, (uint32_t)y);
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)h); band += CV_MAX / (240)) {
+        cv_begin_band(240,(uint32_t)h,T_BG,band);
+        cv_rrect(PV_PANEL_X, 0, PV_PANEL_W, h, 6, T_PANEL, T_BG);
+        cv_bg = T_PANEL;
+        if (pic == 5u) pv_arp(h);
+        else if (pic == 6u) pv_steps(h);
+        else if (pic == 3u) pv_filter(cut, res, h);
+        else if (pic == 9u) pv_fx(h);
+        else stage_wave(T_THEME, 8, h - 16);
+        cv_blit_band(0, (uint32_t)y);
+    }
 }
 
 /* ---------------------------------------------------------- MIXER --- */
@@ -758,53 +762,55 @@ static void pv_strip(uint32_t k)
     }
     pvm.strip[k] = sig;
     pvm.meter[k] = (uint8_t)(m < 0 ? 0 : m);
-    for (top = 0; top < h; top += (int32_t)(CV_MAX / BOX_W)) {   /* (a tall row: in slices) */
-        int32_t sh = h - top < (int32_t)(CV_MAX / BOX_W) ? h - top : (int32_t)(CV_MAX / BOX_W), x;
-        cv_begin(BOX_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        if (sel) {
-            cv_rrect(0, 0, BOX_W, h, 8, mute ? T_DIM : T_TRK(k), T_BG);
-            cv_rrect(2, 2, BOX_W - 4, h - 4, 6, bg, mute ? T_DIM : T_TRK(k));
-        } else {
-            cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
-        }
-        cv_rrect(6, h / 2 - cs / 2, cs, cs, 7, tc, bg);  /* the numeral */
-        cv_text_c(6 + cs / 2, ty_y(h / 2, tf), tf, d, T_INK, tc);
-        if (arm)
-            cv_disc(6 + cs - 2, h / 2 - cs / 2 + 2, 9, T_REC, 0);
-        /* the level in dB at the right, the sound before it */
-        if (lvl) {
-            int32_t db = LEVEL_DB_X10[lvl];
-            fmt_int(b, (db + (db < 0 ? -5 : 5)) / 10);
-        } else {
-            str_cpy(b, "Off", sizeof b);
-        }
-        x = 228;
-        if (lvl && text_w(lf, nm) <= 228 - text_w(lf, "dB") - 3 - text_w(tf, b) - 8 - PV_MIX_BAR_X)   /* (the unit goes
-                                                         * before the name is cut) */
-            x = cv_text_r(x, ty_y(T + tf->cap / 2, lf), lf, "dB", T_MID, bg) - 3;
-        x = cv_text_r(x, ty_y(T + tf->cap / 2, tf), tf, b, hot == 1u ? tc : mute ? T_DIM : T_TEXT, bg);
-        cv_free_text(PV_MIX_BAR_X, ty_y(T + tf->cap / 2, ty_fit(tf, nm, x - 8 - PV_MIX_BAR_X)), ty_fit(tf, nm, x - 8 - PV_MIX_BAR_X),
-                     nm, mute ? T_DIM : T_TEXT, bg, x - 8 - PV_MIX_BAR_X);
-        /* the level's bar, the meter under it; the pan (or Mute) at the right */
-        cv_rrect(PV_MIX_BAR_X, ly, PV_MIX_BAR_W, 5, 2, ux_mix(bg, T_LINE, 60), bg);
-        if (lvl)
-            cv_rrect(PV_MIX_BAR_X, ly, (int32_t)lvl * PV_MIX_BAR_W / 127 < 4 ? 4 : (int32_t)lvl * PV_MIX_BAR_W / 127, 5, 2,
-                     hot == 1u ? T_TEXT : tc, T_LINE);
-        pv_meter_draw(k, PV_MIX_BAR_X, ly + 7, tc, bg);
-        if (mute) {
-            cv_text_r(228, ty_y(ly + 5, lf), lf, "Mute", hot == 4u ? T_TEXT : T_REC, bg);
-        } else {
-            if (pan) {
-                b[0] = pan < 0 ? 'L' : 'R';
-                fmt_int(b + 1, pan < 0 ? -pan : pan);
+    for (top = 0; top < h; top += (int32_t)(CV_LOGICAL_MAX / BOX_W)) {   /* (a tall row: in slices) */
+        int32_t sh = h - top < (int32_t)(CV_LOGICAL_MAX / BOX_W) ? h - top : (int32_t)(CV_LOGICAL_MAX / BOX_W), x;
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (BOX_W)) {
+            cv_begin_band(BOX_W,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            if (sel) {
+                cv_rrect(0, 0, BOX_W, h, 8, mute ? T_DIM : T_TRK(k), T_BG);
+                cv_rrect(2, 2, BOX_W - 4, h - 4, 6, bg, mute ? T_DIM : T_TRK(k));
             } else {
-                str_cpy(b, "C", sizeof b);
+                cv_rrect(0, 0, BOX_W, h, 8, bg, T_BG);
             }
-            cv_text_r(228, ty_y(ly + 5, lf), lf, b, hot == 2u ? T_TEXT : T_MID, bg);
+            cv_rrect(6, h / 2 - cs / 2, cs, cs, 7, tc, bg);  /* the numeral */
+            cv_text_c(6 + cs / 2, ty_y(h / 2, tf), tf, d, T_INK, tc);
+            if (arm)
+                cv_disc(6 + cs - 2, h / 2 - cs / 2 + 2, 9, T_REC, 0);
+            /* the level in dB at the right, the sound before it */
+            if (lvl) {
+                int32_t db = LEVEL_DB_X10[lvl];
+                fmt_int(b, (db + (db < 0 ? -5 : 5)) / 10);
+            } else {
+                str_cpy(b, "Off", sizeof b);
+            }
+            x = 228;
+            if (lvl && text_w(lf, nm) <= 228 - text_w(lf, "dB") - 3 - text_w(tf, b) - 8 - PV_MIX_BAR_X)   /* (the unit goes
+                                                             * before the name is cut) */
+                x = cv_text_r(x, ty_y(T + tf->cap / 2, lf), lf, "dB", T_MID, bg) - 3;
+            x = cv_text_r(x, ty_y(T + tf->cap / 2, tf), tf, b, hot == 1u ? tc : mute ? T_DIM : T_TEXT, bg);
+            cv_free_text(PV_MIX_BAR_X, ty_y(T + tf->cap / 2, ty_fit(tf, nm, x - 8 - PV_MIX_BAR_X)), ty_fit(tf, nm, x - 8 - PV_MIX_BAR_X),
+                         nm, mute ? T_DIM : T_TEXT, bg, x - 8 - PV_MIX_BAR_X);
+            /* the level's bar, the meter under it; the pan (or Mute) at the right */
+            cv_rrect(PV_MIX_BAR_X, ly, PV_MIX_BAR_W, 5, 2, ux_mix(bg, T_LINE, 60), bg);
+            if (lvl)
+                cv_rrect(PV_MIX_BAR_X, ly, (int32_t)lvl * PV_MIX_BAR_W / 127 < 4 ? 4 : (int32_t)lvl * PV_MIX_BAR_W / 127, 5, 2,
+                         hot == 1u ? T_TEXT : tc, T_LINE);
+            pv_meter_draw(k, PV_MIX_BAR_X, ly + 7, tc, bg);
+            if (mute) {
+                cv_text_r(228, ty_y(ly + 5, lf), lf, "Mute", hot == 4u ? T_TEXT : T_REC, bg);
+            } else {
+                if (pan) {
+                    b[0] = pan < 0 ? 'L' : 'R';
+                    fmt_int(b + 1, pan < 0 ? -pan : pan);
+                } else {
+                    str_cpy(b, "C", sizeof b);
+                }
+                cv_text_r(228, ty_y(ly + 5, lf), lf, b, hot == 2u ? T_TEXT : T_MID, bg);
+            }
+            cv_oy = 0;
+            cv_blit_band(BOX_X, (uint32_t)(y + top));
         }
-        cv_oy = 0;
-        cv_blit(BOX_X, (uint32_t)(y + top));
     }
 }
 
@@ -828,8 +834,8 @@ static void pv_draw(void)
             int32_t top, from = proll.play, cols = !ui.force && sig == ui.graph_sig;
             ui.graph_sig = sig;
             proll.play = px;
-            for (top = 0; top < PR_H; top += H_GRAPH) {
-                int32_t sh = PR_H - top < H_GRAPH ? PR_H - top : H_GRAPH;
+            for (top = 0; top < PR_H; top += (int32_t)(CV_MAX/240u)) {
+                int32_t sh = PR_H - top < (int32_t)(CV_MAX/240u) ? PR_H - top : (int32_t)(CV_MAX/240u);
                 cv_begin(240, (uint32_t)sh, T_BG);
                 cv_oy = -top;
                 cv_rrect(PV_PANEL_X, 0, PV_PANEL_W, PR_H, 6, T_PANEL, T_BG);

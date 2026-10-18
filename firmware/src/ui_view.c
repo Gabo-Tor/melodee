@@ -109,96 +109,99 @@ static void view_wheel(const uint32_t *on, const uint8_t *of, int faded)
         bass = note[0] % 12u;
         q = micro_active(TSEL) ? 0 : chord_of(pcs, bass, &root);
     }
-    cv_begin(VW_WHEEL_W, VW_WHEEL_H, T_BG);
-    cv_scroll = stage.out;                              /* (the knobs over its top: its words there cut on purpose) */
-    cv_ring(VW_CX, VW_CY, 2 * VW_R + 1, T_LINE);
-    for (k = 0; k <= 12u && npc > 1u; k++) {              /* the chord's shape: its notes joined round the wheel */
-        uint32_t pc = (k * 7u) % 12u;
-        if (k == 12u) {
-            if (first != 0xFFu && prev != first && npc > 2u)
-                vw_line(vw_x(prev, VW_R), vw_y(prev, VW_R), vw_x(first, VW_R), vw_y(first, VW_R),
-                        ux_mix(T_BG, tc[(first * 7u) % 12u], faded ? 40 : 75));
-            break;
-        }
-        if (!((pcs >> pc) & 1u))
-            continue;
-        if (prev != 0xFFu)
-            vw_line(vw_x(prev, VW_R), vw_y(prev, VW_R), vw_x(k, VW_R), vw_y(k, VW_R),
-                    ux_mix(T_BG, tc[(prev * 7u) % 12u], faded ? 40 : 75));
-        else
-            first = k;
-        prev = k;
-    }
-    for (k = 0; k < 12u; k++) {                         /* the twelve notes: lit ones large, the root ringed; the key's
-                                                         * marked, its root larger */
-        uint32_t pc = (k * 7u) % 12u, lit = (pcs >> pc) & 1u, in = (mask >> ((pc + 12u - key) % 12u)) & 1u;
-        int32_t x = vw_x(k, VW_R), y = vw_y(k, VW_R);
-        if (lit)
-            cv_disc(x, y, 13, tc[pc], 0);
-        else
-            cv_disc(x, y, pc == key ? 9 : in ? 7 : 4, in ? T_MID : T_LINE, 0);
-        if (q && pc == root)
-            cv_ring(x, y, 19, faded ? T_MID : T_TEXT);
-        cv_text_c(vw_x(k, VW_LR), ty_y(vw_y(k, VW_LR), TY_LB), TY_LB, N_NOTE[pc],
-                  lit ? (faded ? T_MID : T_TEXT) : in ? T_MID : T_DIM, T_BG);
-    }
-    if (n) {                                            /* in the middle: the chord, its notes */
-        uint16_t c = faded ? ux_mix(T_BG, T_TEXT, 45) : T_TEXT, cn = faded ? ux_mix(T_BG, T_THEME, 55) : T_THEME;
-        if (q) {                                        /* (the chord's line on row VW_CY + 4, the notes under it) */
-            const aafont_t *rf = TY_HR, *qf = TY_VL;
-            int32_t w, x, base = VW_CY + 4;
-            for (;;) {
-                w = text_w(rf, N_NOTE[root]) + 1 + text_w(qf, q);
-                if (root != bass)
-                    w += (q[0] ? 3 : 0) + text_w(rf, "/") + text_w(rf, N_NOTE[bass]);
-                if (w <= 2 * VW_R - 8 || rf != TY_HR)
-                    break;
-                rf = TY_VL, qf = TY_TX;                 /* (too wide for the ring: a size smaller) */
+    for (uint32_t band = 0; band < VW_WHEEL_H; band += CV_MAX / VW_WHEEL_W){
+        first=prev=0xffu;
+        cv_begin_band(VW_WHEEL_W,VW_WHEEL_H,T_BG,band);
+        cv_scroll = stage.out;                              /* (the knobs over its top: its words there cut on purpose) */
+        cv_ring(VW_CX, VW_CY, 2 * VW_R + 1, T_LINE);
+        for (k = 0; k <= 12u && npc > 1u; k++) {              /* the chord's shape: its notes joined round the wheel */
+            uint32_t pc = (k * 7u) % 12u;
+            if (k == 12u) {
+                if (first != 0xFFu && prev != first && npc > 2u)
+                    vw_line(vw_x(prev, VW_R), vw_y(prev, VW_R), vw_x(first, VW_R), vw_y(first, VW_R),
+                            ux_mix(T_BG, tc[(first * 7u) % 12u], faded ? 40 : 75));
+                break;
             }
-            x = VW_CX - w / 2;
-            x = cv_text_on(x, base - rf->asc, rf, N_NOTE[root], c, T_BG);
-            x = cv_text_on(x + (q[0] ? 1 : 0), base - qf->asc, qf, q, c, T_BG);
-            if (root != bass) {
-                x = cv_text_on(x + (q[0] ? 3 : 0), base - rf->asc, rf, "/", c, T_BG);
-                cv_text_on(x, base - rf->asc, rf, N_NOTE[bass], c, T_BG);
-            }
-            notes_fit(b, note, n, TY_LB, 2 * VW_R - 4);
-            cv_text_c(VW_CX, base + 6, TY_LB, b, cn, T_BG);
-        } else if (n == 1u) {                           /* one note: large */
-            note_name(b, note[0]);
-            cv_text_c(VW_CX, ty_y(VW_CY, TY_HR), TY_HR, b, c, T_BG);
-        } else {
-            notes_fit(b, note, n, TY_TX, 2 * VW_R - 4);
-            cv_text_c(VW_CX, ty_y(VW_CY, TY_TX), TY_TX, b, cn, T_BG);
+            if (!((pcs >> pc) & 1u))
+                continue;
+            if (prev != 0xFFu)
+                vw_line(vw_x(prev, VW_R), vw_y(prev, VW_R), vw_x(k, VW_R), vw_y(k, VW_R),
+                        ux_mix(T_BG, tc[(prev * 7u) % 12u], faded ? 40 : 75));
+            else
+                first = k;
+            prev = k;
         }
-    } else {                                            /* nothing played yet: the key ("A minor") */
-        const char *t = SCALE_TITLE[clamp(TSEL->p[P_SCALE], 0, SCALE_TOTAL - 1u)];
-        if (!memcmp(t, "Natural ", 8))
-            t += 8;
-        str_cpy(b, N_NOTE[key], 4);
-        str_cpy(b + str_len(b), " ", 2);
-        str_cpy(b + str_len(b), t, sizeof b - str_len(b));
-        if (b[str_len(N_NOTE[key]) + 1u] >= 'A' && b[str_len(N_NOTE[key]) + 1u] <= 'Z')
-            b[str_len(N_NOTE[key]) + 1u] = (char)(b[str_len(N_NOTE[key]) + 1u] + 32);
-        {   /* (in the ring: the text face, the label face, then on two lines: nothing cut) */
-            const aafont_t *f = ty_fit(TY_TX, b, 2 * VW_R - 4);
-            if (text_w(f, b) <= 2 * VW_R - 4) {
-                cv_text_c(VW_CX, ty_y(VW_CY, f), f, b, T_MID, T_BG);
+        for (k = 0; k < 12u; k++) {                         /* the twelve notes: lit ones large, the root ringed; the key's
+                                                             * marked, its root larger */
+            uint32_t pc = (k * 7u) % 12u, lit = (pcs >> pc) & 1u, in = (mask >> ((pc + 12u - key) % 12u)) & 1u;
+            int32_t x = vw_x(k, VW_R), y = vw_y(k, VW_R);
+            if (lit)
+                cv_disc(x, y, 13, tc[pc], 0);
+            else
+                cv_disc(x, y, pc == key ? 9 : in ? 7 : 4, in ? T_MID : T_LINE, 0);
+            if (q && pc == root)
+                cv_ring(x, y, 19, faded ? T_MID : T_TEXT);
+            cv_text_c(vw_x(k, VW_LR), ty_y(vw_y(k, VW_LR), TY_LB), TY_LB, N_NOTE[pc],
+                      lit ? (faded ? T_MID : T_TEXT) : in ? T_MID : T_DIM, T_BG);
+        }
+        if (n) {                                            /* in the middle: the chord, its notes */
+            uint16_t c = faded ? ux_mix(T_BG, T_TEXT, 45) : T_TEXT, cn = faded ? ux_mix(T_BG, T_THEME, 55) : T_THEME;
+            if (q) {                                        /* (the chord's line on row VW_CY + 4, the notes under it) */
+                const aafont_t *rf = TY_HR, *qf = TY_VL;
+                int32_t w, x, base = VW_CY + 4;
+                for (;;) {
+                    w = text_w(rf, N_NOTE[root]) + 1 + text_w(qf, q);
+                    if (root != bass)
+                        w += (q[0] ? 3 : 0) + text_w(rf, "/") + text_w(rf, N_NOTE[bass]);
+                    if (w <= 2 * VW_R - 8 || rf != TY_HR)
+                        break;
+                    rf = TY_VL, qf = TY_TX;                 /* (too wide for the ring: a size smaller) */
+                }
+                x = VW_CX - w / 2;
+                x = cv_text_on(x, base - rf->asc, rf, N_NOTE[root], c, T_BG);
+                x = cv_text_on(x + (q[0] ? 1 : 0), base - qf->asc, qf, q, c, T_BG);
+                if (root != bass) {
+                    x = cv_text_on(x + (q[0] ? 3 : 0), base - rf->asc, rf, "/", c, T_BG);
+                    cv_text_on(x, base - rf->asc, rf, N_NOTE[bass], c, T_BG);
+                }
+                notes_fit(b, note, n, TY_LB, 2 * VW_R - 4);
+                cv_text_c(VW_CX, base + 6, TY_LB, b, cn, T_BG);
+            } else if (n == 1u) {                           /* one note: large */
+                note_name(b, note[0]);
+                cv_text_c(VW_CX, ty_y(VW_CY, TY_HR), TY_HR, b, c, T_BG);
             } else {
-                char l[TL_MAX][32];
-                uint32_t n = text_lines(b, l, 3u, 2 * VW_R - 4, TY_LB), i;
-                for (i = 0; i < n; i++)
-                    cv_free_text(st_mid_x(VW_CX, TY_LB, l[i], 2 * VW_R - 4),
-                                 ty_y(VW_CY - 9 * ((int32_t)n - 1) + 18 * (int32_t)i, TY_LB), TY_LB, l[i], T_MID, T_BG,
-                                 2 * VW_R - 4);
+                notes_fit(b, note, n, TY_TX, 2 * VW_R - 4);
+                cv_text_c(VW_CX, ty_y(VW_CY, TY_TX), TY_TX, b, cn, T_BG);
+            }
+        } else {                                            /* nothing played yet: the key ("A minor") */
+            const char *t = SCALE_TITLE[clamp(TSEL->p[P_SCALE], 0, SCALE_TOTAL - 1u)];
+            if (!memcmp(t, "Natural ", 8))
+                t += 8;
+            str_cpy(b, N_NOTE[key], 4);
+            str_cpy(b + str_len(b), " ", 2);
+            str_cpy(b + str_len(b), t, sizeof b - str_len(b));
+            if (b[str_len(N_NOTE[key]) + 1u] >= 'A' && b[str_len(N_NOTE[key]) + 1u] <= 'Z')
+                b[str_len(N_NOTE[key]) + 1u] = (char)(b[str_len(N_NOTE[key]) + 1u] + 32);
+            {   /* (in the ring: the text face, the label face, then on two lines: nothing cut) */
+                const aafont_t *f = ty_fit(TY_TX, b, 2 * VW_R - 4);
+                if (text_w(f, b) <= 2 * VW_R - 4) {
+                    cv_text_c(VW_CX, ty_y(VW_CY, f), f, b, T_MID, T_BG);
+                } else {
+                    char l[TL_MAX][32];
+                    uint32_t n = text_lines(b, l, 3u, 2 * VW_R - 4, TY_LB), i;
+                    for (i = 0; i < n; i++)
+                        cv_free_text(st_mid_x(VW_CX, TY_LB, l[i], 2 * VW_R - 4),
+                                     ty_y(VW_CY - 9 * ((int32_t)n - 1) + 18 * (int32_t)i, TY_LB), TY_LB, l[i], T_MID, T_BG,
+                                     2 * VW_R - 4);
+                }
             }
         }
+        cv_scroll = 0;
+        if (stage.out)                                      /* (the knobs over its top: the rows under them only) */
+            cv_blit_band_from(VW_WHEEL_X, VW_WHEEL_Y, (uint32_t)(Y_LABEL + CARD_H - VW_WHEEL_Y));
+        else
+            cv_blit_band(VW_WHEEL_X, VW_WHEEL_Y);
     }
-    cv_scroll = 0;
-    if (stage.out)                                      /* (the knobs over its top: the rows under them only) */
-        cv_blit_from(VW_WHEEL_X, VW_WHEEL_Y, (uint32_t)(Y_LABEL + CARD_H - VW_WHEEL_Y));
-    else
-        cv_blit(VW_WHEEL_X, VW_WHEEL_Y);
 }
 
 /* the keys: C2 .. B5, those sounding lit in their track's colour (let go: faded) */

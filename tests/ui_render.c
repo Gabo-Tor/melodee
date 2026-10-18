@@ -22,6 +22,7 @@
  * text, the draw cost), OUTDIR/text_audit.tsv (MONO, per screen: texts, icons and keycaps with their ink-box px, the
  * ellipsised ones, the texts closer than 2 px to their cell's edge, the words).
  * Exit 1 on a finding or a MONO pixel off gray. */
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -72,7 +73,9 @@ static void hk_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 static uint16_t ref_screen[240 * 240];                  /* the screen as sending every canvas whole leaves it */
 static void hk_whole(uint32_t x, uint32_t y, uint32_t r0, uint32_t fill);
 #define GFX_HOOK_WHOLE(x, y, r0, fill) hk_whole(x, y, r0, fill)
-#define GFX_HOOK_BEGIN() (npend = ncells = 0)
+#define GFX_HOOK_LIMIT_SOURCE(w,h,file,line) ((w)*(h)>CV_MAX ? (fprintf(stderr,"large caller %s:%d\n",file,line),abort(),0) : 0)
+#define GFX_HOOK_LIMIT(w,h) do{if(w*h>CV_MAX){fprintf(stderr,"large canvas %s %ux%u\n",cur_name,w,h);abort();}}while(0)
+#define GFX_HOOK_BEGIN() (assert(w*h<=CV_MAX), npend = ncells = 0)
 #define GFX_HOOK_CELL(x0, y0, x1, y1) hk_cell(x0, y0, x1, y1)
 #define GFX_HOOK_COVER(x0, y0, x1, y1) hk_cover(x0, y0, x1, y1)
 #define GFX_HOOK_PIXELS(n) (px_visited += (n))
@@ -86,7 +89,7 @@ static void fm6_hook(uint32_t kind, uint32_t a, uint32_t b);
  * (bit: the part), then the canvas as drawn restored with the part on it; at FMH_END the parts are checked */
 #define FMP_MAX 48u
 #define FMP_SENT 0x0861u
-static uint64_t fmp_mask[CV_MAX];
+static uint64_t fmp_mask[240u*124u];
 static uint16_t fmp_save[CV_MAX];
 static uint8_t fmp_kind[FMP_MAX], fmp_a[FMP_MAX], fmp_b[FMP_MAX];
 static uint32_t fmp_n, fmp_charts;
@@ -162,16 +165,16 @@ static void fmp_check(uint32_t alg)
 }
 static void fm6_hook(uint32_t kind, uint32_t a, uint32_t b)
 {
-    uint32_t i, n = cv_w * cv_h;
+    uint32_t i, n = cv_w * cv_rows,base=cv_top*cv_w;
     if (fmp_n) {                                         /* the part just drawn: its pixels */
         for (i = 0; i < n; i++)
-            if (cv_px[i] != FMP_SENT) fmp_mask[i] |= (uint64_t)1u << (fmp_n - 1u);
+            if (cv_px[i] != FMP_SENT) fmp_mask[base+i] |= (uint64_t)1u << (fmp_n - 1u);
             else cv_px[i] = fmp_save[i];
     } else {
-        memset(fmp_mask, 0, n * sizeof fmp_mask[0]);
+        if(!cv_top)memset(fmp_mask, 0, sizeof fmp_mask);
     }
     if (kind == FMH_END) {
-        fmp_check(a);
+        if(cv_top+cv_rows>=cv_h)fmp_check(a);
         fmp_n = 0;
         return;
     }

@@ -961,7 +961,7 @@ static void graph_scope(uint16_t c, int32_t top, int32_t h)
     uint32_t w = scope_w, i, trig = 0;
     int32_t cy = top + h / 2, py = cy, x, peak = 1500;
     for (i = 0; i < SCOPE_N; i++) {
-        snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
+        if(!cv_top)snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
         if (snap[i] > peak)
             peak = snap[i];
         else if (-snap[i] > peak)
@@ -992,65 +992,67 @@ static void draw_graph(void)
     if (!ui.force && sig == ui.graph_sig)
         return;
     ui.graph_sig = sig;
-    cv_begin(240, (uint32_t)graph_h, T_BG);
-    cv_rrect(3, 0, 234, graph_h, 5, T_SURF, T_BG);   /* the panel */
-    cv_bg = T_SURF;                                  /* (text drawn with cv_text lands on it) */
-    cv_oy = graph_oy;                                /* graphs on a 100 px scale */
-    if (ui.home) {                                   /* (Stage draws its own panel: ui_stage.c) */
-        cv_oy = 0;
-        graph_scope(c, 0, H_GRAPH);
-    } else {
-        switch (pg->graph) {
-        case GR_LFO:
-            graph_lfo(t, c);
-            break;
-        case GR_STEPS:
-            graph_steps(t, c);
-            break;
-        case GR_DRUMHIT:
-        case GR_ROLL:
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)graph_h); band += CV_MAX / (240)) {
+        cv_begin_band(240,(uint32_t)graph_h,T_BG,band);
+        cv_rrect(3, 0, 234, graph_h, 5, T_SURF, T_BG);   /* the panel */
+        cv_bg = T_SURF;                                  /* (text drawn with cv_text lands on it) */
+        cv_oy = graph_oy;                                /* graphs on a 100 px scale */
+        if (ui.home) {                                   /* (Stage draws its own panel: ui_stage.c) */
             cv_oy = 0;
-            if (grid_on()) graph_grid(t, c);
-            else { proll.play = notes_play_x(t); graph_recorded_notes(t, c); }
-            break;
-        case GR_SCALE:
-            if (scale_settings_page(pg)) {
+            graph_scope(c, 0, H_GRAPH);
+        } else {
+            switch (pg->graph) {
+            case GR_LFO:
+                graph_lfo(t, c);
+                break;
+            case GR_STEPS:
+                graph_steps(t, c);
+                break;
+            case GR_DRUMHIT:
+            case GR_ROLL:
                 cv_oy = 0;
-                const char *st = SCALE_TITLE[clamp(t->p[P_SCALE], 0, SCALE_TOTAL - 1u)];
-                cv_free_text(12, ty_y(14, ty_fit(TY_TX, st, 216)), ty_fit(TY_TX, st, 216), st, T_TEXT, T_SURF, 216);
-                cv_oy = 24;
-            }
-            graph_scale(t, c);
-            break;
-        case GR_CHORD:
-            cv_oy = 0;
-            graph_chord(t, c);
-            break;
+                if (grid_on()) graph_grid(t, c);
+                else { proll.play = notes_play_x(t); graph_recorded_notes(t, c); }
+                break;
+            case GR_SCALE:
+                if (scale_settings_page(pg)) {
+                    cv_oy = 0;
+                    const char *st = SCALE_TITLE[clamp(t->p[P_SCALE], 0, SCALE_TOTAL - 1u)];
+                    cv_free_text(12, ty_y(14, ty_fit(TY_TX, st, 216)), ty_fit(TY_TX, st, 216), st, T_TEXT, T_SURF, 216);
+                    cv_oy = 24;
+                }
+                graph_scale(t, c);
+                break;
+            case GR_CHORD:
+                cv_oy = 0;
+                graph_chord(t, c);
+                break;
 #if MELODEE_SLICE
-        case GR_SLICES:
-            cv_oy = 0;
-            graph_slices();
-            break;
+            case GR_SLICES:
+                cv_oy = 0;
+                graph_slices();
+                break;
 #endif
-        case GR_FMEG: {                                  /* FM6: operator fm6_opsel's envelope */
-            const uint8_t *op = &fm6_patch[song.sel % NTRK][(5u - fm6_opsel % 6u) * FP_OP];
-            graph_dxenv(op + FP_R1, op + FP_L1, 0, c);
-            break;
-        }
-        case GR_FMPEG:                                   /* FM6: the pitch envelope */
-            graph_dxenv(fm6_patch[song.sel % NTRK] + FP_PR1, fm6_patch[song.sel % NTRK] + FP_PL1, 1, c);
-            break;
-        default:
+            case GR_FMEG: {                                  /* FM6: operator fm6_opsel's envelope */
+                const uint8_t *op = &fm6_patch[song.sel % NTRK][(5u - fm6_opsel % 6u) * FP_OP];
+                graph_dxenv(op + FP_R1, op + FP_L1, 0, c);
+                break;
+            }
+            case GR_FMPEG:                                   /* FM6: the pitch envelope */
+                graph_dxenv(fm6_patch[song.sel % NTRK] + FP_PR1, fm6_patch[song.sel % NTRK] + FP_PL1, 1, c);
+                break;
+            default:
 #if MELODEE_LEGACY_EXTRAS
-            if (pg->scope == SC_ENGINE && t->eng_req % NENGINES == 7u) graph_wheel(t, c);
-            else
+                if (pg->scope == SC_ENGINE && t->eng_req % NENGINES == 7u) graph_wheel(t, c);
+                else
 #endif
-            if ((pg->scope == SC_ENGINE || pg->scope == SC_FM6 || pg->scope == SC_FMOP) &&
-                     t->eng_req % NENGINES == ENGI_FM6) graph_fm6(t, c);   /* EDIT 1 and 2, FM6's pages */
-            else { cv_oy = 0; graph_scope(c, 0, H_GRAPH); }
-            break;
+                if ((pg->scope == SC_ENGINE || pg->scope == SC_FM6 || pg->scope == SC_FMOP) &&
+                         t->eng_req % NENGINES == ENGI_FM6) graph_fm6(t, c);   /* EDIT 1 and 2, FM6's pages */
+                else { cv_oy = 0; graph_scope(c, 0, H_GRAPH); }
+                break;
+            }
         }
+        cv_oy = 0;
+        cv_blit_band(0, (uint32_t)graph_y);
     }
-    cv_oy = 0;
-    cv_blit(0, (uint32_t)graph_y);
 }

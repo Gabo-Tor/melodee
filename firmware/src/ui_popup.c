@@ -485,27 +485,29 @@ static void pop_card(int32_t h, const char *title, const char *sub, uint32_t fir
     y0 = 238 - h;
     for (top = 0; top < h; ) {                          /* in slices between rows (a canvas holds 124 rows) */
         int32_t sh = h - top <= 124 ? h - top : th + (top + 124 - th) / POP_ROW * POP_ROW - top;
-        cv_begin(POP_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        cv_rrect(0, 0, POP_W, h, 10, T_LINE, T_BG);
-        cv_rrect(1, 1, POP_W - 2, h - 2, 9, T_SURF, T_LINE);
-        if (top == 0) {
-            int32_t sw = sub && sub[0] ? text_w(TY_LB, sub) + 12 : 0;
-            const aafont_t *f = ty_fit(TY_TX, title, POP_W - 20 - (th > POP_ROW ? 0 : sw));
-            cv_free_text(10, ty_y(POP_ROW / 2, f), f, title, T_TEXT, T_SURF, POP_W - 20 - (th > POP_ROW ? 0 : sw));
-            if (sw && th > POP_ROW)
-                cv_text_on(10, ty_y(POP_ROW + 4, TY_LB), TY_LB, sub, T_MID, T_SURF);
-            else if (sw)
-                cv_text_r(POP_W - 10, ty_y(POP_ROW / 2, TY_LB), TY_LB, sub, T_MID, T_SURF);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (POP_W)) {
+            cv_begin_band(POP_W,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            cv_rrect(0, 0, POP_W, h, 10, T_LINE, T_BG);
+            cv_rrect(1, 1, POP_W - 2, h - 2, 9, T_SURF, T_LINE);
+            if (top == 0) {
+                int32_t sw = sub && sub[0] ? text_w(TY_LB, sub) + 12 : 0;
+                const aafont_t *f = ty_fit(TY_TX, title, POP_W - 20 - (th > POP_ROW ? 0 : sw));
+                cv_free_text(10, ty_y(POP_ROW / 2, f), f, title, T_TEXT, T_SURF, POP_W - 20 - (th > POP_ROW ? 0 : sw));
+                if (sw && th > POP_ROW)
+                    cv_text_on(10, ty_y(POP_ROW + 4, TY_LB), TY_LB, sub, T_MID, T_SURF);
+                else if (sw)
+                    cv_text_r(POP_W - 10, ty_y(POP_ROW / 2, TY_LB), TY_LB, sub, T_MID, T_SURF);
+            }
+            for (i = first; i < first + vis; i++) {
+                int32_t y = th + (int32_t)(i - first) * POP_ROW;
+                if (y + POP_ROW <= top || y >= top + sh)
+                    continue;
+                row(i, y);
+            }
+            cv_oy = 0;
+            cv_blit_band(POP_X, (uint32_t)(y0 + top));
         }
-        for (i = first; i < first + vis; i++) {
-            int32_t y = th + (int32_t)(i - first) * POP_ROW;
-            if (y + POP_ROW <= top || y >= top + sh)
-                continue;
-            row(i, y);
-        }
-        cv_oy = 0;
-        cv_blit(POP_X, (uint32_t)(y0 + top));
         top += sh;
     }
 }
@@ -602,20 +604,22 @@ static void pick_draw(void)
     int32_t first = clamp(enum_rank(d,v) - 2, 0, enum_rows(d) - rows);   /* five names around it, the list's ends kept */
     x = CARD_X(pop.col < 3u ? pop.col : 2u);            /* its column and the next (the last: the two last), whole:
                                                          * a neighbour's value is under it entirely or not at all */
-    cv_begin(POP_PICK_W, (uint32_t)h, T_BG);
-    cv_rrect(0, 0, POP_PICK_W, h, 10, T_LINE, T_BG);
-    cv_rrect(1, 1, POP_PICK_W - 2, h - 2, 9, T_SURF, T_LINE);
-    for (i = 0; i < rows; i++) {
-        int32_t n = enum_value(d,first + i), y = 6 + i * 28, far = n - v > 1 || v - n > 1;
-        uint16_t bg = n == v ? ux_mix(T_SURF, T_THEME, 22) : T_SURF;
-        char b[16];
-        list_words(b, enum_name(d, n), sizeof b);
-        if (n == v)
-            cv_rrect(4, y, POP_PICK_W - 8, 26, 6, bg, T_SURF);
-        cv_free_text(10, ty_y(y + 13, ty_fit(TY_TX, b, POP_PICK_W - 18)), ty_fit(TY_TX, b, POP_PICK_W - 18), b,
-                     n == v ? T_THEME : far ? T_MID : T_SEC, bg, POP_PICK_W - 18);
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)h); band += CV_MAX / (POP_PICK_W)) {
+        cv_begin_band(POP_PICK_W,(uint32_t)h,T_BG,band);
+        cv_rrect(0, 0, POP_PICK_W, h, 10, T_LINE, T_BG);
+        cv_rrect(1, 1, POP_PICK_W - 2, h - 2, 9, T_SURF, T_LINE);
+        for (i = 0; i < rows; i++) {
+            int32_t n = enum_value(d,first + i), y = 6 + i * 28, far = n - v > 1 || v - n > 1;
+            uint16_t bg = n == v ? ux_mix(T_SURF, T_THEME, 22) : T_SURF;
+            char b[16];
+            list_words(b, enum_name(d, n), sizeof b);
+            if (n == v)
+                cv_rrect(4, y, POP_PICK_W - 8, 26, 6, bg, T_SURF);
+            cv_free_text(10, ty_y(y + 13, ty_fit(TY_TX, b, POP_PICK_W - 18)), ty_fit(TY_TX, b, POP_PICK_W - 18), b,
+                         n == v ? T_THEME : far ? T_MID : T_SEC, bg, POP_PICK_W - 18);
+        }
+        cv_blit_band((uint32_t)x, Y_LABEL + CARD_H + 2);
     }
-    cv_blit((uint32_t)x, Y_LABEL + CARD_H + 2);
     }
 }
 static void pop_draw(void)

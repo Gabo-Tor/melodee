@@ -11,7 +11,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Compact exact recording skip index | Implemented | 2,560 B fixed pool removed; 2,464 B usable SRAM gained after code alignment; exact arbitrary-query fallback |
 | Pack precise notes without changing wire data | Implemented | Nine bytes/event; 896 B additional fixed usable RAM, 1,024 B per full history copy; frozen wire bytes pass |
 | Sparse recording/manual undo | Implemented | 9,792 B less per 32-note snapshot; full-density fallback, redo and slot ownership preserved |
-| Reduce display canvas | Pending | Exact rendering with a safe worst-case path; keep shared project scratch |
+| Reduce display canvas | Implemented | 28,832 B usable SRAM gained; exact RGB565 bands, 1,100 image and four rolling-frame comparisons; project scratch retained |
 | Stream project/archive staging | Pending | Preserve legacy files, four slots and interrupted-write recovery |
 | Allocate USB capture by channel count | Pending | Preserve four-stem mode and ring/jitter capacity |
 | Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
@@ -48,3 +48,21 @@ still import with validation before narrowing. Dense/sparse history, capture
 cost and target budgets pass; serial ASan/UBSan passes. The complete host suite
 passes (`notes-host.log`, 166 s). Fixed usable SRAM is now 69,776 B, a 4,096 B
 gain over the checkpoint build, before any sparse-history savings.
+
+Display validation: `build/ram-implementation/display-final/` and
+`display-host.log`. Primary canvas falls from 59,520 to 30,720 B. Logical
+layouts replay into bounded RGB565 bands; glyph clips, shared scope snapshots,
+DMA ownership, partial wheel coverage, dialogs and FM6 diagram masks retain
+their original semantics. Fourteen smaller diff-cache entries use less RAM
+than the old nine, avoiding band-driven cache eviction. All 1,100 images and
+four rolling frames exactly match the whole-canvas oracle, including its
+layout and FM6 graph checks. The target budgets and project/resource/recording
+undo checks pass. Host About rendering decodes roughly twice as many glyph
+pixels; steady unchanged frames and audio rendering retain their paths.
+The largest measured knob redraw sends 199,840 versus 199,296 pixels (0.27%
+more); ARP redraw falls from 58,720 to 57,280 pixels. These are host/display
+workload measurements, not physical input-latency measurements.
+Fixed usable SRAM is now 98,608 B: 32,928 B more than the checkpoint.
+The complete rendered UI also passes ASan/UBSan with serial audio enabled
+(`display-sanitize.log`); band bounds and the original layout checks remain
+active in both reference and candidate runs.

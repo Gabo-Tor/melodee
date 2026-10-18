@@ -258,12 +258,14 @@ static void new_draw(void)
         new_scale_word(key + str_len(key), sizeof key - str_len(key), 1);   /* "A minor" */
         if (text_w(f, key) > 220 || !text_has(f, key)) f = TY_VL;   /* (the key large: "A minor") */
         if (text_w(f, key) > 220) f = TY_TX;
-        cv_begin(240, H_GRAPH, T_BG);
-        cv_text_c(120, ty_y(44, f), f, key, T_TEXT, T_BG);
-        fmt_int(key, nw.bpm);
-        str_cpy(key + str_len(key), " bpm \xB7 4/4", 14);
-        cv_text_c(120, ty_y(92, TY_TX), TY_TX, key, T_MID, T_BG);
-        cv_blit(0, Y_GRAPH);
+        for (uint32_t band = 0; band < (uint32_t)(H_GRAPH); band += CV_MAX / (240)) {
+            cv_begin_band(240,H_GRAPH,T_BG,band);
+            cv_text_c(120, ty_y(44, f), f, key, T_TEXT, T_BG);
+            char tempo[32];fmt_int(tempo, nw.bpm);
+            str_cpy(tempo + str_len(tempo), " bpm \xB7 4/4", 14);
+            cv_text_c(120, ty_y(92, TY_TX), TY_TX, tempo, T_MID, T_BG);
+            cv_blit_band(0, Y_GRAPH);
+        }
         new_keys(0);
     } else {                                        /* ROLES: a row each */
         for (k = 0; k < NTRK; k++)
