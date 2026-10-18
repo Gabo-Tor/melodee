@@ -630,11 +630,21 @@ static void rack_test(void)
 }
 int main(int argc,char **argv)
 {
+    /* Full PCM from f1be889, before the mutually exclusive history union.
+     * A lifetime/offset regression must not silently change wet audio. */
+    static const uint64_t original_pcm[FX_COUNT]={
+        0xdcbb3a74d3a1ba7bull,0x31f2c466625c315full,0xd6837fa20c478664ull,
+        0x9582f216361a2b8bull,0xabf785bd7bd51881ull,0xddbbf39f09c8baa3ull,
+        0x7705dc943db0ff6bull,0x5cc781ef5a3621a3ull,0xef747476fc21a401ull,
+        0xd4c3687f410daf9cull
+    };
     legacy();frozen_three_slots();send_return();separate_sends();fx_chain_test();reverb_tail();reverb_presence();reverb_rate_conversion();rate_and_pan();tape_smooth();chorus_test();tone_test();boom_test();rack_test();
     uint64_t dry=fx_signal(FX_OFF,60,64,0,0);
+    assert(dry==original_pcm[FX_OFF]);
     for(uint32_t mode=FX_PHASER;mode<FX_COUNT;mode++){
         assert(fx_signal(mode,60,64,0,0)==dry);
         uint64_t a=fx_signal(mode,60,64,127,0);assert(a!=dry && a==fx_signal(mode,60,64,127,0));
+        assert(a==original_pcm[mode]);
         assert(a!=fx_signal(mode,127,64,127,0));assert(a!=fx_signal(mode,60,127,127,0));
         for(int rate=0;rate<=127;rate+=127)for(int cha=0;cha<=127;cha+=127)fx_signal(mode,rate,cha,127,0);
         if(argc>1){char path[256];snprintf(path,sizeof path,"%s/%s.wav",argv[1],N_FX[mode]);fx_signal(mode,60,64,100,path);}

@@ -11,7 +11,20 @@
 enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_COUNT };
 typedef struct { float b0,b1,b2,a1,a2,z1,z2; } fx_bq_t;
 typedef struct {
-    fx_bq_t q[2][4];
+    /* Filters use all eight biquads. Time effects retain the first two for
+     * TONE; their tank histories reuse the six idle sections. Type changes
+     * finish the old fade and zero the state before the new owner starts.
+     * rev_damp/rev_bass/output interpolation are shared live by both kinds
+     * and must remain outside this union. */
+    union {
+        fx_bq_t q[2][4];
+        struct {
+            fx_bq_t time_tone[2];
+            uint16_t comb[4], rev_pos[8], rev_span[8], rev_ap[8];
+            int32_t rev_gain[8], rev_input, rev_input2;
+            float rev_dc;
+        };
+    };
 #if MELODEE_HW_EQ
     float hw[2][4][8];
 #endif
@@ -20,13 +33,13 @@ typedef struct {
     int16_t rate, character;
     uint8_t type, mono, decim, failed;
     int32_t echo, damp[4];
-    uint16_t comb[4];
-    uint16_t rev_pos[8], rev_span[8], rev_ap[8];
-    int32_t rev_damp[8], rev_gain[8], rev_input, rev_input2, rev_l, rev_r, rev_prev_l, rev_prev_r;
+    int32_t rev_damp[8], rev_l, rev_r, rev_prev_l, rev_prev_r;
     int32_t rev_bass[8];
     int16_t rev_rate, rev_char;
-    float rev_dc;
 } fx_state_t;
+_Static_assert(__builtin_offsetof(fx_state_t, comb) == 2u*sizeof(fx_bq_t) &&
+               __builtin_offsetof(fx_state_t, rev_dc)+sizeof(float) <= 8u*sizeof(fx_bq_t),
+               "time histories preserve both tone sections and fit idle biquads");
 static fx_state_t fx_state[FX_STATE_COUNT];
 static volatile uint32_t fx_epoch;
 static int32_t fx_left[CTL],fx_right[CTL],fx_dry_l[CTL],fx_dry_r[CTL];
