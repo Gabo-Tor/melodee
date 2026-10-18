@@ -617,7 +617,7 @@ const parse = {
     }
     o.fm6 = null;                                 /* FM6 patches (cmds 68..71): the factory and bank slot counts */
     for (const p of [8, 11, 15]) if (o.motionMax && trailer[p] === 0x46 && trailer[p + 1] === 1) o.fm6 = { factory: trailer[p + 2], bank: trailer[p + 3] };
-    o.patterns = o.motionMax && o.backupCaps && trailer[11] === 0x50 && trailer[12] === 1 && trailer[13] === 8 ? 8 : 0;
+    o.patterns = o.motionMax && o.backupCaps && trailer[11] === 0x50 && trailer[12] === 1 && [8,16].includes(trailer[13]) ? trailer[13] : 0;
     if (o.patterns) o.chainRows = trailer[14] === 16 ? 16 : 0;
     o.cz = !!o.motionMax && [12,15,19].some(p=>trailer[p]===0x43 && trailer[p+1]===1 && (trailer[p+2]|trailer[p+3]<<7)===CZ.BYTES);
     o.czBanks=o.cz && [12,15,19].some(p=>trailer[p]===0x43 && trailer[p+4]===8 && trailer[p+5]===16)?8:0;
@@ -674,14 +674,14 @@ const parse = {
   [CMD.PRESET](a) { const r = new Reader(a); return { engine: r.b(), preset: r.b() | (a.length > 2 ? a[2] << 7 : 0) }; },
   [CMD.PROJECT](a) { const r = new Reader(a); return { op: r.b(), slot: r.b(), used: r.b() }; },
   [CMD.PATTERN](a) {
-    if (a.length !== 6 || a[3] > 7 || (a[4] > 7 && a[4] !== 127) || a[5] !== 8) throw new Error("Invalid pattern reply");
+    if (a.length !== 6 || ![8,16].includes(a[5]) || a[3]>=a[5] || (a[4]>=a[5] && a[4]!==127)) throw new Error("Invalid pattern reply");
     return { track: a[0], op: a[1], rc: a[2], active: a[3], queued: a[4], count: a[5] };
   },
   [CMD.BANK_SONG](a) {
     const r = new Reader(a), o = { op: r.b(), rc: r.b(), count: r.b(), playing: r.b(), row: r.b(), remaining: r.b(), rows: [] };
     if (o.count > 16 || a.length !== 6 + 5 * o.count) throw new Error("Invalid bank song reply");
     for (let i = 0; i < o.count; i++) o.rows.push({ banks: [r.b(), r.b(), r.b(), r.b()], repeat: r.b() });
-    if (o.rows.some(x => x.banks.some(b => b > 7) || x.repeat < 1 || x.repeat > 16)) throw new Error("Invalid bank song row");
+    if (o.rows.some(x => x.banks.some(b => b > 15) || x.repeat < 1 || x.repeat > 16)) throw new Error("Invalid bank song row");
     return o;
   },
   [CMD.SONG](a) {
@@ -815,14 +815,14 @@ const req = {
   },
   preset: (e, p) => [CMD.PRESET, p > 127 ? [e & 0x7F, p & 0x7F, (p >> 7) & 0x7F] : [e & 0x7F, p & 0x7F]],
   project: (op, slot) => { if (![0, 1, 2].includes(op)) throw new Error("bad PROJECT op"); return [CMD.PROJECT, [op, slot & 3]]; },   /* 0 load, 1 save, 2 query */
-  pattern: (track, op = 0, bank = 0, dest = 0) => {
+  pattern: (track, op = 0, bank = 0, dest = 0, count = 16) => {
     if (!Number.isInteger(track) || track < 0 || track > 3 || ![0, 1, 2].includes(op) ||
-        !Number.isInteger(bank) || bank < 0 || bank > 7 || !Number.isInteger(dest) || dest < 0 || dest > 7) throw new Error("Invalid pattern request");
+        !Number.isInteger(bank) || bank < 0 || bank >= count || !Number.isInteger(dest) || dest < 0 || dest >= count) throw new Error("Invalid pattern request");
     return [CMD.PATTERN, [track, op, ...(op ? [bank] : []), ...(op === 2 ? [dest] : [])]];
   },
-  bankSong: (op = 0, rows = []) => {
+  bankSong: (op = 0, rows = [], count = 16) => {
     if (![0, 1, 2, 3].includes(op) || rows.length > 16 || rows.some(r => !Array.isArray(r.banks) || r.banks.length !== 4 ||
-        r.banks.some(b => !Number.isInteger(b) || b < 0 || b > 7) || !Number.isInteger(r.repeat) || r.repeat < 1 || r.repeat > 16)) throw new Error("Invalid bank song request");
+        r.banks.some(b => !Number.isInteger(b) || b < 0 || b >= count) || !Number.isInteger(r.repeat) || r.repeat < 1 || r.repeat > 16)) throw new Error("Invalid bank song request");
     return [CMD.BANK_SONG, op === 1 ? [op, rows.length, ...rows.flatMap(r => [...r.banks, r.repeat])] : [op]];
   },
   song: (op = 0, rows = []) => {
@@ -2453,7 +2453,7 @@ function makeMockDevice(opt = {}) {
         if (!opt.legacy) b(NTRK);
         if (!opt.legacy && !opt.v3 && !opt.v5) {
           b(0);
-          if (st.uiCaps) { [0x55,1,st.uiCaps,0x4d,2,64,1,0x42,1,3,0x50,1,8,16].forEach(b); if (!opt.noFm6) [0x46,1,FM6.FACTORY_PK.length,FM6_BANK,0x43,1,16,1,0,0,0x35,1,19,16,17,18,20,0,1,0x4e,1,64,0,0,1].forEach(b); if(opt.shared)[0x55,1,0,3].forEach(b); }
+          if (st.uiCaps) { [0x55,1,st.uiCaps,0x4d,2,64,1,0x42,1,3,0x50,1,opt.patterns||8,16].forEach(b); if (!opt.noFm6) [0x46,1,FM6.FACTORY_PK.length,FM6_BANK,0x43,1,16,1,0,0,0x35,1,19,16,17,18,20,0,1,0x4e,1,64,0,0,1].forEach(b); if(opt.shared)[0x55,1,0,3].forEach(b); }
         }
         break;
       case CMD.GET: case CMD.SET: {
@@ -2565,16 +2565,16 @@ function makeMockDevice(opt = {}) {
         break;
       case CMD.PATTERN: {
         const [tr,op,bank,dest]=a,t=st.tracks[tr];if(!t||op>2||a.length!==(op===0?2:op===1?3:4))return null;
-        let rc=0;t.pattern??=0;t.patternBanks??=Array(8).fill(null);
+        let rc=0;t.pattern??=0;t.patternBanks??=Array(opt.patterns||8).fill(null);
         const take=()=>JSON.parse(JSON.stringify({step:t.step,motion:t.motion,timing:t.p.slice(29,33)}));
-        if(op){if(bank>7||op===2&&dest>7)rc=1;else if(op===2)t.patternBanks[dest]=bank===t.pattern?take():JSON.parse(JSON.stringify(t.patternBanks[bank]));
+        if(op){if(bank>=(opt.patterns||8)||op===2&&dest>=(opt.patterns||8))rc=1;else if(op===2)t.patternBanks[dest]=bank===t.pattern?take():JSON.parse(JSON.stringify(t.patternBanks[bank]));
           else {t.patternBanks[t.pattern]=take();t.pattern=bank;const saved=t.patternBanks[bank];t.step=saved?JSON.parse(JSON.stringify(saved.step)):Array.from({length:NSTEP},()=>({...EMPTY,notes:[0,0,0,0],chance:100}));t.motion=saved?JSON.parse(JSON.stringify(saved.motion)):{on:false,events:[]};t.p.splice(29,4,...(saved?.timing||TP.slice(29,33).map(d=>d.def)));}}
-        [tr,op,rc,t.pattern,127,8].forEach(b);break;
+        [tr,op,rc,t.pattern,127,opt.patterns||8].forEach(b);break;
       }
       case CMD.BANK_SONG: {
         if(!a.length||a[0]>3)return null;let rc=0;st.bankSongRows??=[];
         if(a[0]===1){const rows=Array.from({length:a[1]||0},(_,i)=>({banks:a.slice(2+5*i,6+5*i),repeat:a[6+5*i]}));
-          if(a.length!==2+5*a[1]||a[1]>16||rows.some(r=>r.banks.some(k=>k>7)||r.repeat<1||r.repeat>16))rc=1;else if(st.chainPlaying)rc=2;else st.bankSongRows=rows;
+          if(a.length!==2+5*a[1]||a[1]>16||rows.some(r=>r.banks.some(k=>k>=(opt.patterns||8))||r.repeat<1||r.repeat>16))rc=1;else if(st.chainPlaying)rc=2;else st.bankSongRows=rows;
         }else if(a[0]===2){if(st.chainPlaying)rc=2;else if(!st.bankSongRows.length)rc=1;else {st.chainPlaying=true;st.chainRow=0;st.chainRemaining=st.bankSongRows[0].repeat;}}
         else if(a[0]===3)st.chainPlaying=false;
         [a[0],rc,st.bankSongRows.length,+st.chainPlaying,st.chainRow,st.chainRemaining].forEach(b);st.bankSongRows.forEach(r=>[...r.banks,r.repeat].forEach(b));break;
@@ -3614,14 +3614,15 @@ function paramRow(s, id) {
     }
     input.addEventListener("change", () => userSet(s, id, +input.value, true));
   } else {
-    input = el("input", { type: "range", min: d.min, max: d.max, step: 1 });
+    const lengthGrid = !s && id === 29 && dev.info.patterns === 16;
+    input = el("input", { type: "range", min: lengthGrid ? 16 : d.min, max: d.max, step: lengthGrid ? 16 : 1 });
     input.addEventListener("pointerdown", () => { dragging = k; });
     input.addEventListener("input", () => userSet(s, id, +input.value, false));
     input.addEventListener("change", () => userSet(s, id, +input.value, true));
     input.addEventListener("dblclick", () => { input.value = d.def; userSet(s, id, d.def, true); });
     /* fine adjust: wheel over the focused slider, Shift+arrows in steps of 10 (plain arrows are native) */
     const nudge = (dv) => {
-      const nv = Math.max(d.min, Math.min(d.max, +input.value + dv));
+      const nv = lengthGrid ? Math.max(16,Math.min(d.max,(dv>0?Math.ceil((+input.value+dv)/16):Math.floor((+input.value+dv)/16))*16)) : Math.max(d.min, Math.min(d.max, +input.value + dv));
       if (nv !== +input.value) { input.value = String(nv); userSet(s, id, nv, true); }
     };
     let acc = 0;
@@ -3768,7 +3769,7 @@ async function project(op, slot) {
   } catch (err) { report(err); } finally { releaseBusy(); }
 }
 
-const songRequest = (d, op = 0, rows = []) => d.info.patterns ? req.bankSong(op, rows) : req.song(op, rows);
+const songRequest = (d, op = 0, rows = []) => d.info.patterns ? req.bankSong(op, rows,d.info.patterns) : req.song(op, rows);
 const songParse = (d, a) => parse[d.info.patterns ? CMD.BANK_SONG : CMD.SONG](a);
 function renderPattern() {
   $("patternbar").hidden = !dev?.info.patterns;
@@ -3779,7 +3780,7 @@ function renderPattern() {
   $("patternstate").textContent = p.queued < p.count ? `Playing ${p.active + 1} · ${p.queued + 1} queued` : "";
 }
 $("patternpick").addEventListener("change", () => op(async () => {
-  const r = parse[CMD.PATTERN](await rq(req.pattern(dev.sel || 0, 1, +$("patternpick").value)));
+  const r = parse[CMD.PATTERN](await rq(req.pattern(dev.sel || 0,1,+$("patternpick").value,0,dev.info.patterns)));
   if (r.rc) throw new Error("Stop SONG before switching patterns");
   dev.pattern = r; renderPattern();
   if (r.queued === 127) await afterSoundChange();
@@ -3802,7 +3803,7 @@ function renderSong() {
     const picks = [];
     if (dev.info.patterns) for (let track = 0; track < 4; track++) {
       const sel = el("select", { disabled: !!s.playing, "aria-label": `Row ${i + 1}, track ${track + 1} pattern` });
-      for (let bank = 0; bank < 8; bank++) sel.append(el("option", { value: bank, text: `T${track + 1} P${bank + 1}` }));
+      for (let bank = 0; bank < dev.info.patterns; bank++) sel.append(el("option", { value: bank, text: `T${track + 1} P${bank + 1}` }));
       sel.value = String(r.banks[track]);
       sel.addEventListener("change", () => { const next = s.rows.map(x => ({ ...x, banks: [...x.banks] })); next[i].banks[track] = +sel.value; op(() => changeSong(1, next)); });
       picks.push(sel);

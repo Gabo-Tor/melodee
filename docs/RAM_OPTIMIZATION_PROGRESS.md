@@ -2,8 +2,8 @@
 
 All changes stay on `experiment/patterns-16x128`, in separate commits.
 `f1be889` checkpoints the previously tested pattern-capacity foundation, RAM
-savings, global Take Taker pause and investigation. Device limits remain
-8 x 64 until the complete 16 x 128 integration is validated.
+savings, global Take Taker pause and investigation. That RAM pass retained the old 8 x 64 limits. The subsequent first milestone
+enables 16 x 64; see [the capacity plan](PATTERN_CAPACITY_PLAN.md).
 
 | Change | State | Evidence / constraint |
 | --- | --- | --- |
@@ -163,3 +163,28 @@ FM6 table folding and voice flag packing remain deferred because they add
 work on sample/voice paths and need device CPU evidence. The saved-settings
 copy retains unknown preferences and failure semantics. Removing those
 without a validated replacement would trade away existing behavior.
+
+## Sixteen-bank milestone
+
+The complete 16 × 64 target leaves 108,768 bytes in the contiguous main arena
+and 119,344 bytes across the four independent SRAM resource regions, excluding
+optional cache RAM. Its directory, larger step pool, shared canvas work area
+and resident admission code consume 6,992 bytes of the optimized eight-bank
+baseline's free resources. The unchanged main-arena floor is 49,152 bytes.
+The feature therefore retains 53,664 bytes gained since the RAM-work checkpoint.
+
+All 19 nightly options build; the target instruction budgets and resident
+region checks pass. The separate profiling configuration also builds with
+93,696 bytes of guaranteed resources, retaining the full runtime guard buffer.
+The complete host suite passes in 179 seconds, with zero audio golden changes,
+all UI layout/pixel checks, and 400 × 160 capture scenarios for both skip-index
+configurations. ASan/UBSan passes the new format, high-bank UI, recording and
+note transformations. The frozen eight-bank project import and 32 fully dense
+bank capacity are checked independently.
+
+Artifacts: `build/patterns-16x64/host-verified.log`, `sanitizers-complete.log`,
+`web-complete.log`, `ram-complete.json`, and target outputs in
+`build/ram-implementation/patterns16-complete/` and `patterns16-profile/`.
+The recorded source hashes include the pre-existing local MIDI changes, which
+are intentionally excluded from these feature commits. No hardware install
+or physical timing/audio qualification was performed.

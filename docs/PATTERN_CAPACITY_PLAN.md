@@ -1,143 +1,106 @@
-# 16 patterns per track, 128 steps
+# 16 patterns per track, 64 steps
 
-Continuation on `experiment/patterns-16x128`, based on nightly `71bf054`,
-18 October 2026. The user chose a shared pool preserving existing dense-project
-capacity, with explicit refusal when exhausted. This is an implementation in
-progress: the device build still uses 8 patterns and 64 steps.
+The first device milestone is 16 patterns per track at the existing 64-step
+maximum, on `experiment/patterns-16x128`. The larger 128-step milestone remains
+future work. The user chose a shared pool preserving the previous dense-project
+capacity and an explicit refusal when it is exhausted.
 
-## Capacity contract
+## Capacity and editing
 
-- Four expanded playing/editable patterns, with four staging patterns for
-  prepared switches; inactive banks use the lossless block pool.
-- The shared step budget retains at least the former 32 banks of 64 arbitrary
-  dense steps. Empty and repeated blocks let material occupy more banks.
-  All hidden steps count, even when beyond the current pattern length.
-- Count active and pending outgoing banks as well as compressed payloads.
-  Otherwise edits can appear to fit and fail only on a later bank switch.
-- Reject a growing edit before changing steps, events, automation, timing,
-  undo or preparation. Clearing and changes that fit remain possible.
-- Pattern switching must preserve every admitted bank even at full capacity.
-- New length edits will select multiples of 16 through 128. Legacy odd lengths
-  need an explicit import/edit policy that preserves their existing timing.
-- Existing project files, recorded onsets/releases and the four saved project
-  slots must remain readable. RAM admission alone does not establish flash fit.
+Four playing/editable banks and four switch staging banks stay expanded;
+inactive banks use the existing lossless block pool. Admission counts every
+logical bank, including active and pending outgoing banks, hidden steps and
+block padding. The 1,152-chunk RAM budget preserves 32 arbitrary dense 64-step
+patterns across the 64 bank slots. Empty and repeated material can occupy all
+64 banks. The retained/RAM payload and links reserve 20,736 bytes regardless of
+compression utilization. This storage is independent of the audio allocator.
 
-## Implemented foundation
+The new saved format additionally charges every logical bank against a
+16,384-byte step payload budget. Switching an admitted project therefore cannot
+make it unsaveable. Copy, doubling, direct entry, recording, event edits,
+quantization, deletion, capture and history restoration check capacity before
+publication. Whole stopped-note transforms roll back their bounded snapshot
+when the resulting representation is too large. Refused actions report
+`PATTERN STORAGE FULL`; the existing data stays usable. A single-cell deletion
+can grow a repeated block's representation; clearing an entire unused bank
+always frees its storage.
 
-`recorded_note.h` retains the ten-byte event layout. Two spare bits in the
-former boolean length byte extend ownership to 64 track/bank combinations and
-actual positions to 128 steps; bit zero still selects a drum gate. Duration's
-three-bit exponent and the original overview-rounding/wrapping bits retain
-their meanings. Old events retain their exact bytes. Extracted event types
-originate in Kerem Kilic's `4a50561d` / `b565eab7` changes, verified in history.
+Ordinary live note entry uses a conservative constant-time bound: if the cold
+pool leaves room for all expanded/staged banks to become dense, exact scans are
+unnecessary. Near exhaustion the bounded exact codec costs decide admission.
+A captured note checks its final overview once before changing event ownership.
+The audio render paths continue to read the four expanded active banks.
 
-Capture, playback, editing, undo, track removal and legacy serialization now
-use accessors. The old recording serializer refuses identifiers it cannot
-represent. A spare runtime flag carries the release heap's seventh overview
-bit, so its 1,024-entry position array does not grow. Watch/dirty bitmaps and
-the bank/length cache key cover the larger capacity.
+New LEN edits choose 16, 32, 48 or 64. Legacy odd/short lengths load unchanged;
+an explicit length write rounds upward to that grid. Half stops at 16; doubling
+retains the original material and rounds the resulting length to the grid.
+Recorded note onset, release, velocity, pitch and gate semantics stay precise.
+The project-wide limits remain 1,024 precise notes and 64 automation events.
 
-For larger host configurations the pattern pool has 1,152 chunks. Admission
-counts the exact codec cost of every logical bank, including active and
-pending patterns. This preserves 32 x 64 dense steps across 64 bank slots.
-Chunk payload and links together occupy 20,736 bytes. This is reserved
-capacity, not spare audio RAM when compression utilization is low.
+## Storage and compatibility
 
-Whole-bank publication and individual-step publication reject growth before
-mutation. Copy and doubling preflight this budget before touching recorded
-events or automation and return a distinct storage-full result. The UI has
-brief `PATTERN STORAGE FULL` action feedback. Replacements release all of the
-old bank's chunks before encoding: at full capacity, freeing only the current
-block fails when the new data moves earlier than the old occupied blocks.
+FBKL stores all 64 banks in a compressed tail after an 11,068-byte compact
+FUN23 controls/events/native prefix. It fits the existing 27,904-byte A/B saved
+record, retaining all four project slots and protected flash sector tails.
+Empty, dense and sparse/repeated bank modes share the payload budget.
 
-The current device configuration retains the old dense guarantee and pool
-size. The larger configuration is exercised by host core fixtures, excluding
-project storage and the device UI. Direct mutations elsewhere are **not yet
-all routed through admission**, so changing only the device constants is not
-a supported way to enable this feature.
+FUN23 retains the 13,212-byte standalone extent and previous field offsets;
+spare header/control bits hold the wider active bank IDs and owner counts.
+FBKL omits its active step arrays and 96 unused bytes because every bank lives
+in the tail. Saves and renames keep the existing verified header-last flash
+transaction. Main-loop project operations borrow a 32,768-byte canvas work
+union after its DMA transfer finishes; the rendering bands remain 240 × 64.
 
-## Validation
+FBKK/FUN22 and earlier supported inputs remain readable. Each old track's
+banks map to its first eight new banks; banks 9–16 start empty. Old recording
+owners map explicitly rather than changing the meaning of a saved track ID.
+Saving upgrades to FBKL, which older firmware cannot read. The frozen,
+constructed `tests/fixtures/patterns8.fbkk` checks this independently of the
+new encoder; its provenance and generator are beside it.
 
-- `recorded_note_test.c`: frozen legacy bytes plus mixed edits across all
-  64 owners, 128 positions, eight duration exponents, and overview/gate flags.
-- `recording_capacity_test.c`: actual recording sources at 16 x 128; 1,024
-  releases across four tracks, all watch words, reindexing sounding events,
-  bank copy, pitch-cache maintenance above step 64, cache-key collisions,
-  quantized wrap at step 128, capture on track 4/bank 16, and doubling across
-  step 64. A separate compile enables the capture fast path.
-- `pattern_capacity_test.c`: the original dense capacity; all 64 repeated
-  128-step banks; full-pool refusal including copy/double event isolation;
-  block relocation without spare chunks; all four simultaneous prepared
-  switches; unprepared switches; same-cost and rejected active edits; seeded
-  mutations against an independent expanded bank model; free-list ownership.
-- AddressSanitizer/UndefinedBehaviorSanitizer runs cover both larger core
-  fixtures. These are constructed host results, not device timing evidence.
+The device exposes all 16 white keys while SEQ is held. The first eight keep
+their existing mapping; the upper eight select 9–16. Holding/copying, key LEDs,
+queued edits, SONG assignments and two-digit labels support the full range.
+PATTERNS shows two rows of eight cells per track. Editor INFO advertises the
+bank count; the web editor supports both old eight-bank and new sixteen-bank
+firmware.
 
-The initial current-limit firmware build used all 19 nightly workflow options.
-Its linked image was 534,736 bytes, with a 56,288-byte contiguous audio arena
-against the unchanged 49,152-byte minimum. Other SRAM tails total 3,856 bytes;
-the optional audio cache partition is separate. Log:
-`build/pattern-capacity-nightly-build.log`. These figures do not establish the
-RAM fit or execution deadlines of a complete 16 x 128 device build.
+## Target RAM and evidence
 
-The subsequent [RAM audit](RAM_AUDIT.md), including the requested global
-Take Taker pause during recording, reclaims 5,536 bytes of usable SRAM,
-including 4,128 bytes in the contiguous main audio arena. With the same
-nightly options, that arena is now 60,416 bytes, or 11,264 bytes above the
-unchanged minimum. The image is 534,692 bytes. Queue-mode capture durations
-and playback deadlines share one word per event; retired voice-state tails,
-preset metadata and backup transfer scratch account for the other savings.
-The audit distinguishes separate SRAM tails, placement changes and potential
-future savings from this measured result.
-The complete host suite passed again after the RAM changes in 322 seconds,
-and after the global Take Taker pause in 323 seconds, including the new
-1,024-event runtime-sharing and pause/resume fixtures. Sanitizers also pass
-the recording handoffs and backup operations that borrow main-loop scratch.
-Logs are retained in `build/ram-audit-candidate/` and `build/take-taker-pause/`.
+The completed RAM optimization pass at `28882c3` had 126,336 bytes of guaranteed
+resources across four independent SRAM regions. The completed 16-bank target
+measures:
 
-The complete host suite, compiled with nightly's twelve fast-path options,
-finished with `ALL HOST TESTS PASSED in 322 s` (`PARALLEL=2`). The existing
-audio, UI, persistence, web and target-budget suites passed alongside the new
-capacity fixtures. Log: `build/pattern-capacity-host.log`. Sanitizer logs:
-`build/pattern-capacity-sanitize.log` and
-`build/recording-capacity-sanitize.log`.
+| Region | Eight-bank optimized baseline | Sixteen-bank target |
+| --- | ---: | ---: |
+| Main audio arena | 114,560 B | 108,768 B |
+| Data SRAM tail | 10,392 B | 9,192 B |
+| Low SRAM tail | 344 B | 344 B |
+| Retained SRAM tail | 1,040 B | 1,040 B |
+| Guaranteed resources, separate regions | 126,336 B | 119,344 B |
 
-## Remaining integration
+The unchanged main-arena minimum is 49,152 bytes. Optional cache RAM is 28,672
+bytes and is excluded from these guarantees. The original RAM-work checkpoint
+had 65,680 bytes of guaranteed resources, so the feature retains 53,664 bytes
+of the optimization gains. The reserved cold step pool is already included.
+These figures use all 19 nightly workflow options and the linker boundaries;
+final build details are in `build/patterns-16x64/` and
+`build/ram-implementation/patterns16-complete/`.
 
-1. Rework the growing pitch cache and step-history storage, then measure the
-   complete target configuration. Expanding the existing arrays directly adds
-   about 20 KiB before other UI/project staging growth, more than the current
-   main arena's 11,264-byte margin after the RAM audit. Preserve the existing
-   audio reserve; do not count separate SRAM tails as contiguous arena space.
-   The eight sound/pattern-load undo levels also grow: their current cache-RAM
-   extent assertion must continue to protect that partition. Preserve the
-   SRAM fallback and handle unavailable cache RAM explicitly.
-   The [deeper RAM audit](RAM_DEEP_AUDIT.md) identifies at least 10,208 bytes
-   of ordinary data-region growth independently of this main-arena budget.
-   Its compact skip-index and FX layouts are isolated prototypes, not applied
-   changes. Rebalance data/pool placement on the complete expanded build;
-   moving the preset cache into data space at today's limits competes with
-   those growing arrays.
-2. Widen motion positions while freezing the existing four-byte disk records.
-   Carry the extra bit through copy, delete, doubling, snapshots and undo.
-3. Route every active edit, recording overview/tie change, bulk transform,
-   preset/pattern load, undo and import through atomic admission. A preflight
-   and its publication must share one sequencer guard. Do not reject a switch
-   because an earlier accepted edit was not charged.
-4. Introduce a versioned compact project container. Freeze the old 8-bank,
-   64-step offsets and owner numbering explicitly; never derive old on-disk
-   extents from the new runtime constants. Preflight complete imports before
-   publishing any bank. Retain exact recorded timing and high identifiers.
-5. Establish persistent capacity and power-loss behavior. A shared project
-   sector pool is a candidate for retaining four slots plus a spare save copy;
-   it needs explicit bounds and fault injection. Preserve user presets,
-   update staging, settings and the loader's reserved sector tails.
-6. Extend pattern selection, two-digit labels, SONG, step pages, length edits,
-   deferred-bank masks and editor/web capabilities together. Apply the agreed
-   16-step length grid without silently retiming legacy material.
-7. Enable the device constants only after full integration passes host, web,
-   format compatibility, storage fault injection, UI layout and target budget
-   checks. Device profiling must then measure simultaneous switches and dense
-   recording with audio running; host timings are not device CPU percentages.
+Validation includes complete save/load/rename/backup/track removal, all 64
+owners with 1,024 precise events, frozen old-format import, all 64 repeated
+banks, the exact former dense capacity, full-store refusal, high bank keys and
+LEDs, queued bit 15, recording/overdub, history, band-render pixel parity,
+layout lint, web protocol, target instruction budgets and sanitizers. The
+16 × 128 core fixtures remain useful experimental checks, but do not establish
+128-step UI, storage or device support. Host and static target results do not
+establish physical audio/MIDI/control timing; no device flash is part of this
+milestone.
 
-No commit, push, flash, or physical audition is part of this continuation yet.
+The full host suite ends with `ALL HOST TESTS PASSED in 179 s` in
+`build/patterns-16x64/host-verified.log`; the final target and requested checks
+pass in `target-complete.log`. Serial ASan/UBSan passes the four format/UI/note/
+recording fixtures in `sanitizers-complete.log`. The separate profiling build
+passes with 93,696 bytes of guaranteed resources and a full runtime guard.
+Build source hashes include the pre-existing local MIDI changes, which remain
+outside the feature commits.
