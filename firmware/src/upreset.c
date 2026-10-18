@@ -73,14 +73,15 @@ static void bank_claim(uint32_t kind);
 static up_bank_t *bank_up(void);
 #define up_cache (*bank_up())
 static uint8_t up_cached = 255;
-/* Main-loop index only, never serialized. Four Boolean flags share a byte;
- * names keep their 12 stored bytes and gain a terminator when read out. */
+/* Main-loop index only, never serialized. Readiness belongs to a whole bank;
+ * its entries are indexed together. Three flags and the bounded engine ID
+ * share a byte; names retain all twelve bytes and need no flash reads. */
 static struct {
-    uint8_t ready:1, used:1, old:1, favorite:1;
-    uint8_t engine;
+    uint8_t used:1, old:1, favorite:1, engine:5;
     char name[12];
 } up_meta[UP_SLOTS];
-_Static_assert(sizeof up_meta[0] == 14u, "compact preset index");
+_Static_assert(sizeof up_meta[0] == 13u && NENGINES <= 32u && UP_BANKS <= 32u, "compact preset index");
+static uint32_t up_index_ready;
 static uint32_t up_migrate;
 static uint8_t up_migration_error,up_converting;
 static uint32_t up_fav_dirty;
@@ -89,7 +90,7 @@ static uint32_t up_fav_dirty;
  * (preset_old_write is scoped to that write). A bank of another shape is old as a whole. */
 static uint32_t up_bank_old;
 static up_bank_t *up_cache_bank(uint32_t b);
-static void up_cache_reset(void) { up_cached=255; memset(up_meta,0,sizeof up_meta); up_bank_old=up_migrate=0; up_migration_error=up_converting=0;up_fav_dirty=0; }
+static void up_cache_reset(void) { up_cached=255; memset(up_meta,0,sizeof up_meta); up_index_ready=0; up_bank_old=up_migrate=0; up_migration_error=up_converting=0;up_fav_dirty=0; }
 #else
 static up_bank_t up_banks_host[UP_BANKS] __attribute__((section(".pool")));
 static up_bank_t *up_cache_bank(uint32_t b) { return &up_banks_host[b]; }
@@ -179,7 +180,7 @@ static int up_used(uint32_t k)
 {
     if(k>=UP_SLOTS)return 0;
 #if MELODEE_FLASH && !defined(UP_HOST)
-    if(up_cached != k/UP_PER_BANK && up_meta[k].ready)return up_meta[k].used;
+    if(up_cached != k/UP_PER_BANK && (up_index_ready>>(k/UP_PER_BANK)&1u))return up_meta[k].used;
 #endif
     return up_valid(up_rec(k));
 }
@@ -188,7 +189,7 @@ static int up_old(uint32_t k)
 {
     if (k >= UP_SLOTS) return 0;
 #if MELODEE_FLASH && !defined(UP_HOST)
-    if (!up_meta[k].ready) (void)up_cache_bank(k / UP_PER_BANK);
+    if (!(up_index_ready>>(k/UP_PER_BANK)&1u)) (void)up_cache_bank(k / UP_PER_BANK);
     if (up_cached == k / UP_PER_BANK) return ((up_bank_old >> up_cached) & 1u) || (up_rec(k)->used != 0 && !up_valid(up_rec(k)));
     return up_meta[k].old;
 #else
@@ -226,13 +227,14 @@ static void up_cache_index(uint32_t b)
     for(uint32_t j=0;j<UP_PER_BANK;j++){
         uint32_t k=b*UP_PER_BANK+j; if(k>=UP_SLOTS)break; const up_rec_t *r=&up_cache.r[j];
         int valid = up_valid(r);
-        up_meta[k].ready=1;up_meta[k].used=(uint8_t)valid;if(!(up_fav_dirty>>b&1u))up_meta[k].favorite=(uint8_t)(!!(r->used&UP_STAR) && valid);
+        up_meta[k].used=(uint8_t)valid;if(!(up_fav_dirty>>b&1u))up_meta[k].favorite=(uint8_t)(!!(r->used&UP_STAR) && valid);
         up_meta[k].old=(uint8_t)(((up_bank_old >> b) & 1u) || (r->used != 0 && !valid));
         up_meta[k].engine=up_native_cz(r)?ENGI_CZ:eng_sound_idx(r->engine);
         uint32_t n=0;
         for(;n<12u && r->name[n];n++)up_meta[k].name[n]=r->name[n]>='a' && r->name[n]<='z'?(char)(r->name[n]-32):r->name[n];
         if(n<sizeof up_meta[k].name)up_meta[k].name[n]=0;
     }
+    up_index_ready|=1u<<b;
 }
 static up_bank_t *up_cache_bank(uint32_t b)
 {
@@ -286,7 +288,7 @@ static void up_name(uint32_t k, char *b)       /* upper case, 0-terminated: b ho
 {
     if (up_old(k)) { memcpy(b, "OLD FORMAT", 11); return; }
 #if MELODEE_FLASH && !defined(UP_HOST)
-    if(up_cached != k/UP_PER_BANK && up_meta[k].ready){memcpy(b,up_meta[k].name,12);b[12]=0;return;}
+    if(up_cached != k/UP_PER_BANK && (up_index_ready>>(k/UP_PER_BANK)&1u)){memcpy(b,up_meta[k].name,12);b[12]=0;return;}
 #endif
     const up_rec_t *r = up_rec(k);
     uint32_t i;
@@ -616,7 +618,7 @@ static int up_load(uint32_t k){return up_load_to(k,song.sel);}
 /* the engine a used slot's sound plays on */
 static uint32_t up_engine(uint32_t k) {
 #if MELODEE_FLASH && !defined(UP_HOST)
-    if(up_cached != k/UP_PER_BANK && up_meta[k].ready)return up_meta[k].engine;
+    if(up_cached != k/UP_PER_BANK && (up_index_ready>>(k/UP_PER_BANK)&1u))return up_meta[k].engine;
 #endif
  if(up_native_cz(up_rec(k)))return ENGI_CZ; return eng_sound_idx(up_rec(k)->engine); }
 

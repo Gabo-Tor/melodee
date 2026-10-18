@@ -449,10 +449,11 @@ static int pattern_copy_at(track_t *t, uint32_t source, uint32_t dest, int live)
     }
     if (motion.count - n + extra > MOTION_MAX) { motion_unguard(f); return 2; }
     if (recording_copy(t, source, dest, 0)) { motion_unguard(f); return 2; }
-    pattern_commit(t);
-    recording_copy(t, source, dest, 1);
     pattern_t copy;
     pattern_read(k, source, &copy);
+    if (!pattern_can_write(k, dest, &copy)) { motion_unguard(f); return 4; }
+    pattern_commit(t);
+    recording_copy(t, source, dest, 1);
     pattern_write(k, dest, &copy);
     n = 0;
     for (i = 0; i < motion.count; i++) if ((motion.event[i].place >> 6) != k || motion_pattern[i] != dest) {
@@ -526,9 +527,11 @@ static int pattern_double(track_t *t, uint32_t bank, int apply)
         else if (j < 2u * len) drop++;
     }
     if (motion.count - drop + add > MOTION_MAX || recording_double(t, bank, len, 0)) { motion_unguard(f); return 2; }
+    for (i = 0; i < len; i++) s[len + i] = s[i];
+    *lp = (int16_t)(2u * len);
+    if (!pattern_can_write(k, bank, &copy)) { motion_unguard(f); return 4; }
     if (!apply) { motion_unguard(f); return 0; }
     recording_double(t, bank, len, 1);
-    for (i = 0; i < len; i++) s[len + i] = s[i];
     for (i = 0; i < motion.count; i++) {
         j = motion.event[i].place & 63u;
         if ((motion.event[i].place >> 6) != k || motion_pattern[i] != bank || j < len || j >= 2u * len) {
@@ -543,7 +546,6 @@ static int pattern_double(track_t *t, uint32_t bank, int apply)
             motion_pattern[motion.count++] = (uint8_t)bank;
         }
     motion.rsv[0] = 1;
-    *lp = (int16_t)(2u * len);
     pattern_write(k, bank, &copy);
     recording_reindex();
     motion_unguard(f);

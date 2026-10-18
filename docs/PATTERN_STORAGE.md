@@ -1,5 +1,10 @@
 # Compressed pattern RAM
 
+The 18 October continuation and shared-pool policy are tracked in
+[PATTERN_CAPACITY_PLAN.md](PATTERN_CAPACITY_PLAN.md). Larger host core fixtures
+now exercise 16 banks and 128 steps; the device limits remain unchanged while
+RAM, admission, project persistence and UI integration are completed.
+
 Implemented on top of `86c8130` (2026-10-17). This is the RAM-storage foundation for larger pattern capacity. Shipping limits remain eight banks per track and 64 steps, including existing odd lengths. The FBKK project format, flash map, recording event store, and note-release priority queues are unchanged.
 
 ## Ownership and switching
@@ -82,4 +87,4 @@ The complete nightly host suite, compiled with the same twelve fast-path options
 
 ## Next capacity gate
 
-This change does not enable 16 banks, 128 steps, or 16-step-only lengths. Scaling the guaranteed dense pool still consumes substantial RAM; sparse/repeated content fitting well is not a guarantee that arbitrary content fits. The larger capacity needs an explicit worst-case RAM/flash budget, wider recording and automation identifiers, device switching/recording deadline measurements, and a compatibility policy for existing odd lengths. A flash-layout migration is separate from this RAM change.
+This foundation does not enable 16 banks, 128 steps, or 16-step-only lengths on the device. The user subsequently chose a shared budget preserving existing dense-project capacity. Recording identifiers and a bounded-pool core prototype now have larger-capacity host coverage; automation, full edit admission, RAM/flash integration, device deadline measurements and legacy-length policy remain in the linked continuation plan.

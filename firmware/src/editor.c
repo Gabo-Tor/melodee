@@ -78,7 +78,10 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
     }
     return na ? 0u : n;
 }
-static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));
+#include "scratch.h"
+/* Backup chunks are bounded to 256 bytes. They are consumed synchronously
+ * before sending a reply; storage reads here do not use the page-write buf. */
+#define ed_transfer_buf (main_scratch.transfer)
 /* the engine byte of DUMP / RELOAD / TRACK */
 static uint32_t ed_eng(const track_t *t) { return t->eng_req % NENGINES; }
 

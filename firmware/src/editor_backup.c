@@ -253,9 +253,9 @@ static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
         uint32_t rc = ed_bk_commit(); ed_bk_put = 0; return rc;
     }
     if (n < 9u || a[6] > 15u || ed_bk_r32(a + 2) != ed_bk_pos) return 1;
-    uint32_t count = ed_unpack7(a + 7, n - 7u, ed_smp_buf, 256u);
+    uint32_t count = ed_unpack7(a + 7, n - 7u, ed_transfer_buf, 256u);
     if (!count || count > ed_bk_len - ed_bk_pos) return 1;
-    memcpy(ED_BK_RAW + ed_bk_pos, ed_smp_buf, count); ed_bk_pos += count;
+    memcpy(ED_BK_RAW + ed_bk_pos, ed_transfer_buf, count); ed_bk_pos += count;
     return 0;
 }
 static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
@@ -286,8 +286,8 @@ static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t data_off = off;
 #if MELODEE_FLASH
         if (!rc && ed_bk_source_obj < OBJ_COUNT) {
-            if (st_read_range(ed_bk_source_obj, ed_bk_source_copy, off, ed_smp_buf, count)) rc = 4;
-            p = ed_smp_buf; data_off = 0;
+            if (st_read_range(ed_bk_source_obj, ed_bk_source_copy, off, ed_transfer_buf, count)) rc = 4;
+            p = ed_transfer_buf; data_off = 0;
         }
 #endif
         ed_b(n ? a[0] : 127u); ed_b(rc); ed_bk_u32(off); ed_b(rc ? 0u : count & 127u); ed_b(rc ? 0u : count >> 7);

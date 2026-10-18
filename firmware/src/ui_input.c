@@ -194,7 +194,7 @@ static void dq_do(uint32_t cf, uint32_t k, uint32_t a, uint32_t b)
         ui_message("MOTION CLEARED");
     } else if (cf == CF_PASTE_PAT) {
         rc = pattern_copy_at(t, b, a, 1);
-        ui_message(rc == 2 ? "PATTERN DATA FULL" : rc ? "STOP TO COPY" : "PATTERN COPIED");
+        ui_message(rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : rc ? "STOP TO COPY" : "PATTERN COPIED");
     } else if (a == t->pattern) {
         seq_clear_now(cf, k);
     } else if (pattern_clear(t, a)) {
@@ -266,7 +266,7 @@ static void pattern_copy_ui(uint32_t k, uint32_t src, uint32_t dst)
     if (src != dst && (dst == trk[k].pattern || !pattern_empty(k, dst)) && dq_defer(CF_PASTE_PAT, k, dst, src))
         return;
     rc = pattern_copy(&trk[k], src, dst);
-    ui_message(rc == 2 ? "PATTERN DATA FULL" : rc ? "STOP TO COPY" : "PATTERN COPIED");
+    ui_message(rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : rc ? "STOP TO COPY" : "PATTERN COPIED");
     ui.force = 1;
 }
 static void rec_toggle(uint32_t latch);
@@ -349,7 +349,7 @@ static void pattern_key_len(uint32_t k, uint32_t b, int up)
     int rc = up ? pattern_double(t, b, 0) : pattern_half(t, b, 0);
     ui.force = 1;
     if (rc) {
-        ui_message(rc == 2 ? "PATTERN DATA FULL" : rc == 3 ? (up ? "64 STEPS MAX" : "1 STEP MIN") : "STOP TO EDIT");
+        ui_message(rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : rc == 3 ? (up ? "64 STEPS MAX" : "1 STEP MIN") : "STOP TO EDIT");
         return;
     }
     if (b != t->pattern) {                              /* (another bank: as a copy there, not undoable) */
@@ -631,7 +631,7 @@ static void qsave_poll(void)
     }
 }
 
-/* REC held: Capture. What the selected track played in its last bars while it was not recording (seq.c cap_ev) into
+/* Capture. What the selected track played in its last bars while no track was recording (seq.c cap_ev) into
  * its pattern, as recorded notes (timing, velocity and length as played): an empty pattern takes 1, 2 or 4 bars (16, 32
  * or 64 steps), as many as the notes span, its LEN set to it; a pattern with notes the last LEN steps, over them. The
  * bars end at the bar playing when a note in it was played, else at its start. EDIT held undoes it */
@@ -644,7 +644,7 @@ static void capture_take(void)
     cap_ev_t captured[CAP_N];
     uint32_t until;
     if (chain_busy()) { ui_message("STOP SONG TO CAPTURE"); return; }
-    if ((song.rec >> k) & 1u) { ui_message("RECORDING"); return; }
+    if (rec_any() || ((song.rec >> k) & 1u)) { ui_message("RECORDING"); return; }
     fm1_irq_off();                                      /* the selected track's events of this run: the newest, the oldest */
     now = cap_now(t);
     from = cap_w - cap_from > CAP_N ? cap_w - CAP_N : cap_from;
@@ -686,9 +686,9 @@ static void capture_take(void)
         dur = cap_len(e, now) << 8; exp = 0;
         while (dur > 65535u && exp < 7u) { dur >>= 1; exp++; }
         r.duration = (uint16_t)dur;
-        r.owner = (uint8_t)(recording_owner(t) | (exp << 5));
-        r.step = (uint8_t)(actual | (view != actual ? 64u : 0u) | (!view && actual ? 128u : 0u));
-        r.length = drum_track(t) ? 1u : 0u;
+        recorded_set_owner(&r, recording_owner(t)); recorded_set_exponent(&r, exp);
+        recorded_set_step(&r, actual, view != actual, !view && actual);
+        recorded_set_gate(&r, drum_track(t));
         fm1_irq_off();
         recording_prune(t);
         /* Capturing an overlapping window again must not stack another voice
@@ -697,7 +697,7 @@ static void capture_take(void)
         uint32_t existing = recording_head[recording_owner(t)];
         for (; existing < RECORD_MAX; existing = recording_next[existing])
             if (recording_active(t, existing) && recording[existing].note == r.note &&
-                (recording[existing].step & 63u) == actual && recording[existing].on == r.on)
+                recorded_step(&recording[existing]) == actual && recording[existing].on == r.on)
                 break;
         if (existing < RECORD_MAX) { fm1_irq_on(); continue; }
         for (; j < RECORD_MAX && recording[j].vel && (recording_present(&recording[j]) || recording_sounding(j)); j++)
@@ -890,15 +890,15 @@ static void drum_hit_edit(uint32_t slot,int32_t delta)
         if(i==RECORD_MAX){fm1_irq_on();ui_message("RECORDING FULL");return;}
     }
     note_assign(&after,&before);
-    if(created){after.note=(uint8_t)drum_sound_note(TSEL,ui.drum_sound);after.vel=96;after.owner=(uint8_t)(recording_owner(TSEL)|(1u<<5));after.duration=32768;after.step=ui.cursor;
+    if(created){after.note=(uint8_t)drum_sound_note(TSEL,ui.drum_sound);after.vel=96;recorded_set_owner(&after,recording_owner(TSEL));recorded_set_exponent(&after,1);after.duration=32768;recorded_set_step(&after,ui.cursor,0,0);
         const step_t *st=&TSEL->step[ui.cursor];int32_t had=step_sound_note(TSEL,st,ui.drum_sound);if(had>=0)after.note=(uint8_t)had;after.vel=(uint8_t)(step_accents(st)&(1u<<drum_lane(after.note))?127:st->vel?st->vel:96);}
     if(slot==2)after.pitch=(int8_t)clamp(after.pitch+delta,-24,24);
     else {
-        int32_t duration=(int32_t)after.duration*(1u<<(after.owner>>5));
+        int32_t duration=(int32_t)after.duration*(1u<<(recorded_exponent(&after)));
         duration+=clamp(delta,-128,128)*(int32_t)(RECORD_UNIT/16u);
-        after.length=duration>0;duration=clamp(duration,1,128*RECORD_UNIT);
+        recorded_set_gate(&after,duration>0);duration=clamp(duration,1,128*RECORD_UNIT);
         uint32_t exp=0;while(duration>65535&&exp<7u){duration>>=1;exp++;}
-        after.duration=(uint16_t)duration;after.owner=(uint8_t)((after.owner&31u)|(exp<<5));
+        after.duration=(uint16_t)duration;recorded_set_exponent(&after,exp);
     }
     if(!created && !memcmp(&before,&after,sizeof before)){fm1_irq_on();return;}
     note_assign(&step_history.removed,&before);note_assign(&step_history.replacement,&after);step_history.removed_index=(uint16_t)i;step_history.has_removed=1;
@@ -1408,24 +1408,24 @@ static void notes_event_edit(uint32_t slot, int32_t delta)
     uint32_t oldview = recording_view(TSEL, &before);
     if (slot == 0u) {
         uint32_t len = step_pattern_len(TSEL);
-        int32_t actual = ((int32_t)(before.step & 63u) + delta) % (int32_t)len;
+        int32_t actual = ((int32_t)recorded_step(&before) + delta) % (int32_t)len;
         if (actual < 0) actual += len;
         uint32_t view = (actual + ((before.step & 64u) != 0u)) % len;
         if (notes_manual_occupied(TSEL, view)) {
             fm1_irq_on(); ui_message("STEP OCCUPIED"); return;
         }
-        after.step = (uint8_t)(actual | (before.step & 64u) | (!view && actual ? 128u : 0u));
+        recorded_set_step(&after, (uint32_t)actual, recorded_rounded(&before), !view && actual);
     } else if (slot == 1u) {
         if(drum_track(TSEL))after.pitch=(int8_t)clamp(before.pitch+delta,-24,24);
         else after.note=(uint8_t)clamp((int32_t)before.note+delta,1,127);
     }
     else if (slot == 2u || slot == 4u) {
-        int32_t duration = (int32_t)before.duration * (1u << (before.owner >> 5));
+        int32_t duration = (int32_t)before.duration * (1u << (recorded_exponent(&before)));
         uint32_t quantum=slot==4u?RECORD_UNIT/16u:RECORD_UNIT/4u;
         duration=clamp(note_snap(duration,delta,quantum),(int32_t)quantum,128*RECORD_UNIT);
         uint32_t exp=0;while(duration>65535&&exp<7u){duration>>=1;exp++;}
-        after.duration=(uint16_t)duration;after.owner=(uint8_t)((after.owner&31u)|(exp<<5));
-        if(drum_track(TSEL))after.length=1;
+        after.duration=(uint16_t)duration;recorded_set_exponent(&after,exp);
+        if(drum_track(TSEL))recorded_set_gate(&after,1);
     } else after.vel = (uint8_t)clamp((int32_t)before.vel + delta, 1, 127);
     if (!memcmp(&before, &after, sizeof before)) { fm1_irq_on(); return; }
     step_history.state[step_history_index()].selection = ui.note_pick;
@@ -1438,7 +1438,7 @@ static void notes_event_edit(uint32_t slot, int32_t delta)
     notes_rebuild(TSEL, oldview);
     if (view != oldview) notes_rebuild(TSEL, view);
     step_history.recording_gen = recording_generation;
-    if (slot == 0u) cursor_set(after.step & 63u);
+    if (slot == 0u) cursor_set(recorded_step(&after));
     ui.note_pick = (uint16_t)(i + 1u); note_assign(&ui.note_identity,&after);
     ui.note_generation = recording_generation;
     fm1_irq_on(); ui.force = 1;
@@ -1700,6 +1700,7 @@ static void ui_notices(void)
 {
     static uint32_t midi_t, midi_last;
     if (motion_full) { motion_full = 0; ui_message("MOTION FULL"); }
+    if (pattern_full) { pattern_full = 0; ui_message("PATTERN STORAGE FULL"); }
     if (recording_quant_blocked) { recording_quant_blocked = 0; ui_message("QNT STEP OCCUPIED"); }
     if (midi_hint) {
         fm1_irq_off();                                /* do not clear a newer audio-ISR event between read and clear */

@@ -65,13 +65,13 @@ static int track_remove(uint32_t k)
     }
     for (i = 0; i < RECORD_MAX; i++) {                  /* takes: k's go, the later tracks' move down */
         recorded_note_t *rn = &p->recording[i];
-        uint32_t o = (rn->owner & 31u) / NPAT;
+        uint32_t o = recorded_owner(rn) / NPAT;
         if (!rn->vel)
             continue;
         if (o == k)
             memset(rn, 0, sizeof *rn);
         else if (o > k)
-            rn->owner = (uint8_t)(rn->owner - NPAT);
+            recorded_set_owner(rn, recorded_owner(rn) - NPAT);
     }
     for (i = 0; i < p->motion.count; i++) {             /* motion: k's go, the later tracks' move down (their tags too) */
         motion_event_t e = p->motion.event[i];

@@ -54,7 +54,10 @@ static int state_matches(track_t *t)
 {
     uint16_t refs[128]={0};
     for(uint32_t i=0;i<RECORD_MAX;i++){
-        if(recording_run[i].held!=expected[i].held || recording_left(i)!=expected[i].left ||
+        /* Queued playback reuses the former hold counter. Compare capture
+         * duration while held; playback has its independent remaining-time
+         * oracle below. Countdown/reference mode still retains both fields. */
+        if(((!MELODEE_RECORD_QUEUE || (expected[i].flags&1u)) && recording_run[i].held!=expected[i].held) || recording_left(i)!=expected[i].left ||
            (recording_flags[i]&~2u)!=expected[i].flags)return 0;
         if(expected[i].left && recording_active(t,i))refs[recording[i].note]++;
     }

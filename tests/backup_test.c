@@ -57,7 +57,7 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
     }
     return na ? 0u : n;
 }
-static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));
+#define ed_transfer_buf (main_scratch.transfer)
 static void fm1_wdt_feed(void) {}
 static int ed_flash_stop(void) { return transport_busy(); }
 #include "../firmware/src/editor_backup.c"

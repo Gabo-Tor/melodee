@@ -30,7 +30,7 @@ static uint32_t recording_undo_signature(const track_t *t)
     uint32_t h=fnv(2166136261u,t->step,sizeof t->step),owner=recording_owner(t),k=trk_index(t);
     h=fnv(h,&t->p[P_SLEN],4u*sizeof(int16_t));
     h=fnv(h,&t->eng_req,sizeof t->eng_req);
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel&&(recording[i].owner&31u)==owner)
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel&&recorded_owner(&recording[i])==owner)
         h=fnv(h,&recording[i],sizeof recording[i]);
     for(uint32_t i=0;i<motion.count;i++)if((motion.event[i].place>>6)==k&&motion_pattern[i]==t->pattern)
         h=fnv(h,&motion.event[i],sizeof motion.event[i]);
@@ -55,7 +55,7 @@ static void recording_undo_capture(track_t *t)
     if(!u){recording_undo_lost=1;recording_undo_skip|=bit;return;}
     uint32_t owner=recording_owner(t);
     for(uint32_t i=0;i<RECORD_MAX;i++){
-        if(recording[i].vel&&(recording[i].owner&31u)==owner)u->notes[i]=recording_snapshot(i);
+        if(recording[i].vel&&recorded_owner(&recording[i])==owner)u->notes[i]=recording_snapshot(i);
         else memset(&u->notes[i],0,sizeof u->notes[i]);
     }
     memcpy(u->steps,t->step,sizeof u->steps);
@@ -91,7 +91,7 @@ static int recording_undo_apply(int redo)
     if(u->redo!=(uint32_t)redo)return 0;
     uint32_t owner=recording_owner(t),blocked=0,free=0;
     for(uint32_t i=0;i<RECORD_MAX;i++){
-        int other=recording[i].vel&&(recording[i].owner&31u)!=owner;
+        int other=recording[i].vel&&recorded_owner(&recording[i])!=owner;
         blocked+=u->notes[i].vel&&other;
         free+=!u->notes[i].vel&&!other;
     }
@@ -103,11 +103,11 @@ static int recording_undo_apply(int redo)
     /* Relocate only saved events whose old slots now belong to another bank.
      * A forward free cursor keeps this scan bounded by twice RECORD_MAX. */
     uint32_t dest=0;
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(u->notes[i].vel&&recording[i].vel&&(recording[i].owner&31u)!=owner){
-        while(u->notes[dest].vel||(recording[dest].vel&&(recording[dest].owner&31u)!=owner))dest++;
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(u->notes[i].vel&&recording[i].vel&&recorded_owner(&recording[i])!=owner){
+        while(u->notes[dest].vel||(recording[dest].vel&&recorded_owner(&recording[dest])!=owner))dest++;
         u->notes[dest]=u->notes[i];memset(&u->notes[i],0,sizeof u->notes[i]);dest++;
     }
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(u->notes[i].vel||(recording[i].vel&&(recording[i].owner&31u)==owner)){
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(u->notes[i].vel||(recording[i].vel&&recorded_owner(&recording[i])==owner)){
         recorded_note_t r=recording[i];
         recording[i]=u->notes[i];u->notes[i]=r;
         memset(&recording_run[i],0,sizeof recording_run[i]);recording_flags[i]=0;

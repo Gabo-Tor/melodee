@@ -232,6 +232,7 @@ static uint8_t seq_erase_seen[NTRK];
 static volatile uint16_t seq_erase_button;
 static int seq_erase_active(const track_t *t);
 static int rec_on(const track_t *t) { return (((song.rec & ~song.rec_wait) >> trk_index(t)) & 1u) && song.playing && !chain.running; }
+static int rec_any(void) { return (song.rec & ~song.rec_wait) && song.playing && !chain.running; }
 static void recording_undo_capture(track_t *t);
 static void recording_undo_clear(void);
 static void seq_release(track_t *t);
@@ -342,7 +343,7 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 #include "recording.c"
 #include "recording_undo.c"
 
-/* Capture: every note played (keys, MIDI, a chord's notes) while the transport runs and its track is not recording,
+/* Capture: every note played (keys, MIDI, a chord's notes) while the transport runs and no track is recording,
  * with its place: the steps the track has entered since PLAY (cap_step) and the 1/256 of the step, as recording.c
  * keeps them. A ring of 8-byte events (RAM is the audio arena's: kept small); REC held writes the selected track's last
  * bars into its pattern (ui_input.c capture_take). Durations in 1/256 of a step; tr bit 7: still held */
@@ -371,7 +372,9 @@ static void cap_on(const track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t k = trk_index(t);
     cap_ev_t *e = &cap_ev[cap_w % CAP_N];
-    if (!song.playing || chain.running || rec_on(t))
+    /* Queued takes have not punched in yet: collect until the first starts,
+     * then pause all tracks until the last active take finishes. */
+    if (!song.playing || chain.running || rec_any())
         return;
     e->step = t->seq_pos >= 0x7FFFFFFFu ? (uint16_t)(cap_step[k] + 1u) : cap_step[k];
     e->on = (uint8_t)(cap_frac(t) >> 8);
@@ -921,7 +924,7 @@ static void recording_quant_position(const recorded_note_t *r, uint32_t at, uint
     *out = *r;
     out->on = (uint16_t)(fraction > 65535u ? 65535u : fraction);
     uint32_t rounded = out->on >= RECORD_UNIT / 2u;
-    out->step = (uint8_t)(actual | (rounded ? 64u : 0u) | (rounded && actual + 1u == len ? 128u : 0u));
+    recorded_set_step(out, actual, rounded, rounded && actual + 1u == len);
 }
 /* Only this take is committed. Preflight every destination before changing any
  * stored timing; an unrelated manual note or its tie tail is never overwritten.

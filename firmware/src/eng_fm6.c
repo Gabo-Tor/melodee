@@ -1043,7 +1043,14 @@ static void fm6_post(track_t *t, int32_t *out, uint32_t n, uint32_t nr)
  * (fm6_store.c fm6_service): a 32-voice dump is the longest. One frame at a time; a frame arriving while one
  * is waiting is dropped */
 #define FM6_RX 4104u
+#if MELODEE_RECORD_QUEUE
+/* Compact recorder counters free data SRAM. Put this asynchronous receive
+ * buffer there so the saving enlarges the contiguous engine arena, rather
+ * than remaining only in a small separate data-region allocation bank. */
+static uint8_t fm6_rx[FM6_RX];
+#else
 static uint8_t fm6_rx[FM6_RX] __attribute__((section(".pool")));
+#endif
 static uint32_t fm6_rx_n;
 static volatile uint8_t fm6_rx_ready;
 static uint8_t fm6_rx_on;

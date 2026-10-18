@@ -315,7 +315,7 @@ static void ptc_paste(int asked)                        /* OCT+: copy it there (
     rc = pattern_copy(&trk[k], ui.ptc_src, ui.ptc_dst);
     if (!rc)
         ui.ptc_on = 0;
-    ui_message(!rc ? "PATTERN COPIED" : rc == 2 ? "PATTERN DATA FULL" : chain_busy() ? "STOP SONG TO COPY" :
+    ui_message(!rc ? "PATTERN COPIED" : rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : chain_busy() ? "STOP SONG TO COPY" :
                "PATTERN IS PLAYING");
     ui.force = 1;
 }

@@ -207,13 +207,13 @@ static int proj_record_pack(uint8_t *b,const project_t *q)
         uint16_t count=0;
         for(uint32_t i=0;i<RECORD_MAX;i++){
             const recorded_note_t *r=&q->recording[i];
-            if(!r->vel || (r->owner&31u)!=owner)continue;
-            if(!recording_valid(r))return 0;
+            if(!r->vel || recorded_owner(r)!=owner)continue;
+            if(!recording_valid(r) || recorded_owner(r)>=32u || recorded_step(r)>=64u)return 0;
             uint32_t pos=0;uint8_t *v=b+PROJ_REC_OFF+at++*8u;
             wire_bits_put(v,&pos,r->on,16);wire_bits_put(v,&pos,r->duration,16);
             wire_bits_put(v,&pos,r->note,7);wire_bits_put(v,&pos,r->vel,7);
-            wire_bits_put(v,&pos,r->step,8);wire_bits_put(v,&pos,r->owner>>5,3);
-            wire_bits_put(v,&pos,(uint32_t)(r->pitch+24),6);wire_bits_put(v,&pos,r->length,1);count++;
+            wire_bits_put(v,&pos,r->step,8);wire_bits_put(v,&pos,recorded_exponent(r),3);
+            wire_bits_put(v,&pos,(uint32_t)(r->pitch+24),6);wire_bits_put(v,&pos,recorded_gate(r),1);count++;
         }
         uint32_t dir=owner*11u;wire_bits_put(b+PROJ_REC_DIR,&dir,count,11);
     }

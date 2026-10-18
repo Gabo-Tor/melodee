@@ -30,8 +30,26 @@
 #define MELODEE_AUDIO_BENCH 0 /* laboratory fixed-voice admission bypass; never a release default */
 #endif
 #define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
+/* Shared with engine-buffer placement: the queued recorder needs one runtime
+ * counter per event, while the reference countdown implementation needs two. */
+#ifndef MELODEE_RECORD_CURSOR
+#define MELODEE_RECORD_CURSOR 1
+#endif
+#ifndef MELODEE_RECORD_QUEUE
+#define MELODEE_RECORD_QUEUE MELODEE_RECORD_CURSOR
+#endif
+#if MELODEE_RECORD_QUEUE && !MELODEE_RECORD_CURSOR
+#error "The release queue requires the ordered onset cursor"
+#endif
+/* Host capacity fixtures can exercise the larger identifier space before a
+ * new project schema and the device UI enable it in shipping builds. */
+#ifndef NSTEP
 #define NSTEP 64
+#endif
+#ifndef NPAT
 #define NPAT 8u
+#endif
+_Static_assert(NSTEP <= 128u && NTRK * NPAT <= 64u, "recorded-note identifiers");
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
 /* SLICE retired. Keep its stored engine number reserved. */
 #ifdef MELODEE_SLICE
@@ -227,7 +245,11 @@ typedef struct {
     int32_t fine;                /* unison detune: phase increment * (1 + fine / 4096) */
     int32_t scale_fine;          /* note-on snapshot: scale pitch below 1/16 semitone */
     uint32_t ph[3];
-    int32_t s[8];                /* engine state (filters, envs) */
+#if MELODEE_LEGACY_EXTRAS
+    int32_t s[8];                /* retired VOICE/NOISE also use slots 6 and 7 */
+#else
+    int32_t s[6];                /* current engines: slots 0..5, including drum gates */
+#endif
     uint32_t age;
     uint8_t mvel;                /* mod.c: the note-on velocity (before UNISON scaling) and RAND of the note */
     int16_t mrnd;
@@ -313,10 +335,7 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #define SF_RECORDED 4u                         /* step is a view of timed notes, played by recording.c */
 #define RECORD_MAX 1024u
 #define RECORD_UNIT 65536u                     /* fractional onset within its swung step; duration uses an exponent */
-/* owner: bank/track in low 5 bits, duration exponent in high 3. step: actual index in
- * low 6 bits, overview rounded forward in bit 6, wrapped to zero in bit 7. */
-typedef struct { uint16_t on, duration; uint8_t note, vel, owner, step; int8_t pitch; uint8_t length; } recorded_note_t;
-_Static_assert(sizeof(recorded_note_t) == 10u, "timed note layout");
+#include "recorded_note.h"
 /* Sound offsets: semitones, decay and voice character; zero preserves the factory kit. */
 typedef struct { int8_t c[16][4]; } drum_patch_t;
 static drum_patch_t drum_patch[NTRK];

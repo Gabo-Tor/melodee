@@ -16,6 +16,7 @@ static union {
     uint8_t st[256];
 #ifndef MELODEE_LOADER
     int16_t snap[512];
+    uint8_t transfer[256]; /* decoded/read backup chunk, consumed before reply send */
 #endif
     uint8_t dec[640];
 } main_scratch __attribute__((aligned(4)));

@@ -11,12 +11,16 @@
 #include "eng_phase.c"
 #include "eng_cz.c"
 #include "eng_sid.c"
+#if MELODEE_LEGACY_EXTRAS
 #include "eng_formant.c"
+#endif
 #include "eng_trio.c"
 #include "eng_wheel.c"
 #include "eng_phys.c"           /* PHYS: DaisySP physical models (phys_dsp.c, MIT) */
 #include "eng_drum.c"           /* DRUM: synthesized 808 circuits (drum_808.c), the 909, a C64's SID (drum_sid.c) */
+#if MELODEE_LEGACY_EXTRAS
 #include "eng_noise.c"
+#endif
 #include "eng_fm6.c"            /* FM6: 6-operator FM rendered as Dexed renders it (fm6_core.c) */
 #if MELODEE_SLICE
 #include "eng_slice.c"

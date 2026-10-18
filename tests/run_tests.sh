@@ -326,12 +326,16 @@ if core && [ $TABLES = 1 ]; then
     t "32 pattern banks: chords, ties, independent loop switching, copy and persistence" pattern_test \
         -O1 -DMELODEE_USB_AUDIO=1 $FW
     t "compressed pattern pool: dense capacity, prepared switches and state-machine oracle" pattern_pool_test -O1 $FW
+    t "16 x 128 shared pool: old dense capacity, atomic exhaustion and switching" pattern_capacity_test -O1 $FW
     t "recording/performance tools and legacy migrations" performance_tools_test -O1 $FW
     t "USB/TRS clock, bend, sustain, ownership and panic recovery" midi_control_test -O1 $FW
     t "MIDI timing: quantized TRS/USB recording, audio timeline, tempo changes and timer wrap" midi_timing_test -O1 $FW
     t "MIDI recording: raw events, quantization at take end, independent releases, banks and capacity" recording_test \
         -O1 $FW
+    t "Recorded-note layout: legacy bytes, 64 owners and 128 steps without event growth" recorded_note_test -O2 $FW
+    t "16 x 128 recording core: positions, release queues, copies and pitch cache" recording_capacity_test -O1 -DMELODEE_RECORD_INDEX=1 $FW
     t "Recording scheduler: reference-state parity, cache invalidation and live lists" recording_scheduler_test -O1 $FW
+    t "Recording RAM: shared capture/deadline counters and mode handoffs" recording_runtime_test -O1 $FW
     run "Recording storage codec probe: lossless roundtrip and malformed data" python3 tools/recording_storage_probe.py
     t "Recording ownership: independent scanner, edits, duplicates, sparse/dense queries and rebuild cost" recording_index_test -O2 $FW
     t "Timestamped releases: rollover, retrigger, 1024 cancellations, edits and track isolation" recording_queue_test -O1 $FW
