@@ -182,6 +182,7 @@ static int ua_set_interface(uint16_t interface, uint16_t alt)
 {
     if (!usb.config || alt > 2u || interface == UA_NO_IF || (interface != ua_if_play && interface != ua_if_cap))
         return 0;
+    if(interface==ua_if_cap && alt && ua_cap_channels==4u && !ua_track_extra)return 0;
     if (interface == ua_if_play) {
         ua_play_reset();
         ua.play_alt = (uint8_t)alt;

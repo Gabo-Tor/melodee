@@ -20,7 +20,7 @@ static uint8_t ua_cap_channels = 2u;
 #ifdef __APPLE__
 #define UA_POOL                                 /* (the host tests: Mach-O has no such section) */
 #else
-#define UA_POOL __attribute__((section(".pool")))   /* the rings, 12 KiB: the pool (zeroed at boot), not RAM */
+#define UA_POOL __attribute__((section(".pool")))   /* fixed stereo rings, 8 KiB; extra stems use the arena */
 #endif
 
 static struct {
@@ -30,8 +30,19 @@ static struct {
     uint32_t play_underruns, play_overruns, cap_underruns, cap_overruns, bad_packets;
     uint32_t rx_packets, tx_packets, missed_frames;
     uint32_t poll_max_ticks, service_max_ticks;
-    int16_t play[UA_RING * 2u], cap[UA_RING * UA_CAP_CHANNELS];
+    int16_t play[UA_RING * 2u], cap[UA_RING * 2u];
 } ua UA_POOL;
+/* Stereo is always available. Four-track mode obtains a second stereo-sized
+ * bank before re-enumerating; it retains the same 1,024-frame jitter margin.
+ * The main loop prepares/releases it with audio and USB interrupts guarded.
+ * TIMER5 and per-sample paths never allocate or resize. */
+static int16_t *ua_track_extra;
+static int ua_tracks_memory_prepare(int enabled)
+{
+    int16_t *p=UA_TRACKS_MEMORY(enabled?UA_RING*2u*sizeof(int16_t):0u);
+    if(enabled&&!p)return 0;
+    ua_track_extra=p;return 1;
+}
 
 #define UA_VOLUME_MIN (-64 * 256)
 /* Standard UAC1 volume: signed 1/256 dB, -64..0 dB in one-dB steps.
@@ -181,9 +192,9 @@ static uint32_t ua_transmit(uint8_t *p)
         int16_t sample[UA_CAP_CHANNELS] = {0};
         uint32_t ch;
         if (take) {
-            uint32_t at = (ua.cr++ & (UA_RING - 1u)) * ua_cap_channels;
-            for (ch = 0; ch < ua_cap_channels; ch++)
-                sample[ch] = ua.cap[at + ch];
+            uint32_t at = (ua.cr++ & (UA_RING - 1u)) * 2u;
+            sample[0]=ua.cap[at];sample[1]=ua.cap[at+1u];
+            if(ua_cap_channels==4u && ua_track_extra){sample[2]=ua_track_extra[at];sample[3]=ua_track_extra[at+1u];}
         }
         for (ch = 0; ch < ua_cap_channels; ch++)
             ua_encode(p + (i * ua_cap_channels + ch) * width, width, sample[ch]);
@@ -199,7 +210,7 @@ static uint32_t ua_transmit(uint8_t *p)
  * capture was disabled. Stereo requires no stems or additional DSP pass. */
 static void ua_audio(int32_t *out, const int32_t *tracks, uint32_t n, uint32_t master_q12)
 {
-    uint32_t i, capture = ua.cap_alt && (ua_cap_channels == 2u || tracks), playback = 0;
+    uint32_t i, capture = ua.cap_alt && (ua_cap_channels == 2u || (tracks && ua_track_extra)), playback = 0;
     int32_t gain = ua_host_gain_q15, target = ua_host_mute ? 0 : ua_host_target_q15;
     uint32_t play_gain_q15 = (master_q12 * (uint32_t)gain) >> 12;
     if (capture && ua.cw - ua.cr + n > UA_RING) {
@@ -219,17 +230,19 @@ static void ua_audio(int32_t *out, const int32_t *tracks, uint32_t n, uint32_t m
         }
     }
     for (i = 0; i < n; i++) {
-        uint32_t ci = ((ua.cw + i) & (UA_RING - 1u)) * ua_cap_channels;
+        uint32_t ci = ((ua.cw + i) & (UA_RING - 1u)) * 2u;
         uint32_t pi = ((ua.pr + i) & (UA_RING - 1u)) * 2u;
         int32_t l = out[2u * i], r = out[2u * i + 1u];
         if (capture) {
-            uint32_t ch;
             if (ua_cap_channels == 2u) {
                 ua.cap[ci] = (int16_t)l;
                 ua.cap[ci + 1u] = (int16_t)r;
-            } else
-                for (ch = 0; ch < UA_CAP_CHANNELS; ch++)
-                    ua.cap[ci + ch] = (int16_t)ua_clip(tracks[i * UA_CAP_CHANNELS + ch]);
+            } else {
+                ua.cap[ci]=(int16_t)ua_clip(tracks[i*4u]);
+                ua.cap[ci+1u]=(int16_t)ua_clip(tracks[i*4u+1u]);
+                ua_track_extra[ci]=(int16_t)ua_clip(tracks[i*4u+2u]);
+                ua_track_extra[ci+1u]=(int16_t)ua_clip(tracks[i*4u+3u]);
+            }
         }
         if (playback) {
             if (gain != target) {            /* at most 128 samples (~3 ms) for a full-scale change */

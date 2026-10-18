@@ -138,6 +138,18 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
  * bcdDevice: 3.00 MIDI, 3.01 with CDC, 3.30..3.37 with USB audio.
  * Each audio layout has its own revision (hosts cache descriptors per version). */
 #if MELODEE_USB_AUDIO
+#ifndef UA_TRACKS_MEMORY
+#define UA_TRACKS_MEMORY(bytes) resource_resize(RES_USB_TRACKS,bytes)
+#endif
+#ifndef UA_MEMORY_GUARD_OFF
+#ifdef FM1_IRQ_TARGET
+#define UA_MEMORY_GUARD_OFF() fm1_irq_off()
+#define UA_MEMORY_GUARD_ON() fm1_irq_on()
+#else
+#define UA_MEMORY_GUARD_OFF() ((void)0)
+#define UA_MEMORY_GUARD_ON() ((void)0)
+#endif
+#endif
 #include "usb_audio_stream.c"
 #define CFG_LEN 396
 static const uint8_t DEV_DESC[18] = {18, 1, 0x00, 0x02, 0xEF, 0x02, 0x01, 64, 0x09, 0x12, 0x01, 0x00, 0x30, 0x03,
@@ -914,7 +926,11 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
 {
 #if MELODEE_USB_AUDIO
+    UA_MEMORY_GUARD_OFF();
     ua_reset();
+    int ready=ua_tracks_memory_prepare(ua_tracks&&!(ua_off&UA_OFF_IN));
+    UA_MEMORY_GUARD_ON();
+    if(!ready){usb.up=0;return;}
     ua_rate_pending = 0;
     ua_feature_pending = 0;
     ua_host_volume_reset();
@@ -984,8 +1000,17 @@ static int ua_off_apply(uint32_t now_ms)
 {
     if ((ua_off_want == ua_off && ua_tracks_want == ua_tracks) || now_ms - ua_off_ms < 600u)
         return 0;
+    UA_MEMORY_GUARD_OFF();
+    int extra=ua_tracks_want&&!(ua_off_want&UA_OFF_IN);
+    if(extra&&!ua_tracks_memory_prepare(1)){
+        ua_tracks_want=ua_tracks;ua_off_want=ua_off;
+        UA_MEMORY_GUARD_ON();return 2;
+    }
+    ua_reset();                         /* no old four-channel reader before release */
+    if(!extra)ua_tracks_memory_prepare(0);
     ua_off = ua_off_want;
     ua_tracks = ua_tracks_want;
+    UA_MEMORY_GUARD_ON();
     usb_replug(now_ms);
     return 1;
 }

@@ -244,10 +244,11 @@ static void fm1_main(void)
         pattern_poll();
         usb_retry(fm1_ms);
 #if MELODEE_USB_AUDIO
-        if (ua_off_apply(fm1_ms)) {                     /* USB direction or capture mode changed: the host re-reads */
+        int usb_change=ua_off_apply(fm1_ms);
+        if (usb_change==1) {                           /* USB direction or capture mode changed: the host re-reads */
             settings_save();                            /* while off the bus: no USB deadline missed */
             ui_say("USB ", "RECONNECTING");
-        }
+        }else if(usb_change==2)ui_message("USB MEMORY FULL");
 #endif
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;

@@ -1,14 +1,19 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
-/* Bounded audio working-memory arena. Only the audio owner (or boot/host
- * setup before audio starts) mutates it. Fixed handles, no heap,
+/* Bounded working-memory arena. Audio owns mutations; a main-loop history
+ * or USB mode change may also mutate it with audio interrupts guarded.
+ * Fixed handles, no heap,
  * general compaction, or searches proportional to voices/samples. Explicit
  * history resizes may relocate that one handle while the owner is guarded.
  * Linker-derived SRAM tails are separate banks: an allocation never spans a
  * code/data/retained-state boundary. Small banks first preserve the large
  * contiguous POOL bank for engine state and note history. */
 enum { RES_ENGINE0, RES_NOTE_HISTORY = RES_ENGINE0 + NPART, RES_FX0,
-       RES_RECORD_UNDO = RES_FX0 + FX_STATE_COUNT, RES_COUNT };
+       RES_RECORD_UNDO = RES_FX0 + FX_STATE_COUNT,
+#if MELODEE_USB_AUDIO
+       RES_USB_TRACKS,
+#endif
+       RES_COUNT };
 static uint8_t recording_undo_lost;
 static uint8_t recording_undo_active, recording_undo_skip;
 static struct { void *ptr; uint32_t size; } resource[RES_COUNT];

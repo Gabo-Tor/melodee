@@ -13,7 +13,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Sparse recording/manual undo | Implemented | 9,792 B less per 32-note snapshot; full-density fallback, redo and slot ownership preserved |
 | Reduce display canvas | Implemented | 28,832 B usable SRAM gained; exact RGB565 bands, 1,100 image and four rolling-frame comparisons; project scratch retained |
 | Stream project/archive staging | Pending | Preserve legacy files, four slots and interrupted-write recovery |
-| Allocate USB capture by channel count | Pending | Preserve four-stem mode and ring/jitter capacity |
+| Allocate USB capture by channel count | Implemented | Stereo keeps fixed 1,024-frame ring; extra two stem channels use 4,096 B arena only when configured; 3,968 B fixed usable gain |
 | Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
 
 FX validation: `build/ram-implementation/fx/`. The actual firmware uses all
@@ -66,3 +66,14 @@ Fixed usable SRAM is now 98,608 B: 32,928 B more than the checkpoint.
 The complete rendered UI also passes ASan/UBSan with serial audio enabled
 (`display-sanitize.log`); band bounds and the original layout checks remain
 active in both reference and candidate runs.
+
+USB validation: `build/ram-implementation/usb-final/` and `usb-host-final.log`.
+The complete host suite passes in 167 s. Stereo/four-track PCM16 and PCM24,
+clock drift, packet deadlines, reset/replug, volume and muted-master routing
+pass. Both mock and real-arena exhaustion preserve running stereo and allow
+retry; returning to stereo or disabling capture releases the extra bank.
+Stream red zones and ASan/UBSan pass. Allocation happens only during a guarded
+main-loop mode change/startup, never inside sample or USB service loops.
+Target audio budgets pass; this is not a device cycle measurement.
+Fixed usable SRAM is now 102,576 B: 36,896 B more than the checkpoint in stereo
+mode. Four-track mode reserves 4,096 B from that arena while configured.

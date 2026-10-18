@@ -15,6 +15,7 @@ static void setup(void)
     memset(trk,0,sizeof trk);memset(&song,0,sizeof song);host_tracks_init();
     for(uint32_t k=0;k<NTRK;k++){host_preset(&trk[k],HOST_SYNTH,0);trk[k].p[P_RESERVED34]=trk[k].p[P_RESERVED36]=trk[k].p[P_RESERVED33]=0;}
     usb.up=usb.config=1;usb.suspended=0;ua_reset();ua_cap_channels=4;
+    assert(ua_tracks_memory_prepare(1));
 }
 static void capture_transitions(void)
 {
@@ -28,13 +29,13 @@ static void capture_transitions(void)
         for(uint32_t k=1;k<NTRK;k++)assert(!track_capture[i*NTRK+k]);
     }
     assert(sounding);ua_audio(out,track_capture,CTL,4096);assert(ua.cw==CTL);
-    for(uint32_t i=0;i<CTL*NTRK;i++)assert(ua.cap[i]==ua_clip(track_capture[i]));
+    for(uint32_t i=0;i<CTL*NTRK;i++)assert((i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u])==ua_clip(track_capture[i]));
     ua.cap_alt=0;poison_capture();mix_block(out,CTL);assert_capture_poison();
     for(uint32_t k=0;k<NTRK;k++)for(uint32_t v=0;v<NVOICE;v++)trk[k].v[v].active=0;
     ua.cap_alt=1;mix_block(out,CTL);
     for(uint32_t i=0;i<CTL*NTRK;i++)assert(!track_capture[i]);
     ua_audio(out,track_capture,CTL,4096);assert(ua.cw==2u*CTL);
-    for(uint32_t i=CTL*NTRK;i<2u*CTL*NTRK;i++)assert(!ua.cap[i]);
+    for(uint32_t i=CTL*NTRK;i<2u*CTL*NTRK;i++)assert(!(i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u]));
     usb.suspended=1;poison_capture();mix_block(out,CTL);assert(!track_capture_on);assert_capture_poison();
     uint32_t written=ua.cw;ua_audio(out,0,CTL,4096);assert(ua.cw==written);
     puts("performance: capture off/configuration/suspend/resume produces no stale stems");

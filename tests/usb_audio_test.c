@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "usb_audio_memory.h"
 #include "../firmware/src/usb_audio_stream.c"
 
 static void pcm(uint8_t *p, uint32_t frames, int16_t l, int16_t r)
@@ -46,14 +47,14 @@ static void routing(void)
     block(1000, -1000, 4096, out);
     assert(out[0] == 3000 && out[1] == -3000);
     assert(ua.cap[0] == 1000 && ua.cap[1] == -1000); /* no playback loopback */
-    assert(ua.cap[2] == 300 && ua.cap[3] == -700);
+    assert(ua_track_extra[0] == 300 && ua_track_extra[1] == -700);
     uint32_t written=ua.cw;
     for(i=0;i<32u;i++){out[2u*i]=1000;out[2u*i+1u]=-1000;}
     ua_audio(out,0,32,4096);
     assert(ua.cw==written && out[0]==3000 && out[1]==-3000);
     block(1000, -1000, 0, out);
     assert(out[0] == 1000 && out[1] == -1000);
-    assert(ua.cap[128] == 1000 && ua.cap[131] == -700); /* MASTER does not scale stems */
+    assert(ua.cap[64] == 1000 && ua_track_extra[65] == -700); /* MASTER does not scale stems */
     block(32000, -32000, 4096, out);
     assert(out[0] == 32767 && out[1] == -32768);
     ua.play_alt = 0;
@@ -282,6 +283,7 @@ static void tone(int capture, double frequency, uint32_t channel, uint32_t alt)
 int main(void)
 {
     ua_cap_channels = 4;
+    assert(ua_tracks_memory_prepare(1));
     routing();
     recovery();
     pcm24();
@@ -301,6 +303,7 @@ int main(void)
     drift(1000, 2, 1);
     drift(-1000, 1, 2);
     ua_cap_channels = 2;
+    assert(ua_tracks_memory_prepare(0));
     ua_reset(); ua.cap_alt = 1;
     int32_t master[64];
     for (uint32_t i = 0; i < 32; i++) {master[2*i] = 32767; master[2*i+1] = -32768;}
@@ -313,5 +316,6 @@ int main(void)
         drift(1000, 0, alt);
     }
     puts("USB stereo/master and track routing, drift, packet bounds and recovery: OK");
+    assert(ua_test_memory.before==0x51a7beefu&&ua_test_memory.after==0xa17e5afeu);
     return 0;
 }
