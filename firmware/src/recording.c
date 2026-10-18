@@ -285,11 +285,29 @@ static int recording_active(const track_t *t, uint32_t i)
  * Dirty cells coalesce deletions/edits; rebuilding scans one bank once, never
  * once per removed duplicate. Overview flags stay live at query time. The key
  * includes original-onset LEN eligibility, which differs for wrapped cells. */
-static uint32_t recording_pitch[NTRK][NSTEP][4] __attribute__((section(".pool")));
+/* Cache the four note-position and eight fixed-lane ownership bits, plus
+ * the exact overview note key. Timed event eligibility remains independent. */
+static uint16_t recording_pitch[NTRK][NSTEP] __attribute__((section(".pool")));
+static uint32_t recording_pitch_notes[NTRK][NSTEP] __attribute__((section(".pool")));
 static uint32_t recording_pitch_dirty[NTRK][(NSTEP + 31u) / 32u];
 static uint16_t recording_pitch_key[NTRK],recording_pitch_count[NTRK*NPAT];
 static uint32_t recording_pitch_current(const track_t *t)
 {return 1u+t->pattern+(uint32_t)t->p[P_SLEN]*NPAT;}
+static uint32_t recording_pitch_note_key(const step_t *s)
+{return s->note[0]|(uint32_t)s->note[1]<<8|(uint32_t)s->note[2]<<16|(uint32_t)s->note[3]<<24;}
+static uint16_t recording_pitch_mask(uint32_t note,uint32_t key)
+{
+    /* Exact zero-byte markers without cross-byte borrow. Pack their high
+     * bits into the four note-position bits. Inverse default lane mapping
+     * follows eng_drum.c DRUM_LANE_NOTE; the scanner tests every MIDI pitch. */
+    static const uint8_t lane[21]={1,64,2,4,0,0,8,0,0,32,16,0,0,0,0,0,0,0,0,0,128};
+    _Static_assert(NLANE==8u,"recording lane mask width");
+    uint32_t x=key^(note*0x01010101u);
+    uint32_t z=~(((x&0x7f7f7f7fu)+0x7f7f7f7fu)|x|0x7f7f7f7fu);
+    uint32_t result=((z>>7)*0x01020408u)>>24;
+    if(note>=36u && note<=56u)result|=(uint32_t)lane[note-36u]<<8;
+    return (uint16_t)result;
+}
 static void recording_pitch_invalidate(void)
 {memset(recording_pitch_key,0,sizeof recording_pitch_key);}
 static void recording_pitch_remove(uint32_t i)
@@ -303,7 +321,7 @@ static void recording_pitch_add(uint32_t i)
     const recorded_note_t *r=&recording[i];uint32_t tr=recorded_owner(r)/NPAT,view=recording_view(&trk[tr],r);
     if(r->vel && view<NSTEP && recorded_step(r)<(uint32_t)trk[tr].p[P_SLEN] &&
        recorded_owner(r)==recording_owner(&trk[tr]) && recording_pitch_key[tr]==recording_pitch_current(&trk[tr]))
-        recording_pitch[tr][view][r->note>>5]|=1u<<(r->note&31u);
+        recording_pitch[tr][view]|=recording_pitch_mask(r->note,recording_pitch_notes[tr][view]);
 }
 static void recording_pitch_prepare(track_t *t)
 {
@@ -313,11 +331,13 @@ static void recording_pitch_prepare(track_t *t)
         dirty[w]=recording_pitch_key[tr]!=key?UINT32_MAX:recording_pitch_dirty[tr][w];any|=dirty[w];
     }
     if(!any)return;
-    for(uint32_t v=0;v<NSTEP;v++)if((dirty[v>>5]>>(v&31u))&1u)memset(recording_pitch[tr][v],0,sizeof recording_pitch[tr][v]);
+    for(uint32_t v=0;v<NSTEP;v++)if((dirty[v>>5]>>(v&31u))&1u){
+        recording_pitch[tr][v]=0;recording_pitch_notes[tr][v]=recording_pitch_note_key(&t->step[v]);
+    }
     for(uint32_t i=recording_head[recording_owner(t)];i<RECORD_MAX;i=recording_next[i]){
         const recorded_note_t *r=&recording[i];uint32_t view=recording_view(t,r);
         if(r->vel && recorded_step(r)<(uint32_t)t->p[P_SLEN] && view<NSTEP && ((dirty[view>>5]>>(view&31u))&1u))
-            recording_pitch[tr][view][r->note>>5]|=1u<<(r->note&31u);
+            recording_pitch[tr][view]|=recording_pitch_mask(r->note,recording_pitch_notes[tr][view]);
     }
     recording_pitch_key[tr]=(uint16_t)key;memset(recording_pitch_dirty[tr],0,sizeof recording_pitch_dirty[tr]);
 }
@@ -338,13 +358,14 @@ static uint32_t recording_step_skip(track_t *t,const step_t *s,uint32_t skip)
     if(recording_pitch_count[recording_owner(t)]>=4u){
         /* Edits and bank/LEN changes pay one bounded maintenance scan. */
         if(t->seq_idx>=NSTEP || t->step[t->seq_idx].time!=ST_NOTE || !(t->step[t->seq_idx].flags&SF_RECORDED))return skip;
+        if(s!=&t->step[t->seq_idx])goto scan;
+        uint32_t tr=trk_index(t),view=t->seq_idx;
+        if(recording_pitch_note_key(s)!=recording_pitch_notes[tr][view])recording_pitch_dirty[tr][view>>5]|=1u<<(view&31u);
         recording_pitch_prepare(t);
-        const uint32_t *bits=recording_pitch[trk_index(t)][t->seq_idx];
-        for(uint32_t k=0;k<s->n;k++)if((bits[s->note[k]>>5]>>(s->note[k]&31u))&1u)skip|=1u<<k;
-        for(uint32_t k=0;k<NLANE;k++)if((bits[DRUM_LANE_NOTE[k]>>5]>>(DRUM_LANE_NOTE[k]&31u))&1u)skip|=1u<<(8u+k);
-        return skip;
+        return skip | (recording_pitch[tr][view] & (((1u<<s->n)-1u)|0xff00u));
     }
 #endif
+scan:
     for(uint32_t r=recording_head[recording_owner(t)];r<RECORD_MAX;r=recording_next[r])if(recording_active(t,r) && recording_view(t,&recording[r])==t->seq_idx){
         for(uint32_t k=0;k<s->n;k++)if(s->note[k]==recording[r].note)skip|=1u<<k;
         for(uint32_t k=0;k<NLANE;k++)if(DRUM_LANE_NOTE[k]==recording[r].note)skip|=1u<<(8u+k);
