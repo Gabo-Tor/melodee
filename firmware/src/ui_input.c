@@ -112,7 +112,11 @@ static uint32_t arp_led(void)
  * with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
  * dialog (CF_PAT_KEY): the key again deletes it, another white key copies it there, the 4th and 5th black keys
  * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it */
-static const uint8_t PAT_KEY[NPAT] = {0, 2, 4, 6, 7, 9, 11, 12};
+static const uint8_t PAT_KEY[NPAT]={0,2,4,6,7,9,11,12
+#if NPAT > 8u
+    ,14,16,18,19,21,23,24,26
+#endif
+};
 static const uint8_t TRK_KEY[NTRK] = {1, 3, 5, 8};
 static const uint8_t LEN_KEY[2] = {8, 10};              /* (its dialog: half, double) */
 #define PAT_HOLD_MS 1000u
@@ -140,7 +144,7 @@ static uint32_t pattern_leds(uint32_t *dim, uint32_t *breath)
         else *dim |= 1u << TRK_KEY[b];
     if (!dlg) m |= 1u << TRK_KEY[song.sel % NTRK];
     if (TSEL->pattern_next < NPAT) *breath |= 1u << PAT_KEY[TSEL->pattern_next];
-    for (b = 0; b < NPAT; b++)                          /* (an edit waiting for the loop end: waiting too) */
+    for (b = 0; b < NPAT; b++) /* (an edit waiting for the loop end: waiting too) */
         if ((seq_pend[song.sel % NTRK] >> b) & 1u) *breath |= 1u << PAT_KEY[b];
     if (ui.pat_key) m |= 1u << PAT_KEY[ui.pat_key - 1u];
     if (ui.confirm == CF_PAT_KEY) m |= 1u << PAT_KEY[ui.pat_dlg % NPAT];   /* (its dialog: the one held) */
@@ -210,7 +214,7 @@ static void dq_pend(uint32_t k)                         /* (seq.c: the banks sti
         if (dq[i].trk == k && dq[i].cf != CF_CLEAR_MOTION)
             m |= 1u << dq[i].a;
     fm1_irq_off();
-    seq_pend[k] = (uint8_t)m;
+    seq_pend[k] = (uint16_t)m;
     if (!m) seq_hush &= (uint8_t)~(1u << k);
     fm1_irq_on();
 }
@@ -279,7 +283,7 @@ static void pattern_key_release(void)
             if (pattern_request(TSEL, bank)) ui_message("STOP SONG TO SWITCH");
             else {
                 char m[12] = "PATTERN ";
-                m[8] = (char)('1' + bank); m[9] = 0; ui_message(m);
+                fmt_int(m+8,(int32_t)bank+1);ui_message(m);
                 if (pattern_empty(song.sel, bank)) {    /* an empty one: arm a single pattern pass */
                     armed = 1;
                     if (!((song.rec >> song.sel) & 1u)) rec_toggle(0);
@@ -349,7 +353,7 @@ static void pattern_key_len(uint32_t k, uint32_t b, int up)
     int rc = up ? pattern_double(t, b, 0) : pattern_half(t, b, 0);
     ui.force = 1;
     if (rc) {
-        ui_message(rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : rc == 3 ? (up ? "64 STEPS MAX" : "1 STEP MIN") : "STOP TO EDIT");
+        ui_message(rc == 4 ? "PATTERN STORAGE FULL" : rc == 2 ? "PATTERN DATA FULL" : rc == 3 ? (up ? "64 STEPS MAX" : NPAT>8u?"16 STEPS MIN":"1 STEP MIN") : "STOP TO EDIT");
         return;
     }
     if (b != t->pattern) {                              /* (another bank: as a copy there, not undoable) */
@@ -386,8 +390,7 @@ static int pattern_key_dialog(uint32_t notes)
     }
     for (b = 0; b < NPAT && !(notes & (1u << PAT_KEY[b])); b++)
         ;
-    if (b == NPAT)
-        return 0;
+    if(b>=NPAT)return 0;
     ui.confirm = 0;
     ui.force = 1;
     if (b == src)
@@ -703,10 +706,11 @@ static void capture_take(void)
         for (; j < RECORD_MAX && recording[j].vel && (recording_present(&recording[j]) || recording_sounding(j)); j++)
             ;
         if (j == RECORD_MAX) { fm1_irq_on(); full = 1; break; }
+        step_t preview[NSTEP];notes_model_steps(t,preview,0,j,&r);
+        if(!pattern_can_steps(t,preview)){fm1_irq_on();full=2;break;}
         if (recording[j].vel) recording_unlink(j);
         recording_restore_note(t, j, r);
-        t->step[view].time = ST_NOTE;
-        t->step[view].flags |= SF_RECORDED;
+        memcpy(t->step,preview,sizeof preview);
         touched |= 1ull << view;
         put++;
         fm1_irq_on();
@@ -720,6 +724,7 @@ static void capture_take(void)
     if (put)
         t->seq_active = 1;
     load_end(t);
+    if(full==2){ui_message("PATTERN STORAGE FULL");return;}
     if (!put) { ui_message("NOTHING TO CAPTURE"); return; }
     {
         char b[16];
@@ -901,13 +906,15 @@ static void drum_hit_edit(uint32_t slot,int32_t delta)
         after.duration=(uint16_t)duration;recorded_set_exponent(&after,exp);
     }
     if(!created && !memcmp(&before,&after,sizeof before)){fm1_irq_on();return;}
-    note_assign(&step_history.removed,&before);note_assign(&step_history.replacement,&after);step_history.removed_index=(uint16_t)i;step_history.has_removed=1;
-    if(!created)recording_remove(TSEL,i);
-    recording_restore_note(TSEL,i,after);
-    step_t *st=&TSEL->step[ui.cursor];st->time=ST_NOTE;st->flags|=SF_RECORDED;
+    step_t proposed=TSEL->step[ui.cursor],*st=&proposed;st->time=ST_NOTE;st->flags|=SF_RECORDED;
     uint32_t lane=drum_lane(after.note);
     if(after.note==DRUM_LANE_NOTE[lane])st->hit|=(uint8_t)(1u<<lane);
     else {uint32_t j;for(j=0;j<st->n && st->note[j]!=after.note;j++){}if(j==st->n && st->n<4u)st->note[st->n++]=after.note;}
+    if(!pattern_can_set_step(TSEL,ui.cursor,st)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
+    note_assign(&step_history.removed,&before);note_assign(&step_history.replacement,&after);step_history.removed_index=(uint16_t)i;step_history.has_removed=1;
+    if(!created)recording_remove(TSEL,i);
+    recording_restore_note(TSEL,i,after);
+    TSEL->step[ui.cursor]=proposed;
     step_history.recording_gen=recording_generation;
     ui.note_pick=(uint16_t)(i+1);note_assign(&ui.note_identity,&after);ui.note_generation=recording_generation;
     fm1_irq_on();ui.force=1;notes_preview();
@@ -925,14 +932,17 @@ static void drum_hit_delete(void)
     step_history_end();step_history_finish();fm1_irq_off();step_history_sync_locked();
     uint32_t i=drum_hit_selected(),sound=ui.drum_sound%drum_sound_count(TSEL);int32_t had=step_sound_note(TSEL,&TSEL->step[ui.cursor],sound);
     uint32_t note=had>=0?(uint32_t)had:drum_sound_note(TSEL,sound);
-    if(i<RECORD_MAX){note=recording[i].note;step_history.removed=recording_snapshot(i);memset(&step_history.replacement,0,sizeof step_history.replacement);step_history.removed_index=(uint16_t)i;step_history.has_removed=1;recording_remove(TSEL,i);}
+    if(i<RECORD_MAX)note=recording[i].note;
     uint32_t remain=0,same=0;
-    for(uint32_t j=recording_head[recording_owner(TSEL)];j<RECORD_MAX;j=recording_next[j])if(recording_active(TSEL,j) && recording_view(TSEL,&recording[j])==ui.cursor){remain++;same|=recording[j].note==note;}
-    step_t *st=&TSEL->step[ui.cursor];
+    for(uint32_t j=recording_head[recording_owner(TSEL)];j<RECORD_MAX;j=recording_next[j])if(j!=i && recording_active(TSEL,j) && recording_view(TSEL,&recording[j])==ui.cursor){remain++;same|=recording[j].note==note;}
+    step_t proposed=TSEL->step[ui.cursor],*st=&proposed;
     if(!same){uint32_t lane=drum_lane(note);if(note==DRUM_LANE_NOTE[lane]){st->hit&=(uint8_t)~(1u<<lane);st->acc&=(uint8_t)~(1u<<lane);}
         for(uint32_t j=0;j<st->n;j++)if(st->note[j]==note){for(uint32_t k=j;k+1<st->n;k++)st->note[k]=st->note[k+1];st->n--;break;}}
     if(!remain)st->flags&=(uint8_t)~SF_RECORDED;
     if(!st->n && !st->hit && !remain)step_clear(st);
+    if(!pattern_can_set_step(TSEL,ui.cursor,st)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
+    if(i<RECORD_MAX){note=recording[i].note;step_history.removed=recording_snapshot(i);memset(&step_history.replacement,0,sizeof step_history.replacement);step_history.removed_index=(uint16_t)i;step_history.has_removed=1;recording_remove(TSEL,i);}
+    TSEL->step[ui.cursor]=proposed;
     step_history.recording_gen=recording_generation;ui.note_pick=0;ui.note_generation=recording_generation;fm1_irq_on();ui.force=1;ui_message("HIT CLEARED");
 }
 static void drum_hit_key(uint32_t accent)
@@ -941,7 +951,7 @@ static void drum_hit_key(uint32_t accent)
     uint32_t sound=ui.drum_sound%drum_sound_count(TSEL),lane=drum_lane(drum_sound_note(TSEL,sound));
     if((drum_hit_selected()<RECORD_MAX || step_sound_note(TSEL,&TSEL->step[ui.cursor],sound)>=0) && !accent){drum_hit_delete();return;}
     drum_hit_edit(2,0);
-    if(accent){uint32_t i=drum_hit_selected();if(i<RECORD_MAX){fm1_irq_off();recording[i].vel=127;note_assign(&step_history.replacement,&recording[i]);TSEL->step[ui.cursor].acc|=(uint8_t)(1u<<lane);fm1_irq_on();}}
+    if(accent){uint32_t i=drum_hit_selected();if(i<RECORD_MAX){fm1_irq_off();step_t value=TSEL->step[ui.cursor];value.acc|=(uint8_t)(1u<<lane);if(pattern_set_step(TSEL,ui.cursor,&value)){recording[i].vel=127;note_assign(&step_history.replacement,&recording[i]);}fm1_irq_on();}}
     notes_preview();
 }
 
@@ -966,7 +976,7 @@ static void step_edit(uint32_t slot, int32_t steps)
     fm1_irq_off();
     uint32_t at = notes_manual_start(TSEL);
     if (at >= NSTEP && (slot != 1u || (TSEL->step[ui.cursor].flags & SF_RECORDED))) { fm1_irq_on(); ui_message("SELECT A NOTE"); return; }
-    step_t *st = &TSEL->step[at < NSTEP ? at : ui.cursor];
+    uint32_t target=at<NSTEP?at:ui.cursor;step_t value=TSEL->step[target],*st=&value;
     if (slot == 1u) {
         if (!st->n) {
             if (st->flags & SF_RECORDED) { fm1_irq_on(); ui_message("SELECT A NOTE"); return; }
@@ -978,7 +988,7 @@ static void step_edit(uint32_t slot, int32_t steps)
         last_note = st->note[notes_manual_slot(st)];
     } else if (slot == 2u) {
         ui.step_used |= (uint16_t)(ui.step_mods & (1u << panel.btn[B_ENV]));
-        step_note_resize(TSEL, at, (int32_t)step_note_length(TSEL, at) + steps);
+        step_note_resize(TSEL,at,(int32_t)step_note_length(TSEL,at)+steps);fm1_irq_on();return;
     } else if (ui.step_mods & (1u << panel.btn[B_ENV])) {
         ui.step_used |= (uint16_t)(1u << panel.btn[B_ENV]);
         if (steps > 0) st->flags |= SF_SLIDE; else st->flags &= (uint8_t)~SF_SLIDE;
@@ -986,7 +996,7 @@ static void step_edit(uint32_t slot, int32_t steps)
         st->vel = (uint8_t)clamp((int32_t)(st->flags & SF_ACCENT ? 127 : st->vel ? st->vel : 96) + steps, 1, 127);
         st->flags &= (uint8_t)~SF_ACCENT;
     }
-    fm1_irq_on();
+    pattern_set_step(TSEL,target,st);fm1_irq_on();
 }
 
 /* REC armed, stopped: a knob that would record its moves says the transport has to run (motion lands on the step
@@ -1119,6 +1129,10 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (!d || !vp || d->max == d->min)
         return;
     v = enum_step(d, *vp, clamp(*vp + accel(EN_K1 + slot, steps, desc_range(d)), d->min, d->max));
+#if NPAT > 8u
+    if(pg->scope==SC_TRACK && pg->id[slot]==P_SLEN)
+        v=pattern_length_edit((steps>0?*vp/16:(*vp+15)/16)*16+clamp(steps,-8,8)*16);
+#endif
     *vp = (int16_t)v;
     if(pg->scope==SC_P5){
         uint8_t old[MO_NATIVE_N];uint32_t f=motion_guard();
@@ -1405,7 +1419,6 @@ static void notes_event_edit(uint32_t slot, int32_t delta)
     if (i >= RECORD_MAX) { fm1_irq_on(); return; }
     recorded_note_t before = recording_snapshot(i), after;
     note_assign(&after,&before);
-    uint32_t oldview = recording_view(TSEL, &before);
     if (slot == 0u) {
         uint32_t len = step_pattern_len(TSEL);
         int32_t actual = ((int32_t)recorded_step(&before) + delta) % (int32_t)len;
@@ -1428,15 +1441,14 @@ static void notes_event_edit(uint32_t slot, int32_t delta)
         if(drum_track(TSEL))recorded_set_gate(&after,1);
     } else after.vel = (uint8_t)clamp((int32_t)before.vel + delta, 1, 127);
     if (!memcmp(&before, &after, sizeof before)) { fm1_irq_on(); return; }
+    step_t preview[NSTEP];notes_model_steps(TSEL,preview,0,i,&after);
+    if(!pattern_can_steps(TSEL,preview)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
     step_history.state[step_history_index()].selection = ui.note_pick;
     step_history.state[step_history_index()].cursor = ui.cursor;
     note_assign(&step_history.removed,&before); note_assign(&step_history.replacement,&after);
     step_history.removed_index = (uint16_t)i; step_history.has_removed = 1;
     recording_remove(TSEL, i); recording_restore_note(TSEL, i, after);
-    uint32_t view = recording_view(TSEL, &after);
-    TSEL->step[view].time = ST_NOTE; TSEL->step[view].flags |= SF_RECORDED;
-    notes_rebuild(TSEL, oldview);
-    if (view != oldview) notes_rebuild(TSEL, view);
+    memcpy(TSEL->step,preview,sizeof preview);
     step_history.recording_gen = recording_generation;
     if (slot == 0u) cursor_set(recorded_step(&after));
     ui.note_pick = (uint16_t)(i + 1u); note_assign(&ui.note_identity,&after);
@@ -1458,6 +1470,8 @@ static void notes_delete_edit(void)
         ui_message("NO RECORDED NOTE");
         return;
     }
+    step_t preview[NSTEP];notes_model_steps(TSEL,preview,0,i,0);
+    if(!pattern_can_steps(TSEL,preview)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
     /* One event delta per history entry keeps undo bounded without copying
      * all 1,024 events for each of the eight edits. */
     step_history.state[step_history_index()].selection = ui.note_pick;
@@ -1466,10 +1480,9 @@ static void notes_delete_edit(void)
     step_history.removed_index = (uint16_t)i;
     step_history.has_removed = 1;
     memset(&step_history.replacement, 0, sizeof step_history.replacement);
-    uint32_t view = recording_view(TSEL, &recording[i]);
     notes_cycle(1);
     recording_remove(TSEL, i);
-    notes_rebuild(TSEL, view);
+    memcpy(TSEL->step,preview,sizeof preview);
     step_history.recording_gen = recording_generation; /* accept only this protected UI mutation */
     ui.note_generation = recording_generation;
     if (ui.note_pick == i + 1u) ui.note_pick = 0;
@@ -1487,10 +1500,11 @@ static void step_delete_edit(void)
         uint32_t start = notes_manual_start(TSEL);
         if (start < NSTEP && TSEL->step[start].n > 1u) {
             fm1_irq_off();
-            step_t *st = &TSEL->step[start];
+            step_t value=TSEL->step[start],*st=&value;
             uint32_t j = notes_manual_slot(st);
             for (; j + 1u < st->n; j++) st->note[j] = st->note[j + 1u];
-            st->n--; ui.note_slot = 0; fm1_irq_on(); ui_message("NOTE DELETED"); return;
+            st->n--; if(!pattern_set_step(TSEL,start,st)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
+            ui.note_slot = 0; fm1_irq_on(); ui_message("NOTE DELETED"); return;
         }
         if (TSEL->step[ui.cursor].flags & SF_RECORDED) { ui_message("SELECT A NOTE"); return; }
     }
@@ -1510,13 +1524,13 @@ static void step_delete_edit(void)
 static void seq_entry_notes(const uint8_t *n, uint32_t cnt)
 {
     track_t *t = TSEL;
-    step_t *st = &t->step[ui.cursor];
+    step_t value=t->step[ui.cursor],*st=&value;
     uint32_t i, j;
     if (!cnt)
         return;
     if (!ui.entry_open) {
         step_history.cursor_before = ui.cursor;
-        ui.entry_open = 1;
+
         if (!settings_chord_add) st->n = 0;
         st->flags &= (uint8_t)~SF_RECORDED;
         st->time = ST_NOTE;
@@ -1535,6 +1549,7 @@ static void seq_entry_notes(const uint8_t *n, uint32_t cnt)
             }
         }
     }
+    if(pattern_set_step(t,ui.cursor,st))ui.entry_open=1;
 }
 
 /* Complete entry after knobs, so the final SELECT detent still edits the note being released. */
@@ -1676,7 +1691,7 @@ static void page_tap(uint32_t b)
         if (live_rec_sel() && notes_have_recording(TSEL)) { ui_message("STOP RECORDING"); return; }
         fm1_irq_off();
         if (drum_track(TSEL))
-            step_clear(&TSEL->step[ui.cursor]);
+            {step_t empty={.time=ST_REST};pattern_set_step(TSEL,ui.cursor,&empty);}
         else
             step_delete(TSEL, ui.cursor);
         fm1_irq_on();

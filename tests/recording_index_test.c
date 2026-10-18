@@ -26,7 +26,7 @@ static __attribute__((noinline)) uint32_t scanner(track_t *t,const step_t *s,uin
     for(uint32_t i=0;i<RECORD_MAX;i++){
         const recorded_note_t *r=&recording[i];
         uint32_t view=r->step&128u?0u:(r->step&63u)+!!(r->step&64u);
-        if(!r->vel || (r->owner&31u)!=(uint32_t)(t-trk)*NPAT+t->pattern ||
+        if(!r->vel || ((r->owner&31u)|((uint32_t)(r->extended&1u)<<5))!=(uint32_t)(t-trk)*NPAT+t->pattern ||
            (r->step&63u)>=(uint32_t)t->p[P_SLEN] || view!=t->seq_idx ||
            t->step[view].time!=ST_NOTE || !(t->step[view].flags&SF_RECORDED))continue;
         for(uint32_t k=0;k<s->n;k++)if(s->note[k]==r->note)skip|=1u<<k;
@@ -52,7 +52,7 @@ static recorded_note_t event(uint32_t owner)
 {
     recorded_note_t r={0};uint32_t actual=rand_u()%NSTEP,rounded=rand_u()>>31;
     r.step=(uint8_t)(actual|(rounded?64u:0u)|(rounded && actual==63u?128u:0u));
-    r.note=(uint8_t)(rand_u()%128u);r.vel=100;r.duration=1000;r.owner=(uint8_t)owner;
+    r.note=(uint8_t)(rand_u()%128u);r.vel=100;r.duration=1000;recorded_set_owner(&r,owner);
     return r;
 }
 static void fixture(uint32_t count,uint32_t dense)
@@ -77,7 +77,7 @@ static void counts_match(void)
 {
 #if MELODEE_RECORD_INDEX
     uint16_t count[NTRK*NPAT]={0};
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)count[recording[i].owner&31u]++;
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)count[recorded_owner(&recording[i])]++;
     assert(!memcmp(count,recording_pitch_count,sizeof count));
 #endif
 }
@@ -115,7 +115,7 @@ static void parity(void)
     for(uint32_t n=0;n<20000;n++){
         uint32_t i=rand_u()%RECORD_MAX,owner=(rand_u()>>8)%32u;
         track_t *t=&trk[owner/NPAT];t->pattern=(uint8_t)(owner%NPAT);t->p[P_SLEN]=(int16_t)(1u+(rand_u()>>8)%64u);
-        if(recording[i].vel)recording_remove(&trk[(recording[i].owner&31u)/NPAT],i);
+        if(recording[i].vel)recording_remove(&trk[(recorded_owner(&recording[i]))/NPAT],i);
         if(n%5u){recorded_note_t r=event(owner);recording_restore_note(t,i,r);t->seq_idx=(uint16_t)(r.step&128u?0u:(r.step&63u)+!!(r.step&64u));}
         else t->seq_idx=(uint16_t)(rand_u()%NSTEP);
         step_t *s=&t->step[t->seq_idx];s->time=ST_NOTE;s->flags=SF_RECORDED;

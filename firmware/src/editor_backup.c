@@ -87,8 +87,7 @@ static const uint8_t *ed_bk_object(uint32_t id,uint32_t *len)
         }
         return ED_BK_RAW;                   /* empty: a valid pointer, zero length */
 #else
-        if (bank_valid(proj_bank_slot[slot], BANK_STORE_SIZE) &&
-            !memcmp(proj_bank_slot[slot] + 8u, &proj_slot[slot], sizeof proj_slot[slot])) {
+        if (proj_cache_matches(slot)) {
             *len = BANK_STORE_SIZE; return proj_bank_slot[slot];
         }
         if (project_used(slot)) *len = sizeof proj_slot[slot];

@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Bounded live REC/overdub takes for the guarded CPU runner. The expected take
  * is the firmware's own MIDI/recording code replaying the same schedule; device
- * FBKK is decoded by the same validator. Onsets and releases keep a quarter
+ * project image is decoded by the same validator. Onsets and releases keep a quarter
  * step from the boundaries that decide cells, overview rounding and ties, so
  * bounded input jitter cannot change the take's structure. No personal data,
  * slots or files: raw bytes and text go to stdout only. */
@@ -156,11 +156,11 @@ static uint32_t take_decode(take_record_t *out, const uint8_t *raw)
     uint32_t n = 0;
     if (!take_restore(raw)) return RECORD_MAX + 1u;
     for (uint32_t i = 0; i < RECORD_MAX; i++) if (recording[i].vel)
-        out[n++] = (take_record_t){recording[i], (uint8_t)((recording[i].owner & 31u) / NPAT)};
+        out[n++] = (take_record_t){recording[i], (uint8_t)(recorded_owner(&recording[i]) / NPAT)};
     for (uint32_t i = 1; i < n; i++) {           /* canonical: track, bank, cell, note, onset */
         take_record_t v = out[i];
         uint32_t j = i;
-        #define TAKE_KEY(x) ((uint64_t)((x).r.owner & 31u) << 40 | (uint64_t)((x).r.step & 63u) << 32 | (uint64_t)(x).r.note << 24 | (uint64_t)(x).r.on << 4 | ((x).r.step >> 6))
+        #define TAKE_KEY(x) ((uint64_t)recorded_owner(&(x).r) << 40 | (uint64_t)((x).r.step & 63u) << 32 | (uint64_t)(x).r.note << 24 | (uint64_t)(x).r.on << 4 | ((x).r.step >> 6))
         while (j && TAKE_KEY(out[j - 1u]) > TAKE_KEY(v)) { out[j] = out[j - 1u]; j--; }
         #undef TAKE_KEY
         out[j] = v;
@@ -172,8 +172,8 @@ static void take_print(FILE *f, const char *tag, const uint8_t *raw)
     uint32_t n = take_decode(take_records, raw);
     for (uint32_t i = 0; i < n; i++) {
         const recorded_note_t *r = &take_records[i].r;
-        fprintf(f, "%sE %u %u %u %u %u %u %u %u %u %d %u\n", tag, take_records[i].track, (r->owner & 31u) % NPAT,
-                r->step & 63u, r->step >> 6, r->on, r->duration, r->owner >> 5, r->note, r->vel, r->pitch, r->length);
+        fprintf(f, "%sE %u %u %u %u %u %u %u %u %u %d %u\n", tag, take_records[i].track, recorded_owner(r) % NPAT,
+                r->step & 63u, r->step >> 6, r->on, r->duration, recorded_exponent(r), r->note, r->vel, r->pitch, recorded_gate(r));
     }
     /* Overview of the active banks; the fractional gate byte is timing. */
     for (uint32_t k = 0; k < NTRK; k++) for (uint32_t i = 0; i < NSTEP; i++) {
@@ -233,7 +233,7 @@ static int take_check(const take_spec_t *s, uint32_t jitter)
         for (; j < n; j++) {
             const recorded_note_t *r = &take_records[j].r;
             if (used[j] || take_records[j].track != x->track || r->note != x->note || r->vel != x->vel ||
-                (r->step & 63u) != x->step || (r->step >> 6) || (r->owner & 31u) % NPAT != trk[x->track].pattern) continue;
+                (r->step & 63u) != x->step || (r->step >> 6) || recorded_owner(r) % NPAT != trk[x->track].pattern) continue;
             uint32_t d = r->on > want ? r->on - want : want - r->on;
             if (d <= bound && r->duration) break;
         }
@@ -249,10 +249,10 @@ static int take_same_structure(const take_record_t *a, const take_record_t *b, u
     for (uint32_t i = 0; i < n; i++) {
         recorded_note_t x = a[i].r, y = b[i].r;
         uint32_t d = x.on > y.on ? x.on - y.on : y.on - x.on;
-        uint32_t lx = (uint32_t)x.duration << (x.owner >> 5), ly = (uint32_t)y.duration << (y.owner >> 5);
+        uint32_t lx = (uint32_t)x.duration << recorded_exponent(&x), ly = (uint32_t)y.duration << recorded_exponent(&y);
         uint32_t dl = lx > ly ? lx - ly : ly - lx;
-        if (d > bound || dl > 2u * bound + (1u << (x.owner >> 5)) + (1u << (y.owner >> 5))) return 0;
-        x.on = y.on = 0; x.duration = y.duration = 0; x.owner &= 31u; y.owner &= 31u;
+        if (d > bound || dl > 2u * bound + (1u << recorded_exponent(&x)) + (1u << recorded_exponent(&y))) return 0;
+        x.on = y.on = 0; x.duration = y.duration = 0; recorded_set_exponent(&x,0); recorded_set_exponent(&y,0);
         if (a[i].track != b[i].track || memcmp(&x, &y, sizeof x)) return 0;
     }
     return 1;
@@ -296,7 +296,7 @@ static int take_selftest(void)
     bad = specs[0]; bad.base = 256; assert(!take_valid(&bad));
     bad = specs[0]; bad.mask = 3; assert(!take_valid(&bad));
     bad = specs[0]; bad.bpm = 170; assert(!take_valid(&bad));
-    printf("CPU live takes: %u REC/overdub schedules, native simulation, jitter bounds and FBKK decoding\n", cases);
+    printf("CPU live takes: %u REC/overdub schedules, native simulation, jitter bounds and project image decoding\n", cases);
     return 0;
 }
 

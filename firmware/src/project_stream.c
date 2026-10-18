@@ -14,6 +14,14 @@ static uint32_t proj_source_hash;
 /* The same representable ranges as proj_pack, without allocating its output.
  * This preflights generated images and track transforms before flash/runtime
  * mutation. The existing full codec remains the independent host oracle. */
+static int proj_prefix_encode(project_store_t *out,const project_t *q)
+{
+#if NPAT > 8u
+    return bank_prefix_pack((uint8_t *)out,q);
+#else
+    return proj_pack(out,q);
+#endif
+}
 static int proj_image_valid(const project_t *q)
 {
     int8_t oct[NTRK];uint8_t step[8];
@@ -29,8 +37,8 @@ static int proj_image_valid(const project_t *q)
         for(uint32_t i=0;i<NSTEP;i++)if(!proj_step_pack(step,&q->t[k].step[i]))return 0;
     }
     if(!mpc_octaves_pack(oct))return 0;
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(!recording_valid(&q->recording[i])||(q->recording[i].vel&&(recorded_owner(&q->recording[i])>=32u||recorded_step(&q->recording[i])>=64u)))return 0;
-    return 68u+NTRK*(P_COUNT+2u+NSTEP*8u)+sizeof q->chain+sizeof q->motion+2u+2u*NTRK<=PROJ_MPC_OCT_WIRE;
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(!recording_valid(&q->recording[i])||(q->recording[i].vel&&(recorded_owner(&q->recording[i])>=NTRK*NPAT||recorded_step(&q->recording[i])>=64u)))return 0;
+    return 68u+NTRK*(P_COUNT+2u+NSTEP*8u)+sizeof q->chain+sizeof q->motion+2u+2u*NTRK<=(NPAT>8u?PROJ_GAP_START:PROJ_MPC_OCT_WIRE);
 }
 static int proj_image_capture(int runtime)
 {
@@ -48,8 +56,8 @@ static int proj_image_capture(int runtime)
 static int proj_image_hash(int runtime,uint32_t *result)
 {
     uint32_t header[2]={BANK_MAGIC,BANK_STORE_SIZE};project_t *q=&proj_scratch;
-    if(!proj_pack(proj_image_store(),q))return 0;
-    uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),sizeof(project_store_t));
+    if(!proj_prefix_encode(proj_image_store(),q))return 0;
+    uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),BANK_PROJ_SIZE);
     if(!bank_pack_tail(proj_image_tail(),q,runtime)||!bank_tail_valid(proj_image_tail()))return 0;
     hash=fnv(hash,proj_image_tail(),BANK_TAIL_SIZE-4u);
     *result=fnv(hash,&hash,sizeof hash);return 1;
@@ -77,28 +85,46 @@ static int proj_stream_generate(st_stream_t *w,uint32_t obj)
     if(proj_stream_read_hash(obj,w->head.slot,BANK_ACTIVE_OFF,BANK_TAIL_SIZE-4u,0,&check)||~check!=tail_crc)return -7;
     /* The tail is now immutable flash scratch; its RAM becomes the active
      * serializer output. The decoded project remains untouched beside it. */
-    if(!proj_pack(proj_image_store(),q))return -1;
+    if(!proj_prefix_encode(proj_image_store(),q))return -1;
     uint32_t header[2]={BANK_MAGIC,BANK_STORE_SIZE};
-    uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),sizeof(project_store_t));
-    uint32_t crc=st_crc32_update(st_crc32_update(0xffffffffu,header,sizeof header),proj_image_store(),sizeof(project_store_t));
+    uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),BANK_PROJ_SIZE);
+    uint32_t crc=st_crc32_update(st_crc32_update(0xffffffffu,header,sizeof header),proj_image_store(),BANK_PROJ_SIZE);
     if(proj_stream_read_hash(obj,w->head.slot,BANK_ACTIVE_OFF,BANK_TAIL_SIZE-4u,&hash,&crc))return -7;
     if((rc=st_stream_write_at(w,0,header,sizeof header))||
-       (rc=st_stream_write_at(w,8u,proj_image_store(),sizeof(project_store_t)))||
+       (rc=st_stream_write_at(w,8u,proj_image_store(),BANK_PROJ_SIZE))||
        (rc=st_stream_write_at(w,BANK_STORE_SIZE-4u,&hash,4u)))return rc;
     crc=st_crc32_update(crc,&hash,4u);st_stream_seal(w,crc);
     proj_source_hash=fnv(hash,&hash,4u);
     return st_stream_check(w);
 }
+#if NPAT > 8u
+static int proj_legacy_tail_read(void *context,uint32_t off,void *out,uint32_t n)
+{uint32_t *where=context;return st_read_range(where[0],where[1],8u+PROJ_STORE_SIZE+off,out,n);}
+#endif
 static int proj_stream_load(uint32_t obj,uint32_t copy,uint32_t len)
 {
     project_t *q=&proj_scratch;uint32_t hash=2166136261u;
     proj_source_hash=0;
     if(bank_full(len)){
         uint32_t header[2];
-        if(st_read_range(obj,copy,0,header,sizeof header)||header[0]!=BANK_MAGIC||header[1]!=len)return 0;
-        if(st_read_range(obj,copy,8u,proj_image_store(),sizeof(project_store_t)))return 0;
-        hash=fnv(fnv(hash,header,sizeof header),proj_image_store(),sizeof(project_store_t));
-        if(!proj_import(q,proj_image_store(),sizeof(project_store_t)))return 0;
+        if(st_read_range(obj,copy,0,header,sizeof header)||header[1]!=len)return 0;
+#if NPAT > 8u
+        if(header[0]==BANK_LEGACY_MAGIC){
+            uint32_t sum,context[2]={obj,copy};
+            if(st_read_range(obj,copy,len-4u,&sum,4)||proj_stream_read_hash(obj,copy,0,len-4u,&hash,0)||hash!=sum)return 0;
+            proj_source_hash=fnv(hash,&sum,4);
+            if(st_read_range(obj,copy,8,proj_image_store(),PROJ_STORE_SIZE)||!proj_import(q,proj_image_store(),PROJ_STORE_SIZE))return 0;
+            return bank_image_encode(proj_image_tail(),q,0,proj_legacy_tail_read,context)&&bank_tail_valid(proj_image_tail());
+        }
+#endif
+        if(header[0]!=BANK_MAGIC)return 0;
+        if(st_read_range(obj,copy,8u,proj_image_store(),BANK_PROJ_SIZE))return 0;
+        hash=fnv(fnv(hash,header,sizeof header),proj_image_store(),BANK_PROJ_SIZE);
+        #if NPAT > 8u
+        if(!bank_prefix_unpack(q,(uint8_t *)proj_image_store()))return 0;
+#else
+        if(!proj_import(q,proj_image_store(),BANK_PROJ_SIZE))return 0;
+#endif
         if(st_read_range(obj,copy,BANK_ACTIVE_OFF,proj_image_tail(),BANK_TAIL_SIZE))return 0;
         hash=fnv(hash,proj_image_tail(),BANK_TAIL_SIZE-4u);uint32_t sum;
         memcpy(&sum,proj_image_tail()+BANK_TAIL_SIZE-4u,4);
@@ -111,13 +137,15 @@ static int proj_stream_load(uint32_t obj,uint32_t copy,uint32_t len)
     }
     if(len==sizeof *q){
         if(st_read_range(obj,copy,0,q,len))return 0;
-        return proj_ok(q);
+        if(!proj_ok(q))return 0;
+        if(q->magic==PROJ_OLD_MAGIC&&!proj_legacy_owners(q))return 0;
+        return 1;
     }
     /* Prior raw snapshots: expand/convert each ten-byte note without ever
      * holding the complete old and new layouts at once. */
     if(len==sizeof *q+RECORD_MAX){
         uint32_t sum,head[2];
-        if(st_read_range(obj,copy,0,head,sizeof head)||head[0]!=PROJ_MAGIC||head[1]!=len||
+        if(st_read_range(obj,copy,0,head,sizeof head)||(head[0]!=PROJ_MAGIC&&head[0]!=PROJ_OLD_MAGIC)||head[1]!=len||
            st_read_range(obj,copy,len-4u,&sum,4u)||proj_stream_read_hash(obj,copy,0,len-4u,&hash,0)||hash!=sum)return 0;
         uint32_t at=__builtin_offsetof(project_t,recording),end=__builtin_offsetof(project_t,pattern);
         if(st_read_range(obj,copy,0,q,at))return 0;
@@ -131,7 +159,7 @@ static int proj_stream_load(uint32_t obj,uint32_t copy,uint32_t len)
             q->recording[i]=v;
         }
         if(st_read_range(obj,copy,at+RECORD_MAX*10u,(uint8_t *)q+end,sizeof *q-end))return 0;
-        q->size=sizeof *q;q->sum=proj_sum(q);return proj_ok(q);
+        q->size=sizeof *q;if(head[0]==PROJ_OLD_MAGIC){if(!proj_legacy_owners(q))return 0;}else q->sum=proj_sum(q);return proj_ok(q);
     }
     return 0;
 }

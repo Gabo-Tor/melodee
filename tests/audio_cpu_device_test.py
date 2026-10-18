@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Exercise restoration failure paths without a device or persistent fixture."""
 import sys
+import tempfile
 import unittest
 import zlib
 from pathlib import Path
@@ -211,6 +212,22 @@ class CpuBaselineTest(unittest.TestCase):
         notes = [(0, 60), (1, 36), (3, 38)]
         self.assertEqual(cpu.configure_workload(d, [0, 5, 2, 4], 0, notes),
                          [(0, 60), (1, 49), (3, 49)])
+
+    def test_function_fixture_supports_old_and_sixteen_bank_offsets(self):
+        for magic, offset in ((b'FBKK',27904-88),(b'FBKL',11412)):
+            raw=bytearray(27904);raw[:4]=magic;raw[4:8]=len(raw).to_bytes(4,'little');raw[offset:offset+4]=b'FN61'
+            d=Device();original_request=d.request
+            d.request=lambda cmd,a=(): [3,0,0] if cmd==74 else original_request(cmd,a)
+            with tempfile.TemporaryDirectory() as folder, patch.object(legacy.time,'sleep'):
+                Path(folder,'0.bin').write_bytes(raw)
+                legacy.restore_runtime(d,Path(folder),2)
+            restored=d.objects[0]
+            expected=bytearray(raw)
+            for track in range(4):expected[offset+4+track*16+15]=2
+            checksum=2166136261
+            for byte in expected[:-4]:checksum=((checksum^byte)*16777619)&0xffffffff
+            expected[-4:]=checksum.to_bytes(4,'little')
+            self.assertEqual(restored,expected)
 
     def test_setup_refuses_track_not_in_use_before_loading_presets(self):
         # Firmware ignores selection of a track beyond song.ntrk; the preset

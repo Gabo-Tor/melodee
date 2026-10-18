@@ -87,7 +87,7 @@ static uint32_t fnv1(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
 /* ---------------------------------------------------------- PATTERNS --- */
 #define PT_NUM_Y H_HEAD                                 /* the patterns' numbers: rows 30 .. 49 */
 #define PT_ROW_Y 50                                     /* a track a row: 38 px, to 201 */
-#define PT_ROW_H 38
+#define PT_ROW_H (NPAT>8u?42:38)
 #define PT_SONG_Y (PT_ROW_Y + 4 * PT_ROW_H)             /* the song: 202 .. 239 */
 #define PT_CELL_X(b) (30 + 26 * (int32_t)(b))           /* a cell: 23 x 32 at row y 2 */
 static struct { uint32_t num, row[NTRK], prog[NTRK], song; } ptv;
@@ -212,9 +212,9 @@ static void pt_song(void)
     ptv.song = sig;
     for (uint32_t band = 0; band < (uint32_t)(240 - PT_SONG_Y); band += CV_MAX / (240)) {
         cv_begin_band(240,240 - PT_SONG_Y,T_BG,band);
-        cv_text_on(8, ty_y(19, TY_LB), TY_LB, jamrows ? "JAM" : "SONG", T_MID, T_BG);
+        cv_text_on(8, ty_y((240-PT_SONG_Y)/2,TY_LB), TY_LB, jamrows ? "JAM" : "SONG", T_MID, T_BG);
         if (!n) {
-            cv_text_on(62, ty_y(19, TY_LB), TY_LB, "Empty", T_DIM, T_BG);
+            cv_text_on(62, ty_y((240-PT_SONG_Y)/2,TY_LB), TY_LB, "Empty", T_DIM, T_BG);
         } else {
             first = cur > 2u ? cur - 2u : 0u;
             if (n > 6u && first > n - 6u)
@@ -225,15 +225,48 @@ static void pt_song(void)
                 int32_t x = 62 + 29 * (int32_t)(i - first);
                 int on = i == cur;
                 char l[2] = {row_letter(pat, i), 0};
-                cv_rrect(x, 7, 26, 24, 6, on ? T_TEXT : T_SURF, T_BG);
-                cv_text_c(x + 13, ty_y(19, TY_LB), TY_LB, l, on ? T_BG : T_MID, on ? T_TEXT : T_SURF);
+                cv_rrect(x,NPAT>8u?3:7,26,NPAT>8u?16:24,4, on ? T_TEXT : T_SURF, T_BG);
+                cv_text_c(x + 13, ty_y((240-PT_SONG_Y)/2,TY_LB), TY_LB, l, on ? T_BG : T_MID, on ? T_TEXT : T_SURF);
             }
         }
         cv_blit_band(0, PT_SONG_Y);
     }
 }
+#if NPAT > 8u
+static void patterns_draw16(void)
+{
+    cv_begin(240,20,T_BG);cv_text_on(32,ty_y(10,TY_LB),TY_LB,"1-8 / 9-16",T_MID,T_BG);cv_blit(0,H_HEAD);
+    for(uint32_t k=0;k<trk_n();k++){
+        const track_t *t=&trk[k];uint16_t tc=t->p[P_MUTE]?T_DIM:T_TRK(k);
+        uint32_t sig=steps_hash(t)^t->pattern_gen*977u^t->pattern*7919u^t->pattern_next*131u^(k==song.sel?8192u:0u)^ux.gen*31u^ux.pal*1031u^(uint32_t)t->p[P_MUTE]*8192u;
+        if(song.playing)sig^=(t->seq_idx+1u)*40503u;
+        if(ptc_on()&&k==ui.ptc_trk)sig^=(ui.ptc_src+16u*ui.ptc_dst+1u)*613u;
+        if(!ui.force&&sig==ptv.row[k])continue;
+        ptv.row[k]=sig;
+        cv_begin(240,42,T_BG);char number[4];fmt_int(number,k+1);
+        cv_rrect(2,5,24,32,6,tc,T_BG);
+        if(k!=song.sel)cv_rrect(3,6,22,30,5,T_BG,tc);
+        cv_text_c(14,ty_y(21,TY_TX),TY_TX,number,k==song.sel?T_INK:tc,k==song.sel?tc:T_BG);
+        for(uint32_t b=0;b<16;b++){
+            int32_t x=30+26*(b%8u),y=1+20*(b/8u);int active=b==t->pattern,dest=ptc_on()&&k==ui.ptc_trk&&b==ui.ptc_dst;
+            uint16_t bg=active?tc:pattern_used(k,b)?T_SURF:T_BG,fg=active?T_INK:T_MID;
+            cv_rrect(x,y,23,19,3,dest?T_THEME:active?tc:T_LINE,T_BG);
+            cv_rrect(x+1,y+1,21,17,2,bg,dest?T_THEME:active?tc:T_LINE);
+            fmt_int(number,b+1);cv_text_c(x+11,ty_y(y+9,TY_LB),TY_LB,number,fg,bg);
+            if(b==t->pattern_next)cv_dashed(x,y,23,19,3,tc);
+            if(active&&song.playing){uint32_t len=t->p[P_SLEN];cv_rect(x+2,y+16,len?(t->seq_idx%len+1u)*19u/len:0u,2,T_INK);}
+        }
+        cv_blit(0,50u+k*42u);
+    }
+    if(trk_n()<4u)lcd_fill(0,50u+42u*trk_n(),240,(4u-trk_n())*42u,T_BG);
+    pt_song();
+}
+#endif
 static void patterns_draw(void)
 {
+#if NPAT > 8u
+    patterns_draw16();return;
+#endif
     uint32_t k;
     pt_numbers();
     pt_song();
@@ -467,7 +500,7 @@ static void sg_row(uint32_t k)
         uint32_t r = sg.first + j, p = chain_patterns[r][k], e = j + 1u, pick = k == song.sel && r == sg.sel;
         int used = pattern_used(k, p);
         int32_t x = 9 + SG_COL_W * (int32_t)j, w;
-        char l[4] = {'P', (char)('1' + p % NPAT), 0, 0};
+        char l[4]="P";fmt_int(l+1,p%NPAT+1);
         while (!pick && used && e < SG_COLS && sg.first + e < chain_config.count &&
                chain_patterns[sg.first + e][k] == p && !(k == song.sel && sg.first + e == sg.sel))
             e++;

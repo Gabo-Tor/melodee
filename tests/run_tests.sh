@@ -272,6 +272,8 @@ core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
 
 if core; then
+    t "16 patterns: complete storage, legacy mapping, high owners and shared capacity" patterns16_test -O1 $FW
+    t "16 patterns: complete storage, legacy mapping, high owners and shared capacity" patterns16_ui_test -O1 $FW
     t "flash storage (A/B, torn writes)" storage_test
     t "streamed banks: unpublished copies, page/header power cuts and readback" storage_stream_test
     t "streamed projects: exact codec bytes, dirty hashes, rename, legacy import and track removal" project_stream_test -O1 $FW

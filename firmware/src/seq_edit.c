@@ -40,26 +40,36 @@ static uint32_t step_note_length(const track_t *t, uint32_t start)
 
 /* Delete the whole selected note, even when the cursor is on its tie tail.
  * An orphan tie still clears its remaining tail; a rest clears just itself. */
-static void step_delete(track_t *t, uint32_t at)
+static void step_delete_work(track_t *t,step_t *steps, uint32_t at)
 {
-    uint32_t len = step_pattern_len(t), start = step_note_start(t, at), i;
+    uint32_t len=step_pattern_len(t),start=at,i;
+    if(at>=len)return;
+    for(i=0;i<len;i++){
+        if(step_on(&steps[start]))break;
+        if(steps[start].time!=ST_TIE){start=NSTEP;break;}
+        start=(start+len-1u)%len;
+    }
+    if(i==len)start=NSTEP;
     if (at >= len)
         return;
     if (start < NSTEP)
         at = start;
-    step_clear(&t->step[at]);
+    step_clear(&steps[at]);
     for (i = 1; i < len; i++) {
-        step_t *st = &t->step[(at + i) % len];
+        step_t *st = &steps[(at + i) % len];
         if (st->time != ST_TIE)
             break;
         step_clear(st);
     }
 }
 
+static void step_delete(track_t *t,uint32_t at)
+{step_t steps[NSTEP];memcpy(steps,t->step,sizeof steps);step_delete_work(t,steps,at);if(pattern_can_steps(t,steps))memcpy(t->step,steps,sizeof steps);}
+
 /* Move a complete note through free space, with loop wrap. Walk each requested
  * step so a fast turn cannot jump over another note. Preserve every step's
  * data, including chord, velocity and flags. The caller makes the edit atomic. */
-static uint32_t step_note_move(track_t *t, uint32_t start, int32_t delta)
+static uint32_t step_note_move_work(track_t *t,step_t *steps, uint32_t start, int32_t delta)
 {
     uint32_t len = step_pattern_len(t), n = step_note_length(t, start), target = start, i;
     step_t saved[NSTEP];
@@ -73,8 +83,8 @@ static uint32_t step_note_move(track_t *t, uint32_t start, int32_t delta)
         uint32_t after = (next + n) % len;
         /* Only one new step enters the span on each move. Source steps will
          * be cleared. Keep the search linear while audio interrupts pause. */
-        if (((edge + len - start) % len >= n && (step_on(&t->step[edge]) || t->step[edge].time == ST_TIE)) ||
-            ((after + len - start) % len >= n && t->step[after].time == ST_TIE))
+        if (((edge + len - start) % len >= n && (step_on(&steps[edge]) || steps[edge].time == ST_TIE)) ||
+            ((after + len - start) % len >= n && steps[after].time == ST_TIE))
             break;
         target = next;
         delta -= dir;
@@ -82,37 +92,43 @@ static uint32_t step_note_move(track_t *t, uint32_t start, int32_t delta)
     if (target == start)
         return start;
     for (i = 0; i < n; i++)
-        saved[i] = t->step[(start + i) % len];
+        saved[i] = steps[(start + i) % len];
     saved[0].flags &= (uint8_t)~SF_RECORDED;
     for (i = 0; i < n; i++)
-        step_clear(&t->step[(start + i) % len]);
+        step_clear(&steps[(start + i) % len]);
     for (i = 0; i < n; i++)
-        t->step[(target + i) % len] = saved[i];
+        steps[(target + i) % len] = saved[i];
     return target;
 }
 
+static uint32_t step_note_move(track_t *t,uint32_t start,int32_t delta)
+{step_t steps[NSTEP];memcpy(steps,t->step,sizeof steps);uint32_t n=step_note_move_work(t,steps,start,delta);if(!pattern_can_steps(t,steps))return start;memcpy(t->step,steps,sizeof steps);return n;}
+
 /* Extend through empty steps, stopping before existing notes. Shrinking only
  * clears this note's old tail. Never join a separate orphan tie chain. */
-static uint32_t step_note_resize(track_t *t, uint32_t start, int32_t wanted)
+static uint32_t step_note_resize_work(track_t *t,step_t *steps, uint32_t start, int32_t wanted)
 {
     uint32_t len = step_pattern_len(t), old = step_note_length(t, start), n, limit, i;
     if (!old)
         return 0;
     limit = old;
     while (limit < len) {
-        const step_t *st = &t->step[(start + limit) % len];
-        if (step_on(st) || st->time == ST_TIE || t->step[(start + limit + 1u) % len].time == ST_TIE)
+        const step_t *st = &steps[(start + limit) % len];
+        if (step_on(st) || st->time == ST_TIE || steps[(start + limit + 1u) % len].time == ST_TIE)
             break;
         limit++;
     }
     n = (uint32_t)clamp(wanted, 1, (int32_t)limit);
-    t->step[start].flags &= (uint8_t)~SF_RECORDED;
+    steps[start].flags &= (uint8_t)~SF_RECORDED;
     for (i = n; i < old; i++)
-        step_clear(&t->step[(start + i) % len]);
+        step_clear(&steps[(start + i) % len]);
     for (i = old; i < n; i++) {
-        step_t *st = &t->step[(start + i) % len];
+        step_t *st = &steps[(start + i) % len];
         step_clear(st);
         st->time = ST_TIE;
     }
     return n;
 }
+
+static uint32_t step_note_resize(track_t *t,uint32_t start,int32_t wanted)
+{step_t steps[NSTEP];memcpy(steps,t->step,sizeof steps);uint32_t n=step_note_resize_work(t,steps,start,wanted);if(!pattern_can_steps(t,steps))return step_note_length(t,start);memcpy(t->step,steps,sizeof steps);return n;}

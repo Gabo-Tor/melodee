@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+#if NPAT > 8u
+#include "project_prefix.c"
+#include "pattern_store16.c"
+#else
 /* FBKG: a FUN13 sound/current-pattern record plus seven other banks per track,
  * all bank timings, arrangement assignments and bounded motion bank tags.
  * Five base sectors plus two extension sectors per A/B copy; the 27,200-byte record is validated in main-loop
@@ -154,3 +158,5 @@ static void bank_restore_tail(const uint8_t *raw)
 
 
 static void bank_restore(const uint8_t *raw){bank_restore_tail(raw+BANK_ACTIVE_OFF);}
+
+#endif

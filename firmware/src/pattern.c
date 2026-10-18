@@ -128,6 +128,37 @@ static uint32_t pattern_steps_cost(const step_t *steps, uint32_t n)
     }
     return cost;
 }
+/* The saved format budgets all banks, including active/pending patterns, so
+ * a switch cannot make an admitted project unsaveable. Thirty-two arbitrary
+ * dense 64-step banks retain the previous project capacity. */
+#define PAT_WIRE_BUDGET (32u*64u*8u)
+#define PAT_WIRE_LIMIT (NPAT>8u && NSTEP==64u)
+static uint32_t pattern_block_wire_cost(const step_t *steps)
+{
+    uint32_t same,mask=pattern_block_shape(steps,&same);
+    return !mask?0u:same?8u:2u+8u*(uint32_t)__builtin_popcount(mask);
+}
+static uint32_t pattern_wire_cost(const step_t *steps)
+{
+    uint32_t n=0;for(uint32_t b=0;b<NSTEP;b+=16u)n+=pattern_block_wire_cost(steps+b);
+    return !n?0u:n+1u<NSTEP*8u?n+1u:NSTEP*8u;
+}
+static uint32_t pattern_bank_wire_cost(uint32_t k,uint32_t bank)
+{
+    if(bank==trk[k].pattern)return pattern_wire_cost(trk[k].step);
+    if(pattern_stage[k].pending&&pattern_stage[k].bank==bank)return pattern_wire_cost(pattern_stage[k].data.step);
+    uint32_t n=0;
+    for(uint32_t b=0;b<PAT_BLOCKS;b++){
+        const pattern_block_t *p=&pattern_blocks[k][bank][b];
+        if(p->mask)n+=p->head&PAT_REPEAT?8u:2u+8u*(uint32_t)__builtin_popcount(p->mask);
+    }
+    return !n?0u:n+1u<NSTEP*8u?n+1u:NSTEP*8u;
+}
+static uint32_t pattern_total_wire_cost(void)
+{
+    uint32_t n=0;for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<NPAT;b++)n+=pattern_bank_wire_cost(k,b);
+    return n;
+}
 static uint32_t pattern_bank_cost(uint32_t k, uint32_t bank)
 {
     if (bank == trk[k].pattern) return pattern_steps_cost(trk[k].step, NSTEP);
@@ -154,16 +185,28 @@ static int pattern_can_write(uint32_t k, uint32_t bank, const pattern_t *p)
 {
     if (k >= NTRK || bank >= NPAT) return 0;
 #if PAT_SHARED_LIMIT
-    return pattern_total_cost() - pattern_bank_cost(k, bank) + pattern_steps_cost(p->step, NSTEP) <= PAT_DENSE_BUDGET;
+    return pattern_total_cost()-pattern_bank_cost(k,bank)+pattern_steps_cost(p->step,NSTEP)<=PAT_DENSE_BUDGET &&
+        (!PAT_WIRE_LIMIT || pattern_total_wire_cost()-pattern_bank_wire_cost(k,bank)+pattern_wire_cost(p->step)<=PAT_WIRE_BUDGET);
 #else
     (void)p; return 1;
 #endif
 }
-static int pattern_set_step(track_t *t, uint32_t index, const step_t *step)
+/* In ordinary projects the cold pool leaves enough room for every expanded
+ * and staged bank to become dense. This conservative bound avoids scanning
+ * banks on each recorded onset; near the limit use the exact codec costs. */
+static int pattern_room_for_any_edit(void)
+{
+    uint32_t expanded=2u*NTRK;
+    return pattern_pool_used+expanded*PAT_BLOCKS*PAT_BLOCK_CHUNKS<=PAT_DENSE_BUDGET &&
+        (!PAT_WIRE_LIMIT || pattern_pool_used*PAT_CHUNK_BYTES+expanded*NSTEP*8u+
+            NTRK*NPAT*(1u+2u*PAT_BLOCKS)<=PAT_WIRE_BUDGET);
+}
+static int pattern_step_change(track_t *t, uint32_t index, const step_t *step,int publish)
 {
     if (index >= NSTEP) return 0;
     uint32_t f = pattern_guard();
 #if PAT_SHARED_LIMIT
+    if(pattern_room_for_any_edit()){if(publish)t->step[index]=*step;pattern_unguard(f);return 1;}
     uint32_t base = index / PAT_BLOCK_STEPS * PAT_BLOCK_STEPS;
     step_t block[PAT_BLOCK_STEPS]; memcpy(block, t->step + base, sizeof block);
     block[index - base] = *step;
@@ -171,9 +214,37 @@ static int pattern_set_step(track_t *t, uint32_t index, const step_t *step)
         pattern_steps_cost(block, PAT_BLOCK_STEPS) > PAT_DENSE_BUDGET) {
         pattern_full = 1; pattern_unguard(f); return 0;
     }
+    uint32_t old=0;for(uint32_t b=0;b<NSTEP;b+=16u)old+=pattern_block_wire_cost(t->step+b);
+    uint32_t next=old-pattern_block_wire_cost(t->step+base)+pattern_block_wire_cost(block);
+    uint32_t ow=!old?0u:old+1u<NSTEP*8u?old+1u:NSTEP*8u;
+    uint32_t nw=!next?0u:next+1u<NSTEP*8u?next+1u:NSTEP*8u;
+    if(PAT_WIRE_LIMIT && pattern_total_wire_cost()-ow+nw>PAT_WIRE_BUDGET){pattern_full=1;pattern_unguard(f);return 0;}
 #endif
-    t->step[index] = *step; pattern_unguard(f); return 1;
+    if(publish)t->step[index] = *step; pattern_unguard(f); return 1;
 }
+static int pattern_set_step(track_t *t,uint32_t index,const step_t *step){return pattern_step_change(t,index,step,1);}
+static int pattern_can_set_step(track_t *t,uint32_t index,const step_t *step){return pattern_step_change(t,index,step,0);}
+static int pattern_can_steps(track_t *t,const step_t *steps)
+{
+#if PAT_SHARED_LIMIT
+    if(pattern_room_for_any_edit())return 1;
+    uint32_t k=(uint32_t)(t-trk);
+    if(pattern_total_cost()-pattern_bank_cost(k,t->pattern)+pattern_steps_cost(steps,NSTEP)>PAT_DENSE_BUDGET ||
+       (PAT_WIRE_LIMIT && pattern_total_wire_cost()-pattern_bank_wire_cost(k,t->pattern)+pattern_wire_cost(steps)>PAT_WIRE_BUDGET)){pattern_full=1;return 0;}
+#endif
+    return 1;
+}
+/* Only explicit length edits use this grid. Legacy project timing loads verbatim. */
+static int16_t pattern_length_edit(int32_t value)
+{
+#if NPAT > 8u
+    return (int16_t)clamp((value+15)/16*16,16,NSTEP);
+#else
+    return (int16_t)clamp(value,1,NSTEP);
+#endif
+}
+static int pattern_can_snapshots(track_t *t,const step_snapshot_t *snap)
+{step_t steps[NSTEP];step_snapshot_load(steps,snap);return pattern_can_steps(t,steps);}
 static void pattern_encode_block(pattern_block_t *b, const step_t *steps)
 {
     uint32_t same, mask = pattern_block_shape(steps, &same);

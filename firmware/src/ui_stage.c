@@ -456,7 +456,7 @@ static void stage_row(uint32_t k)
     uint16_t tc = mute ? T_DIM : T_TRK(k), bg = ux_mix(T_BG, tc, sel ? 24 : 11);   /* (the track's tint) */
     const aafont_t *lf = TY_LB, *nf = h >= 80 ? TY_VL : TY_TX;
     char nm[24], line[48], more[48], ml[TL_MAX][32], d[3] = {(char)('1' + k), 0, 0}, role[16];
-    char pt[3] = {'P', (char)('1' + t->pattern % NPAT), 0}, pn[3] = {'P', (char)('0' + next), 0};
+    char pt[4]="P",pn[4]="P";fmt_int(pt+1,t->pattern+1);fmt_int(pn+1,next);
     uint32_t nx = 0, i;
     int32_t pw = text_w(lf, pt) + 8, pills = idle ? 0 : pw + (next ? pw + 4 : 0);   /* (the pattern, the next one) */
     if (pending) {                                      /* browsing: the sound the list shows, not yet loaded */

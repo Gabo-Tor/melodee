@@ -395,11 +395,11 @@ static int bank_protocol(void)
 {
     int bad=0; reset(); uint8_t a[12] = {2,1,7};
     bad += check("PATTERN selects a track's bank without changing track selection", request(ED_PATTERN,a,3)==12 && !host_wire[7] && trk[2].pattern==7 && !song.sel);
-    a[2]=8;
+    a[2]=NPAT;
     bad += check("PATTERN rejects out-of-range bank IDs", request(ED_PATTERN,a,3)==12 && host_wire[7] && trk[2].pattern==7);
     uint8_t row[] = {1,1,0,2,4,7,3};
     bad += check("bank SONG independently assigns four track banks", request(ED_BANK_SONG,row,sizeof row)==17 && !host_wire[6] && chain_patterns[0][3]==7 && chain_config.row[0].repeat==3);
-    row[4]=8;
+    row[4]=NPAT;
     bad += check("malformed bank SONG leaves the arrangement unchanged", request(ED_BANK_SONG,row,sizeof row)==17 && host_wire[6]==1 && chain_patterns[0][2]==4);
     a[0]=0; uint32_t writes=host_writes;
     bad += check("sample upload and erase commands cannot write into pattern storage", request(ED_SMP_BEGIN,a,1)==0 && request(ED_SMP_ERASE,a,1)==0 && host_writes==writes && !host_erases);

@@ -422,9 +422,8 @@ static void grid_own(step_t *s, uint32_t l)
 }
 
 /* lane l of step i: on 1, off 0, toggled 2 */
-static void grid_hit(track_t *t, uint32_t i, uint32_t l, uint32_t on)
+static void grid_hit_value(step_t *s,uint32_t l,uint32_t on)
 {
-    step_t *s = &t->step[i % NSTEP];
     uint32_t b = 1u << (l % NLANE);
     s->flags &= (uint8_t)~SF_RECORDED;
     if (on == 2u)
@@ -446,15 +445,18 @@ static void grid_hit(track_t *t, uint32_t i, uint32_t l, uint32_t on)
     }
 }
 
+static void grid_hit(track_t *t,uint32_t i,uint32_t l,uint32_t on)
+{step_t value=t->step[i%NSTEP];grid_hit_value(&value,l,on);pattern_set_step(t,i%NSTEP,&value);}
+
 /* the accent of lane l at step i (on 1, off 0, toggled 2); an accent on an empty lane adds the hit */
 static void grid_acc(track_t *t, uint32_t i, uint32_t l, uint32_t on)
 {
-    step_t *s = &t->step[i % NSTEP];
+    step_t value=t->step[i%NSTEP],*s=&value;
     uint32_t b = 1u << (l % NLANE);
     if (on == 2u)
         on = !(step_accents(s) & b);
     if (on)
-        grid_hit(t, i, l, 1);
+        grid_hit_value(s,l,1);
     if (!(step_lanes(s) & b))
         return;
     grid_own(s, l % NLANE);
@@ -463,6 +465,7 @@ static void grid_acc(track_t *t, uint32_t i, uint32_t l, uint32_t on)
         s->flags &= (uint8_t)~SF_ACCENT;
     }
     s->acc = (uint8_t)(on ? s->acc | b : s->acc & ~b);
+    pattern_set_step(t,i%NSTEP,s);
 }
 
 /* SEQ cursor: wraps inside the pattern length, the bank follows, a step entry ends */
@@ -799,7 +802,7 @@ static int recording_history(int redo)
         ui.note_pick=0;ui.note_generation=recording_generation;
         ui.hot_t=0;ui.force=1;
         ui_message(redo?"REDO RECORDING":"UNDO RECORDING");
-    }else ui_message(result==2?"FINISH RECORDING":"UNDO MEMORY FULL");
+    }else ui_message(result==5?"PATTERN STORAGE FULL":result==2?"FINISH RECORDING":"UNDO MEMORY FULL");
     return 1;
 }
 
@@ -821,15 +824,17 @@ static void undo_step(int redo)
     u = &undo_lv[redo ? undo_top : undo_top - 1u];
     t = &trk[(u->trk - 1u) % NTRK];
     if (u->pattern_gen != t->pattern_gen) { undo_clear(); ui_message(redo ? "NOTHING TO REDO" : "NOTHING TO UNDO"); return; }
+    fm1_irq_off();
+    if((u->what&UNDO_PAT)&&!pattern_can_snapshots(t,u->step)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return;}
     motion_restore(t);
     motion_store_t current_motion;
     motion_snapshot_track(t, &current_motion);
     if (motion_replace_track(t, &u->motion_backup) != 0) {
-        ui_message("MOTION FULL");
+        fm1_irq_on();ui_message("MOTION FULL");
         return;
     }
     u->motion_backup = current_motion;
-    fm1_irq_off();                                /* the audio ISR must not see half a sound */
+    /* Already guarded: audio cannot see half a sound. */
     if (u->what & UNDO_SOUND) {
         uint8_t e = t->eng_req, pr = t->preset, un=t->user_native;
         uint16_t us = t->user;

@@ -139,6 +139,8 @@ static int step_history_apply(int redo)
         fm1_irq_on();
         return recording_history(redo);
     }
+    uint32_t target=(step_history.head+step_history.pos+(redo?1u:STEP_HISTORY))%(STEP_HISTORY+1u);
+    if(!pattern_can_snapshots(TSEL,step_history.state[target].step)){fm1_irq_on();ui_message("PATTERN STORAGE FULL");return 1;}
     uint32_t change = redo ? (step_history.head + step_history.pos + 1u) % (STEP_HISTORY + 1u) : step_history_index();
     if (step_history.state[change].has_removed) {
         uint32_t i = step_history.state[change].removed_index;

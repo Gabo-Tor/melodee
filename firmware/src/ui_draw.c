@@ -150,13 +150,16 @@ static void head_chip_text(char *b)
 {
     const page_t *pg = cur_page();
     uint32_t e = TSEL->eng_req % NENGINES;
+#if NPAT > 8u
+    if((fm1_in.buttons&(1u<<panel.btn[B_SEQ])) && !ui.menu && !name_on()){
+        str_cpy(b,"PATTERNS",16);return;
+    }
+#endif
     if (designer_on() && !name_on() && designer_head_chip(b)) {   /* the designer's START, FEATURES, original */
     } else if (new_on()) {                                     /* NEW SONG */
         str_cpy(b, "NEW SONG", 16);
     } else if (ptc_on()) {                              /* PATTERNS' Copy to: "copy 3 to 5" */
-        str_cpy(b, "copy 1 to 1", 16);
-        b[5] = (char)('1' + ui.ptc_src % NPAT);
-        b[10] = (char)('1' + ui.ptc_dst % NPAT);
+        str_cpy(b,"copy ",16);fmt_int(b+5,ui.ptc_src+1);str_cpy(b+str_len(b)," to ",5);fmt_int(b+str_len(b),ui.ptc_dst+1);
     } else if (ui.home) {                               /* Stage: the engine (a kit: its name, "909 KIT") */
         if (browse_pending()) { uint32_t kk, s = browse_shown(&kk); e = src_engine(s, kk); }
         if (ENGINES[eng_idx(e)] == &ENG_DRUM && !browse_pending()) sound_name(TSEL, b);
@@ -898,16 +901,16 @@ static void confirm_text(char *a, char *b)
         break;
     case CF_DEL_PAT:                                    /* PATTERNS: the track's pattern, its notes and motion */
         str_cpy(a, "DELETE PATTERN 1?", 24);
-        a[15] = (char)('1' + trk[k % NTRK].pattern % NPAT);
+        fmt_int(a+15,trk[k%NTRK].pattern+1);
         str_cpy(b, "Track 1 \xB7 notes and motion", 32);
         b[6] = (char)('1' + k % NTRK);
         break;
     case CF_PASTE_PAT:                                  /* PATTERNS' Copy to over a pattern in use */
         str_cpy(a, "REPLACE PATTERN 1?", 24);
-        a[16] = (char)('1' + ui.ptc_dst % NPAT);
+        fmt_int(a+16,ui.ptc_dst+1);
         str_cpy(b, "Track 1 \xB7 with pattern 1", 32);
         b[6] = (char)('1' + k % NTRK);
-        b[str_len(b) - 1u] = (char)('1' + ui.ptc_src % NPAT);
+        fmt_int(b+str_len(b)-1u,ui.ptc_src+1);
         break;
     case CF_CLEAR_MOTION:
         str_cpy(a, "CLEAR T1 MOTION?", 24); a[7] = (char)('1' + k % NTRK);
@@ -957,8 +960,7 @@ static void confirm_text(char *a, char *b)
                                                          * (b: CF_DETAIL) */
         uint32_t p = ui.pat_dlg % NPAT, n;
         n = (uint32_t)clamp(pattern_timing(k % NTRK, p, 0), 1, NSTEP);
-        str_cpy(a, "PATTERN 1 \xB7 ", 24);
-        a[8] = (char)('1' + p);
+        str_cpy(a,"PATTERN ",24);fmt_int(a+8,p+1);str_cpy(a+str_len(a)," \xB7 ",4);
         fmt_int(a + str_len(a), (int32_t)n);
         str_cpy(a + str_len(a), n == 1u ? " STEP" : " STEPS", 7);
         str_cpy(b, "Again: delete \xB7 other: copy\nBlinking: half \xB7 double", CF_DETAIL);

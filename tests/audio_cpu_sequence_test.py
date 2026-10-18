@@ -218,7 +218,7 @@ class SequenceTest(unittest.TestCase):
         source = sequence.ROOT/'firmware/src/core.h'
         manifest = dict(firmware_sha256={str(source): hashlib.sha256(source.read_bytes()).hexdigest()})
         raw, info = sequence.build_fixture(1024, 'free', 'all', 'long', '0124', manifest)
-        self.assertEqual(raw[:4], b'FBKK')
+        self.assertEqual(raw[:4], b'FBKL')
         self.assertEqual(int.from_bytes(raw[4:8], 'little'), len(raw))
         self.assertEqual(info['sha256'], hashlib.sha256(raw).hexdigest())
         self.assertEqual(info['events'], 1024)

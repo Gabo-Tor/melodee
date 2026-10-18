@@ -81,7 +81,7 @@ _Static_assert(MELODEE_CANVAS_ROWS>=64u && MELODEE_CANVAS_ROWS<=124u,"canvas ban
  * multi-frame archive snapshots use independent wire RAM or flash staging. */
 static union {
     uint16_t pixels[CV_MAX];
-    uint32_t work[CV_MAX / 2u];
+    uint32_t work[(CV_MAX*2u<32768u?32768u:CV_MAX*2u)/4u];
 } cv_primary_u __attribute__((section(".pool")));
 #define cv_primary cv_primary_u.pixels
 #define CV_WORK_BYTES (sizeof cv_primary_u)
