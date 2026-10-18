@@ -5,7 +5,7 @@
  * including when they reuse a slot formerly belonging to this pattern. The
  * audio owner allocates the bounded snapshot; no per-sample history work. */
 typedef struct {
-    step_t steps[NSTEP];
+    step_snapshot_t steps[NSTEP];
     motion_store_t motion;
     int16_t timing[4];
     uint32_t pattern_gen, signature;
@@ -56,7 +56,7 @@ static void recording_undo_capture(track_t *t)
     u=recording_undo_ptr;
     if(!u){recording_undo_lost=1;recording_undo_skip|=bit;return;}
     u->note_count=(uint16_t)count;note_history_capture(u->notes,count,(int)owner);
-    memcpy(u->steps,t->step,sizeof u->steps);
+    step_snapshot_save(u->steps,t->step);
     memcpy(u->timing,&t->p[P_SLEN],sizeof u->timing);
     motion_snapshot_track(t,&u->motion);
     u->track=(uint8_t)trk_index(t);u->bank=t->pattern;u->pattern_gen=t->pattern_gen;u->engine=t->eng_req;
@@ -115,7 +115,7 @@ static int recording_undo_apply(int redo)
         recording[i]=u->notes[i];u->notes[i]=r;
         memset(&recording_run[i],0,sizeof recording_run[i]);recording_flags[i]=0;
     }
-    for(uint32_t i=0;i<NSTEP;i++){step_t s=t->step[i];t->step[i]=u->steps[i];u->steps[i]=s;}
+    for(uint32_t i=0;i<NSTEP;i++){step_t s=t->step[i];t->step[i]=step_snapshot_get(&u->steps[i]);step_snapshot_put(&u->steps[i],&s);}
     for(uint32_t i=0;i<4u;i++){int16_t p=t->p[P_SLEN+i];t->p[P_SLEN+i]=u->timing[i];u->timing[i]=p;}
     t->rh_n=t->rh_ties=t->rskip_n=0;
     recording_fraction[trk_index(t)]=0;

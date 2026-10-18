@@ -14,6 +14,8 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Reduce display canvas | Implemented | 28,832 B usable SRAM gained; exact RGB565 bands, 1,100 image and four rolling-frame comparisons; project scratch retained |
 | Stream project/archive staging | Implemented | Wire scratch 27,904 -> 4,104 B; unpublished A/B staging, exact bytes and interrupted-write recovery |
 | Allocate USB capture by channel count | Implemented | Stereo keeps fixed 1,024-frame ring; extra two stem channels use 4,096 B arena only when configured; 3,968 B fixed usable gain |
+| Compact remaining step history copies | Implemented | 128 B fixed plus 128 B per recording undo allocation; all eight manual levels retained |
+| Size audio batch payloads for target pointers | In validation | Target 148 B payload; host remains 168 B; producer assertions retained |
 | Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
 
 FX validation: `build/ram-implementation/fx/`. The actual firmware uses all
@@ -103,3 +105,10 @@ also contains concurrent uncommitted live-ARP clock changes in `seq.c`, which
 this RAM work does not stage or commit; its code cost is included conservatively.
 Optional cache RAM is excluded. Shipping limits remain 8 x 64; the new larger
 project schema, capacity UI and complete 16 x 128 integration remain separate.
+
+Remaining history copies use the existing lossless nine-byte step snapshot,
+including unused note bytes and rest/tie counts. `history-final/` passes the
+target build/budgets, recording undo/redo, manual note tools, sequence entry
+and full UI controls. Fixed usable resources rise by 128 B to 126,144 B;
+every recording-undo allocation saves another 128 B. Eight manual levels
+remain. Validation/packing runs during history maintenance, not per sample.
