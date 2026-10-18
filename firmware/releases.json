@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.4.4",
+    "product": "FM-1_91044",
+    "pkg": {
+      "dual": "../../firmware/melodee-1.4.4.fwsc"
+    }
+  },
+  {
     "version": "1.4.3",
     "product": "FM-1_91043",
     "pkg": {
