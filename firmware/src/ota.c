@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Modifications Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Copyright (C) 2026 ChoralRoot FM-1 contributors
+ * Portions Copyright (C) 2026 Andre Rezemini (SLOOP ram branch)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* M-UPGRADE entry: "step 1 lite".
  *
@@ -31,6 +32,7 @@
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
 #define OTA_FRAME_MAX 640u                       /* 512-B response = 605 wire bytes */
+#define OTA_PARM_N 112u
 #ifndef OTA_SCRATCH                              /* 2 KiB of work space while staging (melodee.c: the project staging) */
 static uint8_t ota_scratch[0x800];
 #define OTA_SCRATCH ota_scratch
@@ -110,7 +112,9 @@ static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_
 }
 
 static uint8_t ota_msg[8 + 32], ota_wire[2 + 48];
-static uint8_t ota_dec[OTA_FRAME_MAX];           /* decoded host message */
+#include "scratch.h"
+#define ota_dec (main_scratch.dec)
+_Static_assert(sizeof ota_dec == OTA_FRAME_MAX, "OTA scratch holds a decoded frame");
 
 static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 32 */
 {
@@ -347,8 +351,8 @@ static void ota_unstage(void)
 /* returns only when nothing was committed (refused, failed, or dry run) */
 static int ota_session(void)
 {
-    static uint8_t parm[112];
-    uint8_t back[112];
+    uint8_t *parm;
+    uint8_t back[OTA_PARM_N];
     uint32_t i;
     int rc;
     ota_deadline = ota_now_ms() + 120000u;          /* step 1 normally takes ~5 s; a stalled host gives up after 2 min */
@@ -358,8 +362,12 @@ static int ota_session(void)
         ota_show(9, rc);
         return rc;
     }
+    /* SLOOP PR #111 / d024b410: keep update parameters in staging RAM too.
+     * The header/body work is dead after ota_stage, so reuse its first bytes.
+     * This buffer stays separate from decoded replies and progress drawing. */
+    parm = OTA_SCRATCH;
     /* 5./7. UPDATA_PARM (update_mode_api_v2 layout), flash copy first */
-    for (i = 0; i < sizeof parm; i++)
+    for (i = 0; i < OTA_PARM_N; i++)
         parm[i] = 0;
     ota_wr16(parm + 2, 0x5A0Du);
     ota_wr16(parm + 4, 0x5A01u);
@@ -377,8 +385,8 @@ static int ota_session(void)
 #define MELODEE_OTA_RAMONLY 0                       /* 1: RAM record only; cold-boot recovery is the boot stub
                                                      * checking the commit marker, never this flash record. */
 #endif
-    if (!MELODEE_OTA_RAMONLY && (ota_prog(OTA_RES, parm, sizeof parm) || ota_fread(OTA_RES, back, sizeof back) ||
-        !ota_memeq(back, parm, sizeof parm))) {
+    if (!MELODEE_OTA_RAMONLY && (ota_prog(OTA_RES, parm, OTA_PARM_N) || ota_fread(OTA_RES, back, sizeof back) ||
+        !ota_memeq(back, parm, OTA_PARM_N))) {
         ota_unstage();
         ota_show(9, -14);
         return -14;

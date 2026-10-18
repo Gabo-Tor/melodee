@@ -135,7 +135,9 @@ static int st_read_range(uint32_t obj, uint32_t copy, uint32_t off, void *dst, u
     return 0;
 }
 
-static uint8_t st_buf[256] __attribute__((aligned(4)));
+#include "scratch.h"
+#define st_buf (main_scratch.st)
+_Static_assert(sizeof st_buf == 256u, "storage retains bounded page-sized scratch");
 
 /* the legacy single-pattern projects (OBJ_PROJECT0..+3): retired, their numbers reserved */
 static int st_retired(uint32_t obj) { return obj >= OBJ_PROJECT0 && obj < OBJ_PROJECT0 + 4u; }

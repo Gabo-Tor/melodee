@@ -952,8 +952,9 @@ static uint32_t notes_fit(char *b, const uint8_t *note, uint32_t n, const aafont
 }
 
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px */
-static int16_t scope_snap[SCOPE_N];          /* audio.c scope_buf, held still to draw: one screen at a time (this scope, the
-                                              * stage wave) */
+#include "scratch.h"
+#define scope_snap (main_scratch.snap)       /* refilled by each HOME/Stage scope draw */
+_Static_assert(sizeof scope_snap == SCOPE_N * sizeof(int16_t), "scope scratch holds a snapshot");
 static void graph_scope(uint16_t c, int32_t top, int32_t h)
 {
     int16_t *snap = scope_snap;

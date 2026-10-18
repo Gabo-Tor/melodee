@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../firmware/src/scratch.h"
 
 #define MELODEE_ID "FM-1_900"
 #define MELODEE_OTA_DRYRUN 0
@@ -131,7 +132,13 @@ static int ota_prog(uint32_t off, const void *src, uint32_t n)
     return 0;
 }
 static int ota_fread(uint32_t off, void *dst, uint32_t n) { if(cleanup_read_error)return -1;memcpy(dst, nor + off, n); return 0; }
-static void ota_show(uint32_t step, int32_t code) { if (step == 9) last_code = code; }
+static void ota_show(uint32_t step, int32_t code)
+{
+    /* Progress may overwrite transient draw work. Neither staged package data
+     * nor the final 112-byte commit record may depend on that scratch. */
+    memset(&main_scratch, 0xA5, sizeof main_scratch);
+    if (step == 9) last_code = code;
+}
 static void ota_commit(const uint8_t *parm) { committed = 1; memcpy(committed_parm, parm, 112); }
 
 #include "../firmware/src/ota.c"
@@ -167,6 +174,8 @@ static int area_erased(void)
 
 static void reset_dev(void)
 {
+    memset(&main_scratch, 0xCD, sizeof main_scratch);
+    memset(OTA_SCRATCH, 0xDC, 0x800u);
     memset(nor, 0xFF, sizeof nor);
     memcpy(nor, logical + 0x400, 0x4000);                 /* device flash head = package flash.bin head */
     rx_full = 0; requests = 0; ident_replies = 0; committed = 0; last_code = 0;
