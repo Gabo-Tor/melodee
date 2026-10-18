@@ -566,10 +566,13 @@ Restoring: `BACKUP_PUT` takes ids 0..8 (the samples are written with `SMP_BEGIN`
 or `SMP_ERASE` for an empty slot). Begin: `0, id, size u32, crc u32`: size is 3584 (FUN8) or 3388 (FUN7, FUN6) for id 0,
 the settings record's size for id 1, 3584, 3388 or 0 (empty the slot) for ids 2..5, the bank's size or 0 for 6 and 7,
 0 for 8 (the retired FM6 bank). A size the firmware does not read is refused at begin (rc 1), so the web
-editor begins and aborts every object first and refuses the whole archive before any write. Data: `1, id, offset u32, pack7` with the next offset (they must follow each other)
+editor begins and aborts every object first and refuses unsupported sizes before replacing any saved object. Data: `1, id, offset u32, pack7` with the next offset (they must follow each other)
 and at most 256 decoded bytes. Commit: `2, id`: the device checks the length and the CRC, validates the
-content, and then writes. Abort: `3, id`. Id 0 replaces the music now playing (RAM only, no flash);
-ids 1..7 are written to flash (settings and presets are applied too). Nothing is written before the commit.
+content, and then publishes the object. Abort: `3, id`. Id 0 replaces the music now playing;
+ids 1..7 replace saved objects (settings and presets are applied too). Current nightly project
+transfers stage bytes in the inactive flash copy during begin/data. Only a validated commit
+publishes its header; abort, timeout, CRC failure and interruption retain the previous committed
+project. Non-project objects remain in bounded RAM until commit.
 The web editor sends ids 2..7 and the samples first, then 1, then 0 last. A failed restore can leave
 earlier objects restored; the file is still the source.
 
@@ -849,6 +852,15 @@ BACKUP_LIST contains **29 objects, IDs 0–28**. Existing object IDs and physica
 | 8–15 | 9–16 | CZ-1 tones |
 | 16–20 | 23–27 | Current Prophet programs |
 | 21 (six visible slots) | 28 | Previously free 0x9D000/0x9E000 pair |
+
+Normal nightly builds keep 4,104 bytes of shared wire scratch. Runtime LIST snapshots and
+project PUT payloads use an unpublished inactive project copy, spanning its base and extension
+sectors. LIST and begin/abort preflight therefore incur flash erases, while leaving saved project
+headers and current payloads intact. GET reads the exact frozen copy across screen draws.
+Saves capture decoded active state and the inactive-pattern tail together, stage the tail first,
+then reuse its RAM for active serialization. All four saved slots and existing file bytes remain.
+Profiling builds retain the complete wire buffer so guarded diagnostic LIST/runtime PUT sessions
+continue to operate entirely in RAM, without flash erases or writes.
 
 ID 8 remains empty and refuses payloads. First boot converts current preceding formats in place
 using A/B commits. General FM6 sidecars are embedded before their source banks are converted.

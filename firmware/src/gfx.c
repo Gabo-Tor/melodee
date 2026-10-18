@@ -78,7 +78,7 @@ _Static_assert(MELODEE_CANVAS_ROWS>=64u && MELODEE_CANVAS_ROWS<=124u,"canvas ban
  * after its transfer finishes. No second full-screen-sized allocation. */
 #define CV_ALT_MAX (240u * 24u)                   /* (240 x 24: the diff's hashes took the rest, below) */
 /* Decoded projects use this canvas between draws. A borrow waits for SPI;
- * the wire/archive buffer stays separate because transfers span UI frames. */
+ * multi-frame archive snapshots use independent wire RAM or flash staging. */
 static union {
     uint16_t pixels[CV_MAX];
     uint32_t work[CV_MAX / 2u];

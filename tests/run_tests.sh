@@ -273,6 +273,8 @@ sound && [ $TABLES = 1 ] && job dsp_tracks
 
 if core; then
     t "flash storage (A/B, torn writes)" storage_test
+    t "streamed banks: unpublished copies, page/header power cuts and readback" storage_stream_test
+    t "streamed projects: exact codec bytes, dirty hashes, rename, legacy import and track removal" project_stream_test -O1 $FW
     t "native FM6/CZ user presets, scrolling, migration and interrupted saves" fm6_preset_test -O1 $FW
     t "Prophet native slots, atomic saves, projects, undo and performance" prophet_integration_test -O1 $FW
     t "resource lifetimes, cache eviction, tails and capacity" resources_test -O2 $FW

@@ -12,7 +12,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Pack precise notes without changing wire data | Implemented | Nine bytes/event; 896 B additional fixed usable RAM, 1,024 B per full history copy; frozen wire bytes pass |
 | Sparse recording/manual undo | Implemented | 9,792 B less per 32-note snapshot; full-density fallback, redo and slot ownership preserved |
 | Reduce display canvas | Implemented | 28,832 B usable SRAM gained; exact RGB565 bands, 1,100 image and four rolling-frame comparisons; project scratch retained |
-| Stream project/archive staging | Pending | Preserve legacy files, four slots and interrupted-write recovery |
+| Stream project/archive staging | Implemented | Wire scratch 27,904 -> 4,104 B; unpublished A/B staging, exact bytes and interrupted-write recovery |
 | Allocate USB capture by channel count | Implemented | Stereo keeps fixed 1,024-frame ring; extra two stem channels use 4,096 B arena only when configured; 3,968 B fixed usable gain |
 | Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
 
@@ -77,3 +77,29 @@ main-loop mode change/startup, never inside sample or USB service loops.
 Target audio budgets pass; this is not a device cycle measurement.
 Fixed usable SRAM is now 102,576 B: 36,896 B more than the checkpoint in stereo
 mode. Four-track mode reserves 4,096 B from that arena while configured.
+
+Streaming validation: `build/ram-implementation/stream-final/`,
+`stream-host.log`, `stream-sanitize.log` and `stream-profile.log`.
+The full host suite passes in 180 s. The target build and budgets pass;
+168 generated images match the complete RAM codec byte for byte, including
+hash/dirty checks, saved-slot load/rename, legacy ten-byte raw notes and track
+removal. Sequential and tail-first staging survive 223 program cutoffs and
+391 selected page/header byte cutoffs, seven erase failures, stale publication
+and write protection. Serial ASan/UBSan passes. Guarded profiling sessions
+retain the full wire buffer and pass RAM-only LIST/GET/runtime restore with
+zero erases; normal nightly builds use the smaller buffer.
+
+Normal LIST/runtime restores and project PUT begin/data stage an unpublished
+inactive flash copy. This adds flash erases/readbacks, including begin/abort
+preflight; only a verified final header replaces a saved object. The current
+committed project survives interruption. No per-sample work is added. The
+resident build pass also handles lowered memory intrinsics and places libc
+entry points at the high end of resident code so implicit compiler calls stay
+in range after fixed buffers shrink.
+
+Measured combined fixed resources are 126,016 B (main 119,808; data 5,016;
+low 344; retained 848), 60,336 B above the checkpoint. This measured build
+also contains concurrent uncommitted live-ARP clock changes in `seq.c`, which
+this RAM work does not stage or commit; its code cost is included conservatively.
+Optional cache RAM is excluded. Shipping limits remain 8 x 64; the new larger
+project schema, capacity UI and complete 16 x 128 integration remain separate.

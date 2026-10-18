@@ -486,12 +486,17 @@ static char proj_name[PROJ_NAME_LEN + 1u]    /* the name of the music as it is n
 #define PROJ_NO_SLOT 0xFFu
 static uint8_t proj_cur = PROJ_NO_SLOT;      /* the slot the music was loaded from or last saved to (a rename of it
                                               * renames the music too); PROJ_NO_SLOT none (the editor's restore) */
-static union {                               /* serialized main-loop work, also used for archive transfers */
-    project_store_t p;                       /* standalone legacy record view */
-    uint8_t raw[PROJ_BANK_BYTES];              /* complete FBKG, including legacy imports */
+/* Small synchronous jobs (DX7 dumps, settings and OTA) retain bounded RAM.
+ * Flash project/archive images stream through unpublished A/B copies. */
+static union {
+    uint32_t align;
+#if MELODEE_FLASH && !MELODEE_AUDIO_PROFILE
+    uint8_t raw[4104u];
+#else
+    project_store_t p;uint8_t raw[PROJ_BANK_BYTES];
+#endif
 } proj_wire_u __attribute__((section(".pool")));
-#define proj_wire proj_wire_u.p
-static uint8_t proj_wire_gen;                /* +1 whenever proj_wire is rewritten (a backup's runtime copy lives there) */
+static uint8_t proj_wire_gen;                /* +1 when a scratch client invalidates an archive snapshot/upload */
 static uint8_t *proj_wire_borrow(void) { proj_wire_gen++; return proj_wire_u.raw; }   /* scratch for another job */
 
 static void proj_steps(step_t *s)            /* a loaded sequence stays inside its fixed fields */
@@ -528,6 +533,10 @@ static void proj_bound(project_t *q)
 }
 
 #include "pattern_store.c"
+#if MELODEE_FLASH
+static void project_capture(project_t *p);
+#include "project_stream.c"
+#endif
 
 /* FNV of each slot's stored bytes, as last written or read (0: unknown): autosave writes only what differs */
 static uint32_t proj_saved_hash[4];
@@ -537,19 +546,21 @@ static int proj_read_slot(uint32_t slot)
     slot &= 3u;
     proj_wire_gen++;
 #if MELODEE_FLASH
-    if (flash_ok) {
-        n = st_load(OBJ_BANK0 + slot, proj_wire_u.raw, sizeof proj_wire_u.raw);   /* (the legacy objects: retired) */
-    }
+    st_hdr_t source; int copy = flash_ok ? st_current(OBJ_BANK0 + slot, &source) : -1;
+    int valid = copy >= 0 && proj_stream_load(OBJ_BANK0 + slot, (uint32_t)copy, source.len);
+    if (copy >= 0) n = (int)source.len;
 #else
     if (bank_valid(proj_bank_slot[slot], BANK_STORE_SIZE) &&
         !memcmp(proj_bank_slot[slot] + 8u, &proj_slot[slot], sizeof proj_slot[slot])) {
         n = BANK_STORE_SIZE; memcpy(proj_wire_u.raw, proj_bank_slot[slot], BANK_STORE_SIZE);
     } else { n = sizeof proj_slot[slot]; memcpy(proj_wire_u.raw, &proj_slot[slot], sizeof proj_slot[slot]); }
 #endif
+#if !MELODEE_FLASH
     int valid = bank_full((uint32_t)n) ? bank_valid(proj_wire_u.raw, n) : proj_import(&proj_scratch, proj_wire_u.raw, n);
+#endif
 #if MELODEE_FLASH && !defined(FM1_IRQ_TARGET)
     if (valid) {
-        if (n == BANK_STORE_SIZE) { memcpy(proj_bank_slot[slot], proj_wire_u.raw, BANK_STORE_SIZE); memcpy(&proj_slot[slot], proj_wire_u.raw + 8u, sizeof proj_slot[slot]); }
+        if (n == BANK_STORE_SIZE) { st_read_range(OBJ_BANK0 + slot, (uint32_t)copy, 0, proj_bank_slot[slot], BANK_STORE_SIZE); memcpy(&proj_slot[slot], proj_bank_slot[slot] + 8u, sizeof proj_slot[slot]); }
         else { memset(proj_bank_slot[slot], 0, sizeof proj_bank_slot[slot]); proj_bound(&proj_scratch); proj_pack(&proj_slot[slot], &proj_scratch); }
     }
 #endif
@@ -559,7 +570,11 @@ static int proj_read_slot(uint32_t slot)
 #endif
     if (valid) proj_name_get(proj_meta[slot].name, (const uint8_t *)proj_scratch.name);
     else proj_meta[slot].name[0] = 0;
+#if MELODEE_FLASH
+    proj_saved_hash[slot] = valid && n == BANK_STORE_SIZE ? proj_source_hash : 0u;
+#else
     proj_saved_hash[slot] = valid && n == BANK_STORE_SIZE ? proj_hash(proj_wire_u.raw, BANK_STORE_SIZE) : 0u;
+#endif
     return valid ? n : 0;
 }
 static void proj_fetch(uint32_t slot) { (void)proj_read_slot(slot); }
@@ -581,6 +596,30 @@ static int proj_write_slot(uint32_t slot, const uint8_t *raw, uint32_t len)
     else proj_meta[slot].name[0] = 0;
     return 0;
 }
+
+#if MELODEE_FLASH
+/* Publish only after the streamed bytes and their musical format are valid.
+ * Host mirrors read the exact committed bytes, including reserved fields. */
+static int proj_publish_slot(uint32_t slot,st_stream_t *w)
+{
+    if(!flash_ok || st_stream_publish(w))return 2;
+    slot &= 3u;
+#if !defined(FM1_IRQ_TARGET)
+    if(st_read_range(w->obj,w->head.slot,0,proj_bank_slot[slot],BANK_STORE_SIZE))return 2;
+    memcpy(&proj_slot[slot],proj_bank_slot[slot]+8u,sizeof proj_slot[slot]);
+#endif
+    proj_meta[slot].used=1;proj_meta[slot].old=0;
+    proj_saved_hash[slot]=proj_source_hash;
+    proj_name_get(proj_meta[slot].name,(const uint8_t *)proj_scratch.name);
+    return 0;
+}
+static int proj_save_image(uint32_t slot)
+{
+    st_stream_t w;
+    if(!flash_ok || proj_stream_generate(&w,OBJ_BANK0+(slot&3u)))return 2;
+    return proj_publish_slot(slot,&w);
+}
+#endif
 
 static void project_capture(project_t *p)
 {
@@ -633,15 +672,22 @@ static int project_save_as(uint32_t slot, const char *name)
         return 1;
     }
     momentary_restore();
+#if MELODEE_FLASH
+    if(!proj_image_capture(1)){ui_message("SAVE FORMAT ERROR");return 2;}
+#else
     project_capture(p);
+#endif
     if (name) {
         memset(p->name, 0, sizeof p->name);
         memcpy(p->name, name, str_len(name) < PROJ_NAME_LEN ? str_len(name) : PROJ_NAME_LEN);
     }
     proj_wire_gen++;
+#if MELODEE_FLASH
+    if(proj_save_image(slot)){ui_message("SAVE ERROR");return 2;}
+#else
     if (!bank_pack(proj_wire_u.raw, p, 1)) { ui_message("SAVE FORMAT ERROR"); return 2; }
-
     if (proj_write_slot(slot, proj_wire_u.raw, BANK_STORE_SIZE)) { ui_message("SAVE ERROR"); return 2; }
+#endif
     proj_name_get(proj_name, (const uint8_t *)p->name);
     proj_cur = (uint8_t)(slot & 3u);
     ui_message(MELODEE_FLASH ? "SAVED" : "SAVED (RAM)");
@@ -685,9 +731,14 @@ static void project_autosave(void)
         return;
     project_capture(p);
     proj_wire_gen++;                                    /* (the staging RAM: a backup's copy there is gone) */
-    if (!bank_pack(proj_wire_u.raw, p, 1))
-        return;
+#if MELODEE_FLASH
+    uint32_t hash;
+    if(!proj_image_hash(1,&hash))return;
+    if(hash == proj_saved_hash[slot])
+#else
+    if (!bank_pack(proj_wire_u.raw, p, 1))return;
     if (proj_hash(proj_wire_u.raw, BANK_STORE_SIZE) == proj_saved_hash[slot])
+#endif
         return;                                         /* as saved: nothing to write */
     project_quick_save();
 }
@@ -720,6 +771,14 @@ static int project_rename(uint32_t slot, const char *name)
     memset(p->name, 0, sizeof p->name);
     memcpy(p->name, name, str_len(name) < PROJ_NAME_LEN ? str_len(name) : PROJ_NAME_LEN);
     p->sum = proj_sum(p);
+#if MELODEE_FLASH
+    if(n==BANK_STORE_SIZE)memcpy(proj_image_tail()+BANK_MOTION_OFF-BANK_ACTIVE_OFF,bank_import_tags,sizeof bank_import_tags);
+    else {
+        proj_bound(p);chain_defaults(&p->chain);
+        if(!bank_pack_tail(proj_image_tail(),p,0))return 2;
+    }
+    if(proj_save_image(slot)){ui_message("SAVE ERROR");return 2;}
+#else
     if (n == BANK_STORE_SIZE) {
         memcpy(proj_wire_u.raw + BANK_MOTION_OFF, bank_import_tags, sizeof bank_import_tags);
         if (!proj_pack((project_store_t *)(proj_wire_u.raw + 8u), p)) return 2;
@@ -729,6 +788,7 @@ static int project_rename(uint32_t slot, const char *name)
         if (!bank_pack(proj_wire_u.raw, p, 0)) return 2;
     }
     if (proj_write_slot(slot, proj_wire_u.raw, BANK_STORE_SIZE)) { ui_message("SAVE ERROR"); return 2; }
+#endif
     if (proj_cur == (slot & 3u))
         proj_name_get(proj_name, (const uint8_t *)p->name);
 #if MELODEE_FLASH
@@ -854,7 +914,13 @@ static void project_load(uint32_t slot)
     int n = proj_read_slot(slot);
     if (!n) { ui_message(project_old(slot) ? "OLD FORMAT" : "EMPTY SLOT"); return; }
     if (!project_restore_runtime(&proj_scratch)) {
-        if (n == BANK_STORE_SIZE) bank_restore(proj_wire_u.raw);
+        if (n == BANK_STORE_SIZE) {
+#if MELODEE_FLASH
+            bank_restore_tail(proj_image_tail());
+#else
+            bank_restore(proj_wire_u.raw);
+#endif
+        }
         proj_cur = (uint8_t)(slot & 3u);
     }
 }
@@ -1170,8 +1236,13 @@ static int project_dirty(void)
     if (proj_cur < 4u) {
         project_capture(&proj_scratch);
         proj_wire_gen++;
+#if MELODEE_FLASH
+        uint32_t hash;
+        return !proj_image_hash(1,&hash) || hash != proj_saved_hash[proj_cur];
+#else
         return !bank_pack(proj_wire_u.raw, &proj_scratch, 1) ||
                proj_hash(proj_wire_u.raw, BANK_STORE_SIZE) != proj_saved_hash[proj_cur];
+#endif
     }
     for (k = 0; k < NTRK; k++)
         if (!seq_is_empty(&trk[k]) || notes_have_recording(&trk[k]))
