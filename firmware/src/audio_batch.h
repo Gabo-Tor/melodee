@@ -8,10 +8,14 @@
  * runs on CPU1; events and control preparation remain on CPU0. Each job owns
  * PCM scratch, so two voices never concurrently add to the same destination. */
 typedef void (*audio_batch_fn)(const void *,int32_t *);
-/* The largest current descriptor is Prophet (168 bytes on the 64-bit host);
- * assertions at each producer bound the slots on both platforms. Twelve slots
- * keep an eight-voice part and its drums in one parallel group. */
+/* Prophet is largest: 148 bytes on FM-1, 168 on the 64-bit host. Producer
+ * assertions enforce both bounds. Keep host pointers/alignment intact while
+ * twelve target slots avoid reserving space for pointers twice their size. */
+#ifdef FM1_IRQ_TARGET
+#define AUDIO_BATCH_BYTES 148u
+#else
 #define AUDIO_BATCH_BYTES 168u
+#endif
 #define AUDIO_BATCH_JOBS 12u
 typedef struct {
     audio_batch_fn run;int32_t *out;uint32_t n, profile_id,guard;

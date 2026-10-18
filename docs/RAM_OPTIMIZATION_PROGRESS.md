@@ -15,7 +15,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Stream project/archive staging | Implemented | Wire scratch 27,904 -> 4,104 B; unpublished A/B staging, exact bytes and interrupted-write recovery |
 | Allocate USB capture by channel count | Implemented | Stereo keeps fixed 1,024-frame ring; extra two stem channels use 4,096 B arena only when configured; 3,968 B fixed usable gain |
 | Compact remaining step history copies | Implemented | 128 B fixed plus 128 B per recording undo allocation; all eight manual levels retained |
-| Size audio batch payloads for target pointers | In validation | Target 148 B payload; host remains 168 B; producer assertions retained |
+| Size audio batch payloads for target pointers | Implemented | 192 B retained SRAM returned; target 148 B payload, host 168 B; all producer assertions pass |
 | Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
 
 FX validation: `build/ram-implementation/fx/`. The actual firmware uses all
@@ -112,3 +112,11 @@ target build/budgets, recording undo/redo, manual note tools, sequence entry
 and full UI controls. Fixed usable resources rise by 128 B to 126,144 B;
 every recording-undo allocation saves another 128 B. Eight manual levels
 remain. Validation/packing runs during history maintenance, not per sample.
+
+Audio batch validation: `batch-final/`. FM-1 uses 148-byte descriptors while
+64-bit hosts retain 168 bytes. All producer size assertions, dual-core batch
+accounting, worst-case engine resources and target budgets pass. Twelve jobs
+and their PCM scratch remain unchanged; aligned target jobs save 16 B each,
+returning 192 B to the retained SRAM resource bank. No new rendering work.
+Combined fixed resources: 126,336 B. Recording undo also passes serial
+ASan/UBSan after the compact-step change (`history-sanitize.log`).
