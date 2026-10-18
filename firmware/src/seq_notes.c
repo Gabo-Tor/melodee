@@ -39,6 +39,17 @@ static uint32_t notes_selected(const track_t *t)
     if (chosen < RECORD_MAX) note_assign(&ui.note_identity,&recording[chosen]);
     return chosen;
 }
+/* Shared by note preview and the drum editor, including undo preview. */
+static uint32_t drum_hit_selected(void)
+{
+    uint32_t selected=ui.note_pick?ui.note_pick-1u:RECORD_MAX, first=RECORD_MAX;
+    for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i]){
+        if(!recording_active(TSEL,i) || recording_view(TSEL,&recording[i])!=ui.cursor || drum_sound_of(TSEL,recording[i].note)!=ui.drum_sound%drum_sound_count(TSEL))continue;
+        if(i==selected)return i;
+        if(first==RECORD_MAX || recording[i].on<recording[first].on)first=i;
+    }
+    return first;
+}
 static uint32_t notes_rank(const track_t *t, uint32_t chosen, uint32_t *count)
 {
     uint32_t rank = 0;

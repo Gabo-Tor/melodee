@@ -856,16 +856,6 @@ static int live_rec_sel(void);
 static void notes_event_edit(uint32_t slot, int32_t delta);
 static void step_move_edit(int32_t delta);
 /* The sound page edits a kit voice; HIT edits only one event, retaining its instrument. */
-static uint32_t drum_hit_selected(void)
-{
-    uint32_t selected=ui.note_pick?ui.note_pick-1u:RECORD_MAX, first=RECORD_MAX;
-    for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i]){
-        if(!recording_active(TSEL,i) || recording_view(TSEL,&recording[i])!=ui.cursor || drum_sound_of(TSEL,recording[i].note)!=ui.drum_sound%drum_sound_count(TSEL))continue;
-        if(i==selected)return i;
-        if(first==RECORD_MAX || recording[i].on<recording[first].on)first=i;
-    }
-    return first;
-}
 static void drum_sound_edit(uint32_t slot,int32_t delta)
 {
     ui.drum_sound%=drum_sound_count(TSEL);
