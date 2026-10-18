@@ -48,7 +48,7 @@ static __attribute__((noinline)) int capture_reference(track_t *t, uint32_t note
     if (recording_sounding(free)) recording_end(&trk[(recording[free].owner & 31u) / NPAT], free);
     recording_unlink(free);
     recorded_note_t *r = &recording[free];
-    *r = (recorded_note_t){(uint16_t)on, 1, (uint8_t)note, (uint8_t)vel, (uint8_t)owner, (uint8_t)(actual | (step != actual ? 64u : 0u) | (step == 0u && actual ? 128u : 0u))};
+    *r = (recorded_note_t){.on=(uint16_t)on, .duration=1, .note=(uint8_t)note, .vel=(uint8_t)vel, .owner=(uint8_t)owner, .step=(uint8_t)(actual | (step != actual ? 64u : 0u) | (step == 0u && actual ? 128u : 0u))};
     recording_insert(t, free);
     memset(&recording_run[free], 0, sizeof recording_run[free]);
     recording_flags[free] = 13;

@@ -255,7 +255,7 @@ static uint32_t recording_loop(const track_t *t, uint32_t period)
 }
 static int recording_valid(const recorded_note_t *r)
 {
-    return !r->vel || (r->pitch >= -24 && r->pitch <= 24 && r->length < 8u && recorded_owner(r) < NTRK * NPAT && recorded_step(r) < NSTEP && r->vel <= 127u && r->duration && r->note <= 127u && ((r->step & 128u) || recorded_step(r) + ((r->step & 64u) != 0u) < NSTEP));
+    return !r->vel || (r->pitch >= -24 && r->pitch <= 24 && recorded_owner(r) < NTRK * NPAT && recorded_step(r) < NSTEP && r->duration && r->note <= 127u && ((r->step & 128u) || recorded_step(r) + ((r->step & 64u) != 0u) < NSTEP));
 }
 static uint32_t recording_view(const track_t *t, const recorded_note_t *r)
 {

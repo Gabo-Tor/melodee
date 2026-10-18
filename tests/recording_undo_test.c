@@ -227,7 +227,7 @@ static int sparse_storage(void)
         memcpy(packed,source,sizeof packed);uint32_t count=note_history_pack(packed);
         note_history_expand(packed,count);
         if(memcmp(packed,source,sizeof source)){bad+=check("all sparse/dense counts preserve every slot byte",0);break;}
-        if(n<RECORD_MAX){uint32_t at=n*37u%RECORD_MAX;source[at]=(recorded_note_t){(uint16_t)n,65535u,127,127,255,255,-24,7};}
+        if(n<RECORD_MAX){uint32_t at=n*37u%RECORD_MAX;source[at]=(recorded_note_t){.on=(uint16_t)n, .duration=65535u, .note=127, .vel=127, .owner=255, .step=255, .pitch=-24, .length=1, .extended=3};}
     }
     bad+=check("dense fallback and every sparse count round trip",!memcmp(packed,source,sizeof source));
     undo_fixture(0,0);undo_take_start();input_on(TSEL,60,110);seq_advance(100);input_off(TSEL,60);seq_stop();

@@ -165,6 +165,29 @@ static int proj_ok(const project_t *q)
 
 static int proj_unpack(project_t *q, const uint8_t *b);
 static int proj_fn_none(project_t *q);
+/* Prior host/runtime snapshots used ten-byte notes. External FUN/FBKK files
+ * have their own fixed codec, but retain this older raw import as well. */
+static int proj_import_note10(project_t *q,const uint8_t *b,uint32_t n)
+{
+    uint32_t magic,size,sum;memcpy(&magic,b,4);memcpy(&size,b+4,4);memcpy(&sum,b+n-4u,4);
+    if(magic!=PROJ_MAGIC||size!=n||sum!=proj_hash(b,n-4u))return 0;
+    uint32_t at=__builtin_offsetof(project_t,recording);
+    for(uint32_t i=0;i<RECORD_MAX;i++){
+        const uint8_t *r=b+at+i*10u;
+        if(r[5]&&(r[4]>127u||r[5]>127u||(int8_t)r[8]<-24||(int8_t)r[8]>24||r[9]>=8u))return 0;
+    }
+    if((const void *)q!=(const void *)b)memcpy(q,b,at);
+    for(uint32_t i=0;i<RECORD_MAX;i++){
+        const uint8_t *r=b+at+i*10u;
+        recorded_note_t v={0};
+        if(r[5])v=(recorded_note_t){.on=(uint16_t)(r[0]|r[1]<<8), .duration=(uint16_t)(r[2]|r[3]<<8), .note=r[4], .vel=r[5], .owner=r[6], .step=r[7], .pitch=(int8_t)r[8], .length=(r[9]&1u), .extended=(r[9]>>1)};
+        q->recording[i]=v;
+    }
+    uint32_t tail=__builtin_offsetof(project_t,pattern),old=at+RECORD_MAX*10u;
+    /* Forward byte copy also supports an in-place shrinking import. */
+    for(uint32_t i=0;i<sizeof *q-tail;i++)((uint8_t *)q)[tail+i]=b[old+i];
+    q->size=sizeof *q;q->sum=proj_sum(q);return proj_ok(q);
+}
 /* FUN18 / FUN17 / FUN16 or a project_t (host RAM slots) -> q; 0 = not a project. */
 static int proj_import(project_t *q, const void *b, int n)
 {
@@ -174,6 +197,7 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
+    if(n==(int)(sizeof *q+RECORD_MAX))return proj_import_note10(q,b,(uint32_t)n);
     return 0;
 }
 static int proj_fn_none(project_t *q)          /* a record without FM6 function settings: Dexed's */

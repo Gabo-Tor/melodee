@@ -74,7 +74,7 @@ static int edits_and_store(void)
     drum_hit_delete();step_history_end();step_history_finish();
     bad+=check("deleting one edited hit retains its neighboring manual snare",!recording[i].vel && TSEL->step[3].hit==2);
     bad+=check("hit deletion undo restores the original event and neighbors",step_history_apply(0) && recording[i].pitch==7 && recording[i].length && TSEL->step[3].hit==3);
-    recording_restore_note(TSEL,1,(recorded_note_t){32000,32768,36,80,(uint8_t)recording_owner(TSEL),3,-4,1});
+    recording_restore_note(TSEL,1,(recorded_note_t){.on=32000, .duration=32768, .note=36, .vel=80, .owner=(uint8_t)recording_owner(TSEL), .step=3, .pitch=-4, .length=1});
     drum_hit_jog(1);uint32_t second=drum_hit_selected();drum_hit_edit(2,1);
     bad+=check("SELECT can edit a repeated hit without changing the first hit",second==1 && recording[1].pitch==-3 && recording[i].pitch==7);
     step_history_end();step_history_finish();recording_remove(TSEL,1);ui.note_pick=(uint16_t)(i+1);ui.note_identity=recording[i];ui.note_generation=recording_generation;
@@ -140,14 +140,14 @@ static int capacity_and_controls(void)
 {
     int bad=0;kit(DK_808);
     project_capture(&proj_scratch);
-    for(uint32_t i=0;i<RECORD_MAX;i++)proj_scratch.recording[i]=(recorded_note_t){(uint16_t)(i*61u),(uint16_t)(65535u-i),(uint8_t)(36+i%48),(uint8_t)(1+i%127),(uint8_t)((i%32)|((i%8)<<5)),(uint8_t)(i%64),(int8_t)((int32_t)(i%49)-24),(uint8_t)(i&1)};
+    for(uint32_t i=0;i<RECORD_MAX;i++)proj_scratch.recording[i]=(recorded_note_t){.on=(uint16_t)(i*61u), .duration=(uint16_t)(65535u-i), .note=(uint8_t)(36+i%48), .vel=(uint8_t)(1+i%127), .owner=(uint8_t)((i%32)|((i%8)<<5)), .step=(uint8_t)(i%64), .pitch=(int8_t)((int32_t)(i%49)-24), .length=(uint8_t)(i&1)};
     for(uint32_t t=0;t<NTRK;t++)for(uint32_t i=0;i<16;i++){int8_t *c=proj_scratch.drum[t].c[i];c[0]=(int8_t)((i+t)%2?24:-24);c[1]=(int8_t)((i+t)%2?63:-64);c[2]=-c[1]-1;c[3]=(int8_t)(i%2?127:0);}
     project_store_t wire;project_t decoded;
     int ok=proj_pack(&wire,&proj_scratch) && proj_import(&decoded,&wire,sizeof wire);uint32_t at=0;
     if(ok)for(uint32_t owner=0;owner<32;owner++)for(uint32_t i=0;i<RECORD_MAX;i++)if((proj_scratch.recording[i].owner&31u)==owner)ok&=!memcmp(&decoded.recording[at++],&proj_scratch.recording[i],sizeof(recorded_note_t));
     bad+=check("all 1024 hits retain full timing, instrument, velocity, owner, pitch and length",ok && at==RECORD_MAX && !memcmp(decoded.drum,proj_scratch.drum,sizeof decoded.drum));
     memset(proj_scratch.recording,0,sizeof proj_scratch.recording);
-    for(uint32_t i=0;i<RECORD_MAX;i++)proj_scratch.recording[i]=(recorded_note_t){0,65535,36,127,255,63,24,1};
+    for(uint32_t i=0;i<RECORD_MAX;i++)proj_scratch.recording[i]=(recorded_note_t){.on=0, .duration=65535, .note=36, .vel=127, .owner=255, .step=63, .pitch=24, .length=1};
     bad+=check("one bank can still hold all 1024 events",proj_pack(&wire,&proj_scratch) && proj_import(&decoded,&wire,sizeof wire) && decoded.recording[1023].owner==255 && decoded.recording[1023].pitch==24);
     for(uint32_t sound=11;sound<16;sound++){
         kit(DK_808);drum_patch[0].c[sound][0]=12;trk_note_on(TSEL,drum_sound_note(TSEL,sound),100);drum_lane_t *k=drum_kit_of(TSEL);

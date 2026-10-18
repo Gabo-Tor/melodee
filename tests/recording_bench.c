@@ -54,7 +54,7 @@ int main(int argc, char **argv)
             FILE *f=fopen(path,"wb");if(!f)return 2;
             for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel){
                 const recorded_note_t *r=&recording[i];
-                uint8_t b[10]={r->on,r->on>>8,r->duration,r->duration>>8,r->note,r->vel,r->owner,r->step,(uint8_t)r->pitch,r->length};
+                uint8_t b[10]={r->on,r->on>>8,r->duration,r->duration>>8,r->note,r->vel,r->owner,r->step,(uint8_t)r->pitch,recorded_legacy_length(r)};
                 if(fwrite(b,1,sizeof b,f)!=sizeof b){fclose(f);return 2;}
             }
             if(fclose(f))return 2;

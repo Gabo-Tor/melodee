@@ -4,18 +4,31 @@
 #define MELODEE_RECORDED_NOTE_H
 #include <stdint.h>
 
-/* Keep the original ten-byte payload and its duration/rounding bits. The
- * former boolean length byte has room for the sixth owner bit and seventh
- * step bit. Access these fields through the helpers: length is no longer a
- * boolean byte, and owner/step alone are no longer complete identifiers.
- * Existing 32-owner, 64-step events retain their exact representation. This
- * runtime representation is independent of a project's serialized schema. */
-typedef struct { uint16_t on, duration; uint8_t note, vel, owner, step; int8_t pitch; uint8_t length; } recorded_note_t;
-_Static_assert(sizeof(recorded_note_t) == 10u, "timed note layout");
+/* Keep the original duration/rounding bits and extended identifiers. Use
+ * helpers for owner/step: their byte fields alone are not complete IDs.
+ * The supported ranges need 71 bits. Retain an eighth note bit so the hot
+ * owner and step bytes remain byte aligned: 32 timing, eight note, seven
+ * velocity, 16 encoded owner/step, six signed pitch and three gate/id bits.
+ * The gate shares velocity's byte; high owner/step bits share pitch's byte.
+ * This RAM layout is independent of wire schemas; never serialize bitfields.
+ * Pack pragmas also apply to host harnesses which strip section attributes.
+ * Access through fields lets the target compiler handle odd-stride timing
+ * safely; no cast to an aligned uint16_t pointer is permitted. */
+#pragma pack(push,1)
+typedef struct {
+    uint16_t on, duration;
+    uint8_t note;
+    uint8_t vel:7, length:1;
+    uint8_t owner, step;
+    int8_t pitch:6;
+    uint8_t extended:2;
+} recorded_note_t;
+#pragma pack(pop)
+_Static_assert(sizeof(recorded_note_t) == 9u, "packed timed note layout");
 static uint32_t recorded_owner(const recorded_note_t *r)
-{ return (r->owner & 31u) | ((uint32_t)(r->length & 2u) << 4); }
+{ return (r->owner & 31u) | ((uint32_t)(r->extended & 1u) << 5); }
 static uint32_t recorded_step(const recorded_note_t *r)
-{ return (r->step & 63u) | ((uint32_t)(r->length & 4u) << 4); }
+{ return (r->step & 63u) | ((uint32_t)(r->extended & 2u) << 5); }
 static uint32_t recorded_exponent(const recorded_note_t *r) { return r->owner >> 5; }
 static int recorded_gate(const recorded_note_t *r) { return (r->length & 1u) != 0; }
 static int recorded_rounded(const recorded_note_t *r) { return (r->step & 64u) != 0; }
@@ -23,15 +36,17 @@ static int recorded_wrapped(const recorded_note_t *r) { return (r->step & 128u) 
 static void recorded_set_owner(recorded_note_t *r, uint32_t owner)
 {
     r->owner = (uint8_t)((r->owner & 224u) | (owner & 31u));
-    r->length = (uint8_t)((r->length & ~2u) | ((owner >> 4) & 2u));
+    r->extended = (uint8_t)((r->extended & 2u) | ((owner >> 5) & 1u));
 }
 static void recorded_set_exponent(recorded_note_t *r, uint32_t exponent)
 { r->owner = (uint8_t)((r->owner & 31u) | (exponent << 5)); }
 static void recorded_set_gate(recorded_note_t *r, int enabled)
-{ r->length = (uint8_t)((r->length & ~1u) | (enabled != 0)); }
+{ r->length = enabled != 0; }
 static void recorded_set_step(recorded_note_t *r, uint32_t step, int rounded, int wrapped)
 {
     r->step = (uint8_t)((step & 63u) | (rounded ? 64u : 0u) | (wrapped ? 128u : 0u));
-    r->length = (uint8_t)((r->length & ~4u) | ((step >> 4) & 4u));
+    r->extended = (uint8_t)((r->extended & 1u) | ((step >> 5) & 2u));
 }
+static uint32_t recorded_legacy_length(const recorded_note_t *r)
+{return r->length|((uint32_t)r->extended<<1);}
 #endif

@@ -14,13 +14,15 @@ static void legacy_bytes(void)
     for (uint32_t step=0;step<64u;step++)
     for (uint32_t exponent=0;exponent<8u;exponent++)
     for (uint32_t flags=0;flags<8u;flags++) {
-        recorded_note_t old={.on=52341,.duration=37421,.note=127,.vel=91,
+        struct { uint16_t on,duration;uint8_t note,vel,owner,step;int8_t pitch;uint8_t length; } old={.on=52341,.duration=37421,.note=127,.vel=91,
             .owner=(uint8_t)(owner+32u*exponent),
             .step=(uint8_t)(step+64u*(flags&3u)),.pitch=-24,.length=(uint8_t)(flags>>2)};
         recorded_note_t v={.on=52341,.duration=37421,.note=127,.vel=91,.pitch=-24};
         recorded_set_owner(&v,owner);recorded_set_step(&v,step,flags&1u,flags&2u);
         recorded_set_exponent(&v,exponent);recorded_set_gate(&v,flags&4u);
-        assert(!memcmp(&old,&v,sizeof v));
+        /* Canonical ten-byte fixtures stay independent of packed fields. */
+        uint8_t canonical[10]={v.on,v.on>>8,v.duration,v.duration>>8,v.note,v.vel,v.owner,v.step,(uint8_t)v.pitch,recorded_legacy_length(&v)};
+        assert(sizeof old==10u && !memcmp(&old,canonical,sizeof old));
     }
 }
 static void expanded_edits(void)
@@ -53,6 +55,6 @@ static void expanded_edits(void)
 int main(void)
 {
     legacy_bytes();expanded_edits();
-    puts("Recorded-note layout: legacy bytes and 64 owners x 128 steps preserved in 10 bytes");
+    puts("Recorded-note layout: canonical legacy bytes and 64 owners x 128 steps preserved in nine RAM bytes");
     return 0;
 }

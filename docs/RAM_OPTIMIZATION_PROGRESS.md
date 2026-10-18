@@ -9,7 +9,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | --- | --- | --- |
 | Share mutually exclusive FX histories | Implemented | 1,500 B fixed state removed; 1,184 B usable SRAM gained; frozen PCM, full FX tests, Chorus cost/oracle and target budgets pass |
 | Compact exact recording skip index | Implemented | 2,560 B fixed pool removed; 2,464 B usable SRAM gained after code alignment; exact arbitrary-query fallback |
-| Pack precise notes without changing wire data | Pending | Preserve every supported owner, position and duration |
+| Pack precise notes without changing wire data | Implemented | Nine bytes/event; 896 B additional fixed usable RAM, 1,024 B per full history copy; frozen wire bytes pass |
 | Sparse recording/manual undo | Implemented | 9,792 B less per 32-note snapshot; full-density fallback, redo and slot ownership preserved |
 | Reduce display canvas | Pending | Exact rendering with a safe worst-case path; keep shared project scratch |
 | Stream project/archive staging | Pending | Preserve legacy files, four slots and interrupted-write recovery |
@@ -38,3 +38,13 @@ retryable undo and unchanged musical state. Full snapshots cost no bitmap.
 Extra resident code/placement costs 448 B of fixed free SRAM; the quiescent
 gain with one 32-note history is therefore 9,344 B. The two history handles
 remain independent so a later manual undo can precede recording undo.
+
+Note packing validation: `build/ram-implementation/notes-final/` and
+`notes-aligned/`. Hot owner/step bytes stay byte aligned, while the compiler
+handles odd-stride timing fields. Every 64-owner/128-step identifier and all
+duration/rounding/gate bits pass exhaustive edits; 168 FBKK/FUN22 workloads
+retain the frozen pre-change wire hash. Prior ten-byte raw runtime snapshots
+still import with validation before narrowing. Dense/sparse history, capture
+cost and target budgets pass; serial ASan/UBSan passes. The complete host suite
+passes (`notes-host.log`, 166 s). Fixed usable SRAM is now 69,776 B, a 4,096 B
+gain over the checkpoint build, before any sparse-history savings.

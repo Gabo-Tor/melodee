@@ -333,6 +333,7 @@ if core && [ $TABLES = 1 ]; then
     t "MIDI recording: raw events, quantization at take end, independent releases, banks and capacity" recording_test \
         -O1 $FW
     t "Recorded-note layout: legacy bytes, 64 owners and 128 steps without event growth" recorded_note_test -O2 $FW
+    t "Packed note RAM: frozen FBKK/FUN22 bytes across 168 workloads" recorded_note_wire_test -O1 $FW
     t "16 x 128 recording core: positions, release queues, copies and pitch cache" recording_capacity_test -O1 -DMELODEE_RECORD_INDEX=1 $FW
     t "Recording scheduler: reference-state parity, cache invalidation and live lists" recording_scheduler_test -O1 $FW
     t "Recording RAM: shared capture/deadline counters and mode handoffs" recording_runtime_test -O1 $FW
