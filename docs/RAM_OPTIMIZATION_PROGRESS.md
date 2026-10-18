@@ -16,7 +16,7 @@ savings, global Take Taker pause and investigation. Device limits remain
 | Allocate USB capture by channel count | Implemented | Stereo keeps fixed 1,024-frame ring; extra two stem channels use 4,096 B arena only when configured; 3,968 B fixed usable gain |
 | Compact remaining step history copies | Implemented | 128 B fixed plus 128 B per recording undo allocation; all eight manual levels retained |
 | Size audio batch payloads for target pointers | Implemented | 192 B retained SRAM returned; target 148 B payload, host 168 B; all producer assertions pass |
-| Balance data/pool placement and final budgets | Pending | Check each region; placement gains are not total RAM savings |
+| Balance data/pool placement and final budgets | Implemented | Move 5,376 B pattern payload from ordinary data to POOL; 10,392 B data headroom; no total saving claimed for placement |
 
 FX validation: `build/ram-implementation/fx/`. The actual firmware uses all
 19 nightly workflow options. The Chorus cost test uses its prescribed `-O2`
@@ -120,3 +120,46 @@ and their PCM scratch remain unchanged; aligned target jobs save 16 B each,
 returning 192 B to the retained SRAM resource bank. No new rendering work.
 Combined fixed resources: 126,336 B. Recording undo also passes serial
 ASan/UBSan after the compact-step change (`history-sanitize.log`).
+
+## Final measured budget
+
+The final normal nightly target (`ram-final/`) and complete host suite pass
+(`final-host.log`: **ALL HOST TESTS PASSED in 173 s**). Resource lifetime,
+pattern pool/shared capacity, 16 x 128 recording fixtures, project streaming,
+capture parity/cost and batch accounting pass. Target resident-audio closure,
+per-region bounds and static CPU budgets pass without changing their limits.
+The final firmware source fingerprints match the measured package exactly.
+
+| Guaranteed resource bank | Checkpoint | Final | Change |
+| --- | ---: | ---: | ---: |
+| Contiguous main arena | 60,416 B | 114,560 B | +54,144 B |
+| Ordinary data tail | 3,688 B | 10,392 B | +6,704 B |
+| Low SRAM tail | 728 B | 344 B | -384 B |
+| Retained SRAM tail | 848 B | 1,040 B | +192 B |
+| **Total** | **65,680 B** | **126,336 B** | **+60,656 B** |
+
+These banks are disjoint; allocations never span them. Optional 28,672 B
+cache RAM is excluded. Four-track USB capture reserves 4,096 B dynamically;
+sparse undo adds occupancy-dependent savings on top of the fixed totals.
+A 32-note history now uses 416 B for events/map instead of the nine-byte
+layout's 9,216 B full array, an additional 8,800 B saving per history.
+
+Moving the existing 5,376 B ordinary pattern payload into POOL transfers
+capacity between banks and leaves the total unchanged. With that placement,
+the previously identified 16 x 128 data growth consumes about 7,904 B of the
+10,392 B data tail; further UI/schema changes still need their own budget.
+This is preparation, not a fully integrated 16 x 128 firmware.
+
+The profiling target also builds and passes its resident/region checks in an
+independent output directory (`profile-target/`; 100,848 B guaranteed SRAM).
+It retains full wire RAM for guarded sessions; normal `build/` outputs remain
+the smaller nightly configuration. Guarded archive tests prove zero erases
+while capturing/restoring runtime; serial ASan/UBSan passes streaming and
+recording history. These are host and target-build results; no physical audio,
+controls, MIDI, display latency or flash timing qualification was performed.
+No push or device installation is part of this work.
+
+FM6 table folding and voice flag packing remain deferred because they add
+work on sample/voice paths and need device CPU evidence. The saved-settings
+copy retains unknown preferences and failure semantics. Removing those
+without a validated replacement would trade away existing behavior.

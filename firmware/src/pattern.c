@@ -32,7 +32,10 @@ _Static_assert(NSTEP % PAT_BLOCK_STEPS == 0u && PAT_CHUNKS < PAT_NONE, "bounded 
 typedef struct { step_t step[NSTEP]; int16_t timing[4]; } pattern_t;
 typedef struct { uint16_t head, mask; } pattern_block_t;
 static uint8_t pattern_chunks_retained[PAT_RETAINED_CHUNKS][PAT_CHUNK_BYTES] __attribute__((section(".noinit")));
-static uint8_t pattern_chunks_ram[PAT_CHUNKS - PAT_RETAINED_CHUNKS][PAT_CHUNK_BYTES];
+/* Payload belongs with the large buffers, leaving ordinary data SRAM for
+ * active/staging steps and bank directories as the capacity grows. This
+ * moves bytes between regions; it does not reduce the total reservation. */
+static uint8_t pattern_chunks_ram[PAT_CHUNKS - PAT_RETAINED_CHUNKS][PAT_CHUNK_BYTES] __attribute__((section(".pool")));
 static uint16_t pattern_link[PAT_CHUNKS], pattern_free, pattern_pool_used, pattern_pool_peak;
 static pattern_block_t pattern_blocks[NTRK][NPAT][PAT_BLOCKS];
 static int16_t pattern_timings[NTRK][NPAT][4];
