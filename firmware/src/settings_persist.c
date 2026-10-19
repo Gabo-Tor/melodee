@@ -1,4 +1,5 @@
 #include "recording_preferences.h"
+#include "fx_preferences.h"
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Shared PER5 layout: each feature updates only its own fields, preserving
@@ -34,6 +35,10 @@ static int16_t settings_glo[4];                     /* ext.glo: project.c GLO_KE
  * last byte SAFETY OFF. Untagged bytes default to OFF; explicit ON is tagged too. Defaults store zeros. */
 #define VOICE_PREF_ROW 8u
 #define VOICE_PREF_BYTE 8u
+/* Retired DIGITAL row bytes 24..27: FQ, version 1, quality 1..2.
+ * Untagged/unknown records keep Classic; no settings/project layout change. */
+#define FX_PREF_ROW 1u
+#define FX_PREF_BYTE 24u
 /* Retired DIGITAL row, outside all live preset/settings bits. Kept by older
  * Melodee builds along with the other favorites; no layout or magic change. */
 static const uint8_t SETTINGS_OWNER[4] = {'M', 'D', 'S', 1};
@@ -84,6 +89,10 @@ static int settings_import(persist_t *p, int n)
     p->palette = palette_to_stored(palette_from_stored(p->palette));
     settings_screen=p->favorites.factory[15][27] < 8u ? p->favorites.factory[15][27] : 0u;
     settings_autosave = p->favorites.factory[15][28] != AUTOSAVE_OFF_TAG;
+    {
+        const uint8_t *q = p->favorites.factory[FX_PREF_ROW] + FX_PREF_BYTE;
+        settings_fx_quality = q[0]=='F' && q[1]=='Q' && q[2]==1u && q[3]<=2u ? q[3] : 0u;
+    }
     settings.magic = SETTINGS_MAGIC;
     settings.palette = palette_from_stored(p->palette);
     settings.lowcut = 0;
@@ -129,6 +138,13 @@ static void settings_export(persist_t *p)
     p->ext.spare[0] = favorites_user_hi;
 #endif
     memcpy(p->favorites.factory[1] + 28, SETTINGS_OWNER, sizeof SETTINGS_OWNER);
+    {
+        uint8_t *q = p->favorites.factory[FX_PREF_ROW] + FX_PREF_BYTE;
+        memset(q, 0, 4);
+        if (settings_fx_quality && settings_fx_quality<=2u) {
+            q[0]='F';q[1]='Q';q[2]=1u;q[3]=settings_fx_quality;
+        }
+    }
 #if MELODEE_USB_AUDIO
     p->ext.usb_off = ua_off;
     p->favorites.factory[15][26] = ua_tracks ? 0xA1u : 0u; /* tagged; old/unknown bytes default to stereo */

@@ -1,3 +1,38 @@
+# Optional ECHO / REVERB fidelity (2026-10-19)
+
+Settings > FX RATE selects CLASSIC, 22.05k or 44.1k for every ECHO/REVERB insert
+and shared slot. CLASSIC remains the default and retains all existing FX PCM
+fingerprints. Its rates are FS/4 (ECHO) and FS/8 (REVERB). Higher modes use
+FS/2 and FS respectively; FS is 44,100 Hz. At FS both DSP kernels consume
+each audio sample directly and bypass input decimation and output rate conversion.
+Delay storage, diffuser lengths and modulation excursion scale with the rate,
+keeping echo time, reverb size and length-normalized feedback decay. Higher
+rates retain more high-frequency content; reverb's damping acts at the new rate.
+The loop low cuts and wet-input TONE coefficients follow the processing rate.
+
+| Setting | ECHO buffer | REVERB buffer |
+|---|---:|---:|
+| CLASSIC | 8 KiB | 4 KiB |
+| 22.05k | 16 KiB | 16 KiB |
+| 44.1k | 32 KiB | 32 KiB |
+
+The 604-byte PER5 layout is unchanged. Retired DIGITAL favorites row 1 bytes
+24–27 store `FQ`, version 1, and quality 1–2; zero, untagged and unknown values
+load CLASSIC. Project/template and sound records are unchanged. Audio snapshots
+the preference into each slot before dispatching work to CPU1. A change fades
+to dry, discards the old tail, releases its allocation and starts a fresh tank;
+allocation failure uses the existing dry/MEMORY FULL path. Lowering the rate
+retries a failed slot. Live buffers never resize under a running worker.
+
+`fx_fidelity_test.c` covers rates, physical delay lengths, buffer guards,
+arbitrary block sizes, full-rate echo sample identity, 16 kHz bandwidth,
+switching, allocation recovery, shared processing and saved menu preferences.
+`reverb_parallel_test.c` compares PCM/tanks between serial and worker paths at
+every rate. `fx_performance.c` reports host cost for high-rate single inserts,
+four-track mixes and a shared bus; those host figures are not hardware deadline
+or polyphony guarantees. Device timing under heavy load and musical listening
+at the new rates remain unverified; no firmware installation is part of this change.
+
 # GLO > WEIGHTS and SAFETY (2026-10-16)
 
 The weights described below apply only to builds with `MELODEE_ADMISSION=1`.

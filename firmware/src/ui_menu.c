@@ -12,18 +12,19 @@
  * PRESETS scrolls from ABOUT through all credits. ui.menu: 1 list, 2 information. */
 /* ------------------------------------------------------------ menu --- */
 #define MENU_HEAD H_HEAD                 /* the menu's own title strip */
-enum { MI_COLOR, MI_FONT, MI_HOLD, MI_LIGHTS,
+enum { MI_COLOR, MI_FONT, MI_HOLD, MI_LIGHTS, MI_FX_QUALITY,
 #if MELODEE_USB_AUDIO
        MI_USB, MI_USB_INPUT,
 #endif
        MI_CLICK, MI_CLICK_LEVEL, MI_COUNTIN, MI_PREVIEW, MI_ADD, MI_AUTOSAVE, MI_PICKER, MI_ACCEL, MI_HOME_SEL, MI_GLO_SEL, MI_TRACKS, MI_SCREEN, MI_PANEL, MI_ABOUT, MI_DESIGNER, MI_BACK,
        MI_COUNT };
-static const char *const MI_NAME[MI_COUNT] = {"COLOR", "FONT", "HOLD", "LIGHTS",
+static const char *const MI_NAME[MI_COUNT] = {"COLOR", "FONT", "HOLD", "LIGHTS", "FX RATE",
 #if MELODEE_USB_AUDIO
                                               "USB AUDIO", "USB INPUT",
 #endif
                                               "AUDIO CLICK", "CLICK LEVEL", "COUNT-IN", "NOTE PREVIEW", "CHORD ENTRY",
                                               "AUTOSAVE", "PICKER POPUPS", "KNOB ACCEL", "HOME SELECT", "GLO SELECT", "UNUSED TRACKS", "SCREEN OFF", "CALIBRATION", "ABOUT", "SOUND DESIGNER", "BACK"};
+static const char *const MI_FX_QUALITY_NAME[] = {"CLASSIC", "22.05k", "44.1k"};
 #if MELODEE_USB_AUDIO
 /* USB AUDIO's four settings, as ua_off_want (UA_OFF_OUT | UA_OFF_IN) */
 static const char *const MI_USB_NAME[4] = {"IN+OUT", "IN", "OUT", "OFF"};
@@ -226,7 +227,7 @@ static void menu_words(char *d, const char *s, uint32_t n)
 static void draw_menu(void)
 {
     uint32_t i, pass, sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u +
-                            settings_hold * 3511u + settings_lights * 6151u + settings_autosave * 15485863u +
+                            settings_hold * 3511u + settings_lights * 6151u + settings_autosave * 15485863u + settings_fx_quality * 49999u +
 #if MELODEE_USB_AUDIO
                             ua_off_want * 92821u + ua_tracks_want * 324161u +
 #endif
@@ -279,6 +280,7 @@ static void draw_menu(void)
                 if (i == MI_ACCEL) value = PREF_BITS & PREF_ACCEL_OFF ? "OFF" : "ON";
                 if (i == MI_PICKER) value = PREF_BITS & PREF_PICK_OFF ? "OFF" : "ON";
                 if (i == MI_FONT) value = TY_PIXEL ? "PIXEL" : "RUBIK";
+                if (i == MI_FX_QUALITY) value = MI_FX_QUALITY_NAME[settings_fx_quality % 3u];
                 if (i == MI_AUTOSAVE) value = settings_autosave ? "ON" : "OFF";
                 if (i == MI_HOME_SEL) value = HS_NAME[home_select()];
                 if (i == MI_GLO_SEL) value = HS_NAME[glo_select()];
@@ -387,6 +389,11 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         uint32_t v = settings_hold % 4u;
         settings_hold = (uint8_t)(s > 0 ? (v < 3u ? v + 1u : 3u) : s < 0 ? (v ? v - 1u : 0u) : (v + 1u) % 4u);
         ok = 0;
+    }
+    if ((s || ok) && ui.menu == 1 && ui.menu_sel == MI_FX_QUALITY) {
+        uint32_t v = settings_fx_quality % 3u;
+        settings_fx_quality = (uint8_t)(s>0 ? (v<2u?v+1u:2u) : s<0 ? (v?v-1u:0u) : (v+1u)%3u);
+        ui.force = 1; ok = 0;
     }
     if((s || ok) && ui.menu==1 && ui.menu_sel>=MI_CLICK && ui.menu_sel<=MI_ADD){
         uint32_t id=ui.menu_sel-MI_CLICK,top=id<3?2:1;

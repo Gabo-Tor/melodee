@@ -56,5 +56,15 @@ int main(int argc,char **argv){
     if(full)for(int a=1;a<FX_COUNT;a++)for(int b=1;b<FX_COUNT;b++)for(int c=1;c<FX_COUNT;c++)for(int setting=0;setting<2;setting++){
         uint8_t modes[3]={a,b,c};run("matrix",modes,4,setting,0,256);
     }
+    for(uint32_t q=1;q<3u;q++){
+        settings_fx_quality=q;
+        for(int type=FX_ECHO;type<=FX_REVERB;type+=2){
+            uint8_t modes[3]={type,0,0};
+            run(q==1?"22k-single":"44k-single",modes,1,0,0,2048);
+            run(q==1?"22k-mixer":"44k-mixer",modes,4,1,1,2048);
+            run(q==1?"22k-send":"44k-send",modes,4,1,2,2048);
+        }
+    }
+    settings_fx_quality=0;
     fprintf(stderr,"FX performance: all effects, three-slot/four-track chains, mixer and %u-row matrix passed (%u)\n",full?2u*(FX_COUNT-1u)*(FX_COUNT-1u)*(FX_COUNT-1u):0u,checksum);return 0;
 }

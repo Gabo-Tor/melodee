@@ -31,7 +31,7 @@ typedef struct {
     uint32_t phase, age, epoch, pos;
     int32_t rng, random, mix;
     int16_t rate, character;
-    uint8_t type, mono, decim, failed;
+    uint8_t type, mono, decim, failed, quality;
     int32_t echo, damp[4];
     int32_t rev_damp[8], rev_l, rev_r, rev_prev_l, rev_prev_r;
     int32_t rev_bass[8];
@@ -365,14 +365,22 @@ static __attribute__((noinline,section(".audio_text"))) void fx_chorus_run(fx_st
 static const uint16_t REV_LEN[8] __attribute__((section(".data.fx_lengths")))={131,149,167,191,211,233,251,277};
 static const uint16_t REV_AP_LEN[8] __attribute__((section(".data.fx_lengths")))={23,31,43,61,19,29,37,47};
 #define FX_REVERB_BYTES 4096u
+/* CLASSIC retains the original rates; high fidelity doubles echo and
+ * quadruples reverb at 22.05 kHz, then runs both at FS for 44.1 kHz.
+ * Snapshot in each audio-owned state: workers never read a changing UI value. */
+static inline __attribute__((always_inline)) uint32_t fx_time_shift(const fx_state_t *f)
+{return f->quality ? 2u-f->quality : f->type==FX_REVERB ? 3u : 2u;}
+static inline __attribute__((always_inline)) uint32_t fx_reverb_scale(const fx_state_t *f)
+{return 1u << (3u-fx_time_shift(f));}
 static void fx_reverb_setup(fx_state_t *f)
 {
     if(f->rev_span[0] && f->rev_rate==f->rate && f->rev_char==f->character)return;
     f->rev_rate=f->rate;f->rev_char=f->character;
+    uint32_t scale=fx_reverb_scale(f),div=1u<<fx_time_shift(f);
     float decay=300.0f+(float)(f->character*f->character)*(5700.0f/(127.0f*127.0f));
     for(uint32_t k=0;k<8u;k++){
-        f->rev_span[k]=(uint16_t)((uint32_t)REV_LEN[k]*(64u+(uint32_t)f->rate)/191u);
-        float x=6.907755f*(float)f->rev_span[k]*(1000.0f*FX_REV_DIV)/((float)FS*decay);
+        f->rev_span[k]=(uint16_t)(((uint32_t)REV_LEN[k]*(64u+(uint32_t)f->rate)/191u)*scale);
+        float x=6.907755f*(float)f->rev_span[k]*(1000.0f*div)/((float)FS*decay);
         f->rev_gain[k]=(int32_t)(65536.0f*(1.0f-x*0.5f)/(1.0f+x*0.5f));
     }
 }
@@ -407,71 +415,61 @@ static inline __attribute__((always_inline)) int32_t fx_reverb_input(fx_state_t 
     }
     return f->damp[1];
 }
-static __attribute__((noinline,section(".dsp_text"))) void fx_reverb(fx_state_t *restrict f,int16_t *restrict mem,uint32_t n,const int32_t *drift,int32_t target,int32_t *left,int32_t *right)
+#define FX_REVERB_HIFI 0
+#define FX_REVERB_KERNEL fx_reverb
+#define FX_REVERB_SECTION ".dsp_text"
+#include "fx_reverb_kernel.h"
+#undef FX_REVERB_HIFI
+#undef FX_REVERB_KERNEL
+#undef FX_REVERB_SECTION
+static inline __attribute__((always_inline)) int32_t fx_reverb_ap_hifi(fx_state_t *f,int16_t *mem,uint32_t k,int32_t x,uint32_t off)
 {
-    /* DEPTH retains more body on each round trip and raises the wet return.
-     * Keep this work at FS/8: no additional delay memory or synth-rate DSP. */
-    int32_t a=f->rev_input,b=f->rev_input2,previous=f->echo,difference=f->damp[0],low=f->damp[1];
-    uint32_t phase=f->decim;
-    int32_t mix=f->mix,tone=166+f->character*80/127,level=724+f->character*3;
+    uint32_t pos=f->rev_ap[k];int32_t delayed=mem[off+pos];
+    int32_t y=delayed-fx_reverb_mul(x,42598u);
+    mem[off+pos]=(int16_t)clamp(x+fx_reverb_mul(y,42598u),-32767,32767);
+    if(++pos>=REV_AP_LEN[k]*fx_reverb_scale(f))pos=0;f->rev_ap[k]=(uint16_t)pos;
+    return y;
+}
+#define fx_reverb_ap fx_reverb_ap_hifi
+#define FX_REVERB_HIFI 1
+#define FX_REVERB_KERNEL fx_reverb_hifi
+#define FX_REVERB_SECTION ".audio_text"
+#include "fx_reverb_kernel.h"
+#undef fx_reverb_ap
+#undef FX_REVERB_HIFI
+#undef FX_REVERB_KERNEL
+#undef FX_REVERB_SECTION
+/* Optional echo runs at FS/2 or FS with its original 10..367 ms delay range.
+ * Half-rate uses a triangular decimator; full-rate bypasses conversion.
+ * Linear reconstruction avoids the Classic path's held-sample images. */
+static __attribute__((noinline,section(".audio_text"))) void fx_echo_hifi(fx_state_t *restrict f,int16_t *restrict mem,uint32_t n,int32_t target)
+{
+    uint32_t shift=fx_time_shift(f),scale=1u<<(2u-shift),div=1u<<shift;
+    uint32_t mask=4096u*scale-1u,delay=(110u+(uint32_t)f->rate*31u)*scale;
+    uint32_t bass_shift=FX_ECHO_LOOP_SHIFT+2u-shift;
+    int32_t mix=f->mix,feedback=f->character*220;
     for(uint32_t i=0;i<n;i++){
-        int32_t mono=fx_div_pow2(left[i]+right[i],1);
-        a=(int32_t)((uint32_t)a+(uint32_t)mono);b=(int32_t)((uint32_t)b+(uint32_t)a);
-        if(!phase){
-            uint32_t comb=(uint32_t)b-(uint32_t)previous;previous=b;
-            int32_t input=fx_div_pow2((int32_t)(comb-(uint32_t)difference),6);difference=(int32_t)comb;
-            low=fx_div_pow2(low+7*input,3);input=low;
-            /* Cheap rate-conversion compensation restores upper-mid body
-             * without increasing the bass return or allocating another filter. */
-            int32_t previous_input=f->damp[2];f->damp[2]=input;
-            input+=fx_div_pow2(input-previous_input,2);
-            input=fx_tone_input(f,input,FX_REV_DIV/(0.010f*FS));
-            int32_t v[8],x;uint32_t off=0;
-            f->rev_dc+=((float)input-f->rev_dc)*0.006f;
-            x=clamp(fx_div_pow2((int32_t)((float)input-f->rev_dc),2),-16000,16000);
-            off=1610u;
-            for(uint32_t k=0;k<4u;k++){x=fx_reverb_ap(f,mem,k,x,off);off+=REV_AP_LEN[k];}
-            off=0;int32_t sum=0;
-            for(uint32_t k=0;k<8u;k++){
-                uint32_t pos=f->rev_pos[k];
-                int32_t read=(int32_t)(pos+REV_LEN[k]-f->rev_span[k])-(drift[k]>>10);
-                if(read<0)read+=REV_LEN[k];else if(read>=REV_LEN[k])read-=REV_LEN[k];
-                uint32_t prev=read?read-1u:REV_LEN[k]-1u;
-                int32_t y=mem[off+(uint32_t)read];
-                y+=fx_div_pow2((mem[off+prev]-y)*(drift[k]&1023),10);
-                /* Remove bass on each round trip (~FS / 8 / (2 pi 2^shift)) so a
-                 * long tail cannot accumulate booming low modes and duck the dry mix. */
-                f->rev_bass[k]=fx_div_pow2(((1<<FX_REV_LOOP_SHIFT)-1)*f->rev_bass[k]+y,FX_REV_LOOP_SHIFT);y-=f->rev_bass[k];
-                f->rev_damp[k]=fx_div_pow2(f->rev_damp[k]*256+(y-f->rev_damp[k])*tone,8);
-                v[k]=f->rev_damp[k];sum+=v[k];off+=REV_LEN[k];
-            }
-            int32_t l=fx_div_pow2(v[0]-v[1]+v[2]-v[3],1),r=fx_div_pow2(v[4]-v[5]+v[6]-v[7],1);
-            /* Householder H = I - 2 uu': for eight equal weights, subtract
-             * sum/4 from each line. Orthogonal mixing with one sum replaces
-             * the nested Hadamard butterflies and their normalization multiply. */
-            int32_t shared=fx_div_pow2(sum,2);
-            off=0;
-            for(uint32_t k=0;k<8u;k++){
-                int32_t feedback=fx_reverb_mul(v[k]-shared,(uint32_t)f->rev_gain[k]);
-                mem[off+f->rev_pos[k]]=(int16_t)clamp(feedback+((k&1u)?-x:x),-32767,32767);
-                if(++f->rev_pos[k]>=REV_LEN[k])f->rev_pos[k]=0;off+=REV_LEN[k];
-            }
-            off=1768u;
-            l=fx_reverb_ap(f,mem,4,l,off);off+=REV_AP_LEN[4];l=fx_reverb_ap(f,mem,5,l,off);off+=REV_AP_LEN[5];
-            r=fx_reverb_ap(f,mem,6,r,off);off+=REV_AP_LEN[6];r=fx_reverb_ap(f,mem,7,r,off);
-            /* Round only hot wet peaks; the dry signal remains untouched. */
-            f->rev_prev_l=f->rev_l;f->rev_prev_r=f->rev_r;
-            f->rev_l=softclip(fx_div_pow2(l*level,8));f->rev_r=softclip(fx_div_pow2(r*level,8));
+        int32_t mono=fx_div_pow2(fx_left[i]+fx_right[i],1);
+        if(shift){
+            f->rev_input=(int32_t)((uint32_t)f->rev_input+(uint32_t)mono);
+            f->rev_input2=(int32_t)((uint32_t)f->rev_input2+(uint32_t)f->rev_input);
         }
-        int32_t l=f->rev_prev_l+fx_div_pow2((f->rev_l-f->rev_prev_l)*(phase+1u),3);
-        int32_t r=f->rev_prev_r+fx_div_pow2((f->rev_r-f->rev_prev_r)*(phase+1u),3);
-        int32_t dry_l=left[i],dry_r=right[i];
-        if(mix!=target)mix+=clamp(target-mix,-128,128);
-        left[i]=dry_l+fx_scale(l-dry_l,(uint32_t)mix*2u);
-        right[i]=dry_r+fx_scale(r-dry_r,(uint32_t)mix*2u);
-        phase=(phase+1u)&7u;
+        if(!f->decim){
+            int32_t input=mono;
+            if(shift){
+                uint32_t comb=(uint32_t)f->rev_input2-(uint32_t)f->echo;f->echo=f->rev_input2;
+                input=fx_div_pow2((int32_t)(comb-(uint32_t)f->damp[1]),2u*shift);f->damp[1]=(int32_t)comb;
+            }
+            input=fx_tone_input(f,input,div/(0.010f*FS));
+            int32_t wet=mem[(f->pos-delay)&mask];
+            f->damp[0]=fx_div_pow2(((1<<bass_shift)-1)*f->damp[0]+wet,bass_shift);
+            mem[f->pos]=(int16_t)clamp(input+fx_div_pow2((wet-f->damp[0])*feedback,15),-32767,32767);
+            f->pos=(f->pos+1u)&mask;f->rev_prev_l=f->rev_l;f->rev_l=wet;
+        }
+        int32_t wet=f->rev_prev_l+fx_div_pow2((f->rev_l-f->rev_prev_l)*(f->decim+1u),shift);
+        fx_return(target,0,f->mono,i,wet,wet,&mix);f->decim=(f->decim+1u)&(div-1u);
     }
-    f->mix=mix;f->decim=(uint8_t)phase;f->rev_input=a;f->rev_input2=b;f->echo=previous;f->damp[0]=difference;f->damp[1]=low;
+    f->mix=mix;
 }
 /* The filter inserts use a quarter-rate triangular decimator and pole,
  * independently per stereo side. Their Reverb histories are idle.
@@ -598,18 +596,20 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     if(bus && si/FX_SLOTS<NPART){type=0;target=0;}
     if(profiling){type=(fx_profile_control>>(slot*4u))&15u;target=type?(bus?32768:100*256):0;}
 #endif
-    if(f->type && type && f->type!=type && f->mix)target=0;
+    uint32_t quality=(type==FX_ECHO || type==FX_REVERB)?(uint32_t)clamp(settings_fx_quality,0,2):0u;
+    uint32_t changed=f->type!=type || f->quality!=quality;
+    if(f->type && type && changed && f->mix)target=0;
     if(!target && !f->mix){
         if(f->type || resource[RES_FX0+si].size){resource[RES_FX0+si].size=0;fx_zero(f);}
         return;
     }
-    if(f->epoch!=fx_epoch || (type && f->type!=type && !f->mix)){
+    if(f->epoch!=fx_epoch || (type && changed && !f->mix)){
         resource[RES_FX0+si].size=0;fx_zero(f);
-        f->epoch=fx_epoch;f->type=(uint8_t)type;f->rng=(int32_t)(0x73a9825du+si*997u);
+        f->epoch=fx_epoch;f->type=(uint8_t)type;f->quality=(uint8_t)quality;f->rng=(int32_t)(0x73a9825du+si*997u);
     }
     f->rate=(int16_t)clamp(p[2],0,127);f->character=(int16_t)clamp(p[3],0,127);
     if(fx_has_tone(f->type)){   /* the low cut (section 0: the floor, TONE above 0 higher), TONE below 0 the high cut (1) */
-        uint32_t slot=si%FX_SLOTS,master=si/FX_SLOTS==NPART,div=f->type==FX_REVERB?FX_REV_DIV:4u;
+        uint32_t slot=si%FX_SLOTS,master=si/FX_SLOTS==NPART,div=1u<<fx_time_shift(f);
         int32_t tone=clamp(master?song.g[G_MFXTONE+slot]:trk[si/FX_SLOTS].p[P_FXTONE+slot],-FX_TONE_MAX,FX_TONE_MAX);
         for(uint32_t k=0;k<2u;k++){   /* (a2: the cutoff now, Hz; 0 off) */
             int32_t hz=k?(tone<0?fx_tone_hz(tone):0):fx_low_cut_hz(f->type,tone);
@@ -626,6 +626,7 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     int16_t *mem=0;
     if(f->type>=FX_ECHO){
         uint32_t bytes=f->type==FX_CHORUS?FX_CHORUS_BYTES:f->type==FX_ROOM?2048u:f->type==FX_REVERB?FX_REVERB_BYTES:8192u;
+        if(f->quality)bytes*=1u<<((f->type==FX_REVERB?3u:2u)-fx_time_shift(f));
         if(!f->failed && !resource[RES_FX0+si].size){
             void *(*volatile allocate)(uint32_t,uint32_t)=fx_memory;mem=allocate(RES_FX0+si,bytes);if(!mem)f->failed=1;
         }else if(resource[RES_FX0+si].size)mem=resource[RES_FX0+si].ptr;
@@ -650,8 +651,9 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
          * keeping sine lookup calls outside the small SRAM sample kernel. */
         int32_t drift[8];for(uint32_t k=0;k<8u;k++)drift[k]=fx_sine(f->phase*(k+1u)+k*0x23456789u)*f->character/1024;
         f->phase+=n*11380u;void (*volatile setup)(fx_state_t *)=fx_reverb_setup;setup(f);
-        void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=fx_reverb;run(f,mem,n,drift,target,fx_left,fx_right);
-    }else if(f->type>=FX_ECHO){void (*volatile run)(fx_state_t *,int16_t *,uint32_t,int32_t)=fx_time;run(f,mem,n,target);}
+        void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=f->quality?fx_reverb_hifi:fx_reverb;run(f,mem,n,drift,target,fx_left,fx_right);
+    }else if(f->type==FX_ECHO && f->quality){void (*volatile run)(fx_state_t *,int16_t *,uint32_t,int32_t)=fx_echo_hifi;run(f,mem,n,target);}
+    else if(f->type>=FX_ECHO){void (*volatile run)(fx_state_t *,int16_t *,uint32_t,int32_t)=fx_time;run(f,mem,n,target);}
     else {
         if(f->type==FX_TAPE){void (*volatile design)(fx_state_t *,uint32_t)=fx_tape_design;design(f,n);}
         else {if(!fx_hw_status){void (*volatile probe)(void)=fx_probe;probe();}void (*volatile design)(fx_state_t *,uint32_t)=fx_design;design(f,n);}
@@ -732,7 +734,7 @@ static void fx_reverb_private_kernel(void *data)
     fx_reverb_job_t *j=data;fx_state_t *f=j->f;int32_t drift[8];AP_START(start);
     for(uint32_t k=0;k<8u;k++)drift[k]=fx_sine(f->phase*(k+1u)+k*0x23456789u)*f->character/1024;
     f->phase+=j->n*11380u;void (*volatile setup)(fx_state_t *)=fx_reverb_setup;setup(f);
-    void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=fx_reverb;
+    void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=f->quality?fx_reverb_hifi:fx_reverb;
     run(f,j->mem,j->n,drift,j->target,j->left,j->right);
 #if MELODEE_AUDIO_PROFILE
     j->elapsed=AUDIO_PROFILE_TICKS()-start;

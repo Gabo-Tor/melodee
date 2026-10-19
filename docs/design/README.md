@@ -273,6 +273,19 @@ records load FULL.
 Screens for every effect, the racks (picker, list, SPLIT), SHARED's sheet and TONE's two sides are rendered and linted
 in every palette by `tests/ui_render.c` (fx_*).
 
+**Settings > FX RATE** (HOME held) sets ECHO and REVERB fidelity for the whole device, including inserts and shared
+slots. KNOB 2 selects the row, KNOB 1 changes its value, OCT+ cycles: CLASSIC (the default), 22.05k, 44.1k.
+CLASSIC retains ECHO's 11.025 kHz and REVERB's 5.5125 kHz processing and original audio. At 44.1k both process
+every 44.1 kHz audio sample directly, with no downsampling or upsampling. ROOM and the other effects retain their
+existing rates. Delay lengths scale with the rate to preserve echo times and reverb size; the higher rate extends
+the wet bandwidth. TONE continues to shape the wet signal in Hz.
+
+The setting is saved with device preferences, independent of projects and sounds; old settings load CLASSIC.
+Changes fade each affected slot to dry, release its old buffer, then fade the new effect in with an empty tail.
+CLASSIC uses 8 KiB per ECHO and 4 KiB per REVERB; 22.05k uses 16 KiB per slot and 44.1k uses 32 KiB. Higher rates
+also cost more processing time. If a buffer cannot fit, the existing MEMORY FULL display applies and the slot
+passes dry audio; lowering FX RATE retries allocation. Both fonts and all values have render scenes (menu_fx_*).
+
 ## Large type (2026-10-14)
 
 The 1.54" panel (27.7 mm across) needs larger text: every screen is set in four type roles, and Settings > FONT picks

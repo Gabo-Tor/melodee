@@ -644,6 +644,7 @@ int main(int argc,char **argv)
     for(uint32_t mode=FX_PHASER;mode<FX_COUNT;mode++){
         assert(fx_signal(mode,60,64,0,0)==dry);
         uint64_t a=fx_signal(mode,60,64,127,0);assert(a!=dry && a==fx_signal(mode,60,64,127,0));
+        if(a!=original_pcm[mode])fprintf(stderr,"%s Classic PCM: %llx, expected %llx\n",N_FX[mode],(unsigned long long)a,(unsigned long long)original_pcm[mode]);
         assert(a==original_pcm[mode]);
         assert(a!=fx_signal(mode,127,64,127,0));assert(a!=fx_signal(mode,60,127,127,0));
         for(int rate=0;rate<=127;rate+=127)for(int cha=0;cha<=127;cha+=127)fx_signal(mode,rate,cha,127,0);

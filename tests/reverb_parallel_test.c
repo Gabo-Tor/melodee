@@ -72,7 +72,11 @@ int main(void)
 {
     pthread_t thread;assert(!pthread_create(&thread,0,worker_thread,0));
     while(!AW_LOAD(&audio_worker.ready))sched_yield();
-    for(uint32_t v=0;v<4;v++)for(int mode=0;mode<3;mode++)render(v,mode);
+    for(uint32_t q=0;q<3u;q++){
+        settings_fx_quality=q;
+        for(uint32_t v=0;v<4;v++)for(int mode=0;mode<3;mode++)render(v,mode);
+    }
+    settings_fx_quality=0;
     prepare(0,1,0);int32_t pcm[CTL]={0};fx_plan_t first;
     assert(fx_reverb_private_start(&trk[0],&trk[1],pcm,CTL,&first));
     assert(fx_reverb_pending);assert(audio_worker_join());

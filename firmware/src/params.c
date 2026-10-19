@@ -51,6 +51,7 @@ static int16_t settings_vpoints[VOICE_KINDS];
 static int16_t settings_safety;
 /* Device recording preferences: defaults preserve existing behavior. */
 #include "recording_preferences.h"
+#include "fx_preferences.h"
 static int16_t boot_cell;
 /* modulation matrix (mod.c): sources, destinations (E1..E8 = P_E0..P_E7: shown with the engine's labels) */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW"};
