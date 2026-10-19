@@ -182,3 +182,44 @@ Consumers validate their handles under the audio guard before access.
 audio reclamation that overwrites the retired memory, stale history refusal,
 editing with no history memory and release on clear. Its ASan/UBSan run and
 the complete UI tests pass. Linked final measurements are recorded below.
+
+
+The final `MELODEE next-21a5f3f` target was built with all 19 nightly flags.
+Its source-hash manifest and results are in `build/nightly-optimizations/`.
+The independent eight-bank baseline is the same source before demand history;
+the sixteen-bank comparison is the prior normal `origin/nightly` configuration.
+All values below are linked byte counts before live resource allocations.
+
+| Resource | Optimized eight-bank baseline | Final eight-bank nightly | Prior sixteen-bank nightly |
+| --- | ---: | ---: | ---: |
+| Main contiguous arena | 114,560 | 125,152 | 108,768 |
+| Data SRAM tail | 10,392 | 10,376 | 9,192 |
+| Low SRAM tail | 344 | 344 | 344 |
+| Retained SRAM tail | 1,040 | 1,040 | 1,040 |
+| Guaranteed shared resources | 126,336 | 136,912 | 119,344 |
+| Optional validated cache available to shared allocator | 14,336 | 28,672 | 14,336 |
+| Maximum shared resources when cache passes | 140,672 | 165,584 | 133,680 |
+
+Compared with the eight-bank baseline, manual-history fixed storage shrinks
+from 6,036 to 332 bytes. The resource handle table grows 16 bytes, and linked
+resident audio code is 4,900 bytes smaller; the guaranteed total rises by
+10,576 bytes. The measured compiler/code-placement difference is included in
+the totals, rather than inferring the entire gain from C object sizes.
+An additional 14,336 bytes of optional cache is shared instead of permanently
+partitioned for UI history. Manual history reserves 5,760 bytes while used;
+load history grows only for its used depth, and audio can retire either.
+
+Compared with the prior sixteen-bank nightly, guaranteed resources grow by
+17,568 bytes and maximum cache-ready shared resources by 31,904 bytes. The
+recorded-note limit stays 1,024; there is no upper-event demand bank or new
+saved project format. The primary and alternate display allocations retain
+their existing sizes and DMA ownership rules.
+
+Focused ASan/UBSan checks pass for shared undo and its exhaustion/reclamation
+paths. The actual final disassembly passes target instruction budgets, and
+the build verifies resident audio, CPU1 stacks, SRAM boundaries and flash
+limits. No flash, push, or physical audio/control/MIDI validation is included.
+The complete host/web/UI/DSP suite with nightly's twelve optimization flags
+ends with `ALL HOST TESTS PASSED in 89 s` in
+`build/nightly-optimizations/host-verified.log`. Eight-pattern sequencing,
+eight-level undo/redo, legacy saved formats and golden audio all pass.
