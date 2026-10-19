@@ -1,9 +1,9 @@
 {
-  "version": "next-32ef64b",
+  "version": "next-09c69aa",
   "product": "FM-1_900",
   "branch": "nightly",
-  "commit": "32ef64b132d0a1feeaee04a156cde74d387625a2",
-  "builtAt": "2026-10-19T10:47:50Z",
+  "commit": "09c69aa1480fd4cb0485dfca18486f3bbefcb0a9",
+  "builtAt": "2026-10-19T11:46:35Z",
   "pkg": {
     "dual": "../../firmware/melodee-nightly.fwsc"
   }
