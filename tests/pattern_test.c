@@ -18,7 +18,7 @@ static int banks_and_chords(void)
     motion_restore(t); motion_clear(t); t->step[63].note[3] = 72;
     pattern_request(t, 0);
     bad += check("editing or clearing a copy leaves the source chord and motion intact", t->step[63].note[3] == 71 && motion_count(t) == 1);
-    step_history_sync(); uint32_t gen = t->pattern_gen;
+    go_page(GR_ROLL);step_history_sync(); uint32_t gen = t->pattern_gen;
     pattern_copy(t, 0, 1); pattern_request(t, 1); step_history_sync();
     bad += check("identical-bank switches invalidate manual undo history", t->pattern_gen != gen && step_history.pattern_gen == t->pattern_gen && step_history.count == 1);
     return bad;

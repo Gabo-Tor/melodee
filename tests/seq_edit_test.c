@@ -352,8 +352,8 @@ static int test_compact_history(void)
                     exact &= !memcmp(&s, &decoded, sizeof s);
                 }
     bad += check("compact history preserves every step byte for all control combinations", exact);
-    bad += check("all eight levels have fixed storage even for dense patterns",
-                 sizeof step_history.state[0].step == NSTEP * 9u && sizeof undo_sram[0].step == NSTEP * 9u);
+    bad += check("all eight levels use bounded compact snapshots even for dense patterns",
+                 sizeof *step_history.state[0].step == 9u && STEP_HISTORY_BYTES == (STEP_HISTORY + 2u) * NSTEP * 9u && sizeof undo_sram[0].step == NSTEP * 9u);
     track_t *t = edit_setup();
     for (uint32_t i = 0; i < NSTEP; i++) {
         put_note(t, i, 48u + i % 36u, 1);
