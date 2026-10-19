@@ -141,7 +141,7 @@ int main(void)
     resource_host_cache_enabled=0;int bad=bank_tests()+resize_tests();
     uint32_t sram_capacity=RESOURCE_CAPACITY;
     resource_host_cache_enabled=1;bad+=bank_tests();
-    bad+=check("validated data-cache bank adds 28 KiB, the UI's 14 KiB apart",RESOURCE_CAPACITY==sram_capacity+28672u-UI_CACHE_BYTES && ui_cache()==_resource_cache_start);
+    bad+=check("validated data-cache bank shares its full 28 KiB with audio and history",RESOURCE_CAPACITY==sram_capacity+28672u && UI_CACHE_BYTES==0);
 #ifndef RESOURCES_BANKS_ONLY
     bad+=cache_tests()+audio_tests();
     resource_host_cache_enabled=0;bad+=cache_tests()+audio_tests();

@@ -163,3 +163,22 @@ FM6 table folding and voice flag packing remain deferred because they add
 work on sample/voice paths and need device CPU evidence. The saved-settings
 copy retains unknown preferences and failure semantics. Removing those
 without a validated replacement would trade away existing behavior.
+
+## Optimization-only nightly
+
+Nightly returns to eight patterns per track, 64 steps and 1,024 precise notes.
+The capacity experiments are withdrawn independently of the preceding RAM
+savings. FBKK/FUN22 and all four A/B project slots retain their normal layout.
+
+The later experimental undo optimization is now independent of capacity:
+manual step history has small permanent metadata and a bounded allocation
+while used; sound/pattern load history grows to eight levels on demand with
+one fixed fallback level. The validated cache bank has no fixed UI partition.
+Voice/effect and USB capture requests can retire these disposable histories
+before refusing an allocation. Music and active audio state remain intact.
+Consumers validate their handles under the audio guard before access.
+
+`tests/undo_memory_test.c` covers eight undo/redo levels without cache RAM,
+audio reclamation that overwrites the retired memory, stale history refusal,
+editing with no history memory and release on clear. Its ASan/UBSan run and
+the complete UI tests pass. Linked final measurements are recorded below.

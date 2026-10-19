@@ -5024,14 +5024,12 @@ static int test_capture(void)
     return bad;
 }
 
-/* Exercise both cache readiness states in the same binary. The resident/cache
- * profile keeps one fallback level; validated cache always supplies all eight. */
+/* Demand history grows on both cache-ready and guaranteed-SRAM paths. */
 static int test_undo_levels(void)
 {
     int bad = 0;
     for (uint32_t cache = 0; cache < 2u; cache++) {
-        resource_host_cache_enabled = cache;
-        undo_lv = undo_sram; undo_nlv = UNDO_SRAM_LEVELS;
+        undo_clear();step_history_clear();resource_host_cache_enabled = cache;
         ui_power_on();
         stop_transport();
         uint8_t p0 = trk[0].preset;
@@ -5039,9 +5037,9 @@ static int test_undo_levels(void)
         track_select(1);
         uint8_t p1 = trk[1].preset;
         turn(EN_PRESET, 1);
-        uint32_t levels = cache ? UNDO_LV_MAX : UNDO_SRAM_LEVELS;
-        bad += check("undo uses only validated cache; fallback depth matches its storage",
-                     undo_nlv == levels && undo_lv == (cache ? (undo_t *)(void *)ui_cache() : undo_sram));
+        uint32_t levels = 2u;
+        bad += check("undo acquires only two used levels from the shared allocator",
+                     undo_nlv == levels && undo_lv == resource[RES_LOAD_UNDO].ptr && resource[RES_LOAD_UNDO].size==levels*sizeof(undo_t));
         hold(B_EDIT);
         bad += check("latest sound load is undoable with and without cache", trk[1].preset == p1);
         hold(B_EDIT);
@@ -5061,13 +5059,14 @@ static int test_undo_levels(void)
             track_select(k % NTRK);
             turn(EN_PRESET, 1);
         }
+        levels=UNDO_LV_MAX;
         bad += check("load history remains bounded after repeated loads", undo_top == levels && undo_cnt == levels);
         for (uint32_t k = 0; k < levels; k++) hold(B_EDIT);
         bad += check("all available load levels can be undone", undo_top == 0u);
         for (uint32_t k = 0; k < levels; k++) edit_redo();
         bad += check("all available load levels can be redone", undo_top == levels);
     }
-    undo_lv = undo_sram; undo_nlv = UNDO_SRAM_LEVELS;
+    undo_clear();step_history_clear();
     resource_host_cache_enabled = 0;
     ui_power_on();
     return bad;

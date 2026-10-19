@@ -638,28 +638,34 @@ typedef struct {
     uint32_t t_ms;               /* time of the last load (the editor's SETs after it belong to it) */
 } undo_t;
 #define UNDO_LV_MAX 8u
-_Static_assert(UNDO_LV_MAX * sizeof(undo_t) <= UI_CACHE_BYTES, "undo levels fit the cache RAM's UI part");
-#if MELODEE_RAM_AUDIO && MELODEE_CACHE_RAM
 /* Reserve the engine arena even when cache startup fails. Never borrow a live
  * audio allocation from the UI or use unvalidated cache memory. */
 #define UNDO_SRAM_LEVELS 1u
-#else
-#define UNDO_SRAM_LEVELS UNDO_LV_MAX
-#endif
 static undo_t undo_sram[UNDO_SRAM_LEVELS] __attribute__((section(".pool")));
 static undo_t *undo_lv = undo_sram;
 static uint8_t undo_nlv = UNDO_SRAM_LEVELS, undo_top, undo_cnt;   /* levels; undoable 0 .. top-1, redoable top .. cnt-1 */
-static undo_t *undo_last(void) { return &undo_lv[undo_top ? undo_top - 1u : 0u]; }
-#define undo (*undo_last())      /* the latest level (tests, the layers: undo.keep); none: level 0 */
-static void undo_clear(void) { undo_top = undo_cnt = 0; undo_lv[0].trk = undo_lv[0].keep = 0; }
-static void undo_levels(void)    /* the cache RAM's UI part once it is there (boot self-test passed) */
+static void undo_refresh(void)
 {
-    uint8_t *c = ui_cache();
-    if (c && undo_lv == undo_sram) {
-        undo_lv = (undo_t *)(void *)c;
-        undo_nlv = UNDO_LV_MAX;
-        undo_clear();
+    if(undo_lv!=undo_sram && (resource[RES_LOAD_UNDO].ptr!=undo_lv ||
+       resource[RES_LOAD_UNDO].size<(uint32_t)undo_nlv*sizeof(undo_t))){
+        undo_lv=undo_sram;undo_nlv=UNDO_SRAM_LEVELS;undo_top=undo_cnt=0;
     }
+}
+static undo_t *undo_last(void) { undo_refresh();return &undo_lv[undo_top ? undo_top - 1u : 0u]; }
+#define undo (*undo_last())      /* the latest level (tests, the layers: undo.keep); none: level 0 */
+static void undo_clear(void) {
+    resource_release(RES_LOAD_UNDO);undo_lv=undo_sram;undo_nlv=UNDO_SRAM_LEVELS;
+    undo_top = undo_cnt = 0; undo_lv[0].trk = undo_lv[0].keep = 0;
+}
+static void undo_levels(void)    /* bounded history, acquired before a load */
+{
+    undo_refresh();
+    uint32_t levels=undo_top<UNDO_LV_MAX?undo_top+1u:UNDO_LV_MAX;
+    if(levels<=undo_nlv)return;
+    undo_t *p=resource_resize(RES_LOAD_UNDO,levels*sizeof(undo_t));
+    if(!p)return; /* keep the existing depth; no voice/effect is displaced */
+    if(undo_lv==undo_sram && undo_top)memcpy(p,undo_sram,undo_top*sizeof(undo_t));
+    undo_lv=p;undo_nlv=(uint8_t)levels;
 }
 static uint8_t undo_depth;       /* loads nest (an engine jump loads its first preset): the outer one counts;
                                   * melodee_init / project_load raise it to take no copy at all */
@@ -722,10 +728,9 @@ static void momentary_take(uint32_t slot)
         if(i==momentary.count && i<P_COUNT+G_COUNT){momentary.ptr[i]=vp;momentary.value[i]=*vp;momentary.count++;}}
     ui.pg_down&=(uint16_t)~(1u<<panel.btn[B_LFO]);
 }
-static void load_begin(track_t *t, uint32_t what)
+static void load_begin_guarded(track_t *t, uint32_t what)
 {
     undo_t *u;
-    momentary_restore();
     uint32_t i = trk_index(t);
     if (undo_depth++)
         return;
@@ -766,9 +771,15 @@ static void load_begin(track_t *t, uint32_t what)
     motion_snapshot_track(t, &u->motion_backup);
     if(!designer_on())motion_reset(t);
 }
-
-static void load_end(track_t *t)
+static void load_begin(track_t *t, uint32_t what)
 {
+    momentary_restore();
+    uint32_t f=motion_guard();load_begin_guarded(t,what);motion_unguard(f);
+}
+
+static void load_end_guarded(track_t *t)
+{
+    undo_refresh();
     if (--undo_depth || !undo_top)
         return;
     motion_rebase(t);
@@ -776,15 +787,24 @@ static void load_end(track_t *t)
     undo.keep = 1;
     undo.t_ms = fm1_ms;
 }
+static void load_end(track_t *t)
+{
+    uint32_t f=motion_guard();load_end_guarded(t);motion_unguard(f);
+}
 
 /* the editor's SET right after a load on the selected track (an audition: G_ENGSEL, then the patch's
  * values): part of that load, the copy from before it stays */
-static void load_extend(track_t *t)
+static void load_extend_guarded(track_t *t)
 {
+    undo_refresh();
     if (undo_top && undo.keep && undo.trk == trk_index(t) + 1u && fm1_ms - undo.t_ms < 1500u) {
         undo.after = track_sig(t);
         undo.t_ms = fm1_ms;
     }
+}
+static void load_extend(track_t *t)
+{
+    uint32_t f=motion_guard();load_extend_guarded(t);motion_unguard(f);
 }
 
 static int param_kept(uint32_t i);
@@ -806,8 +826,9 @@ static int recording_history(int redo)
 /* EDIT held (redo 0) / EDIT + OCT+ (redo 1): what a level's loads changed (what) and its copy change places, so its
  * redo is the same swap. The sound: engine, preset and its parameters (not param_kept); the pattern: the steps and LEN
  * DIV SWING GATE. The mix (LEVEL PAN MUTE) stays: no load changes it */
-static void undo_step(int redo)
+static void undo_step_guarded(int redo)
 {
+    undo_refresh();
     if(recording_history(redo))return;
     if(note_clear_history(redo))return;
     track_t *t;
@@ -829,7 +850,7 @@ static void undo_step(int redo)
         return;
     }
     u->motion_backup = current_motion;
-    fm1_irq_off();                                /* the audio ISR must not see half a sound */
+    /* Already guarded: audio cannot see half a sound. */
     if (u->what & UNDO_SOUND) {
         uint8_t e = t->eng_req, pr = t->preset, un=t->user_native;
         uint16_t us = t->user;
@@ -867,7 +888,6 @@ static void undo_step(int redo)
             step_snapshot_put(&u->step[i], &s);
         }
     }
-    fm1_irq_on();
     if (u->what & UNDO_SOUND) {                 /* FM6: the track's patch as it was (edited, a project's, a
                                                    * converted DIGITAL sound), preserved with the sound */
         uint32_t tr = trk_index(t);
@@ -889,8 +909,16 @@ static void undo_step(int redo)
     ui_say(redo ? "REDO " : "UNDO ", b);
     ui.force = 1;
 }
+static void undo_step(int redo)
+{
+    uint32_t f=motion_guard();undo_step_guarded(redo);motion_unguard(f);
+}
 static void undo_swap(void) { undo_step(0); }
-static void undo_seal(void) { if (undo_top) undo_lv[undo_top - 1u].keep = 0; }   /* the next load: a level of its own */
+static void undo_seal(void) {
+    uint32_t f=motion_guard();undo_refresh();
+    if (undo_top) undo_lv[undo_top - 1u].keep = 0;
+    motion_unguard(f);
+}   /* the next load: a level of its own */
 
 static void track_defaults_steps(track_t *t)
 {

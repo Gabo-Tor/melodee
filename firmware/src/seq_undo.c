@@ -11,12 +11,12 @@
 #define STEP_HISTORY 8u
 static struct {
     struct {
-        step_snapshot_t step[NSTEP];
+        step_snapshot_t *step;
         recorded_note_t removed, replacement;
         uint16_t removed_index, selection;
         uint8_t cursor, note_slot, has_removed;
     } state[STEP_HISTORY + 1u];
-    step_snapshot_t live[NSTEP];                 /* the steps as the last frame left them */
+    step_snapshot_t *live;
     uint32_t pattern_gen;
     uint32_t recording_gen;
     recorded_note_t removed, replacement;
@@ -25,8 +25,21 @@ static struct {
     uint8_t valid, track, len;
     uint8_t head, count, pos, pending, cursor_before, slot_before;
 } step_history __attribute__((section(".pool")));
+#define STEP_SNAPSHOT_BYTES (NSTEP*sizeof(step_snapshot_t))
+#define STEP_HISTORY_BYTES ((STEP_HISTORY+2u)*STEP_SNAPSHOT_BYTES)
+/* Only metadata is permanent. Eight edits plus the live comparison are
+ * borrowed while editing; audio may retire this handle between UI calls. */
+static int step_history_memory(void)
+{
+    return resource[RES_STEP_UNDO].size==STEP_HISTORY_BYTES &&
+        step_history.live==(step_snapshot_t *)resource[RES_STEP_UNDO].ptr+(STEP_HISTORY+1u)*NSTEP;
+}
 
-static void step_history_clear(void) { step_history.valid = 0; }
+static void step_history_clear(void)
+{
+    step_history.valid = 0;
+    resource_release(RES_STEP_UNDO);step_history.live=0;
+}
 
 static uint32_t step_history_index(void)
 {
@@ -35,7 +48,9 @@ static uint32_t step_history_index(void)
 
 static int step_history_context(void)
 {
-    return step_history.valid && step_history.recording_gen == recording_generation &&
+    return
+           step_history_memory() &&
+           step_history.valid && step_history.recording_gen == recording_generation &&
            step_history.pattern_gen == TSEL->pattern_gen && step_history.track == song.sel && step_history.len == step_pattern_len(TSEL) &&
            !(song.playing && (song.rec & (1u << song.sel)));
 }
@@ -44,6 +59,16 @@ static int step_history_context(void)
  * steps are compared and copied with the IRQs off */
 static void step_history_sync_locked(void)
 {
+    if(!step_history_memory()){
+        step_history.valid=step_history.head=step_history.pos=step_history.pending=0;
+        step_history.has_removed=0;
+        if(ui.home || (cur_page()->scope!=SC_STEP && cur_page()->scope!=SC_DRUMHIT) ||
+           (song.playing && (song.rec&(1u<<song.sel))))return;
+        step_snapshot_t *data=resource_get(RES_STEP_UNDO,STEP_HISTORY_BYTES);
+        if(!data)return; /* editing still works when audio needs all the RAM */
+        for(uint32_t i=0;i<=STEP_HISTORY;i++)step_history.state[i].step=data+i*NSTEP;
+        step_history.live=data+(STEP_HISTORY+1u)*NSTEP;
+    }
     if (!step_history_context() || !step_snapshot_equal(step_history.live,TSEL->step)) {
         step_history.head = step_history.pos = step_history.pending = 0;
         step_history.count = 1;
@@ -70,14 +95,14 @@ static void step_history_sync(void)
 }
 
 /* an edit done (no keys or edit modifier held any more): kept, if the steps changed (moving the cursor keeps the redo) */
-static void step_history_finish(void)
+static void step_history_finish_locked(void)
 {
     uint32_t at = step_history_index();
     if (!step_history_context()) {
         step_history_clear();
         return;
     }
-    if (step_history.has_removed || memcmp(step_history.state[at].step,step_history.live,sizeof step_history.live)) {
+    if (step_history.has_removed || memcmp(step_history.state[at].step,step_history.live,STEP_SNAPSHOT_BYTES)) {
         step_history.count = (uint8_t)(step_history.pos + 1u);   /* the redo goes */
         if (step_history.count == STEP_HISTORY + 1u) {
             step_history.head = (uint8_t)((step_history.head + 1u) % (STEP_HISTORY + 1u));
@@ -87,7 +112,7 @@ static void step_history_finish(void)
         step_history.pos++;
         step_history.count++;
         at = step_history_index();
-        memcpy(step_history.state[at].step,step_history.live,sizeof step_history.live);
+        memcpy(step_history.state[at].step,step_history.live,STEP_SNAPSHOT_BYTES);
         step_history.state[at].cursor = ui.cursor;
         step_history.state[at].selection = ui.note_pick;
         step_history.state[at].note_slot = ui.note_slot;
@@ -98,6 +123,11 @@ static void step_history_finish(void)
     }
     step_history.has_removed = 0;
     step_history.pending = 0;
+}
+
+static void step_history_finish(void)
+{
+    uint32_t f=motion_guard();step_history_finish_locked();motion_unguard(f);
 }
 
 /* after the input: the steps as this frame left them, so a change from outside on the next frame is no part of an

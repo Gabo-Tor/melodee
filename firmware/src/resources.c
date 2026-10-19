@@ -10,6 +10,7 @@
  * contiguous POOL bank for engine state and note history. */
 enum { RES_ENGINE0, RES_NOTE_HISTORY = RES_ENGINE0 + NPART, RES_FX0,
        RES_RECORD_UNDO = RES_FX0 + FX_STATE_COUNT,
+       RES_STEP_UNDO, RES_LOAD_UNDO,
 #if MELODEE_USB_AUDIO
        RES_USB_TRACKS,
 #endif
@@ -47,10 +48,10 @@ static uint32_t resource_host_cache[7168], resource_host_cache_enabled;
 #define _resource_retained_end ((uint8_t *)(resource_host_retained + 1024))
 #define RESOURCE_MAIN_CAPACITY ((uint32_t)sizeof resource_host)
 #endif
-/* The cache RAM's first UI_CACHE_BYTES are the UI's (ui.c: the undo levels), the rest the audio's: the audio's worst
- * case fits the SRAM banks alone (the linker's budget), so the cache RAM only ever adds to it */
-#define UI_CACHE_BYTES 14336u
-static uint8_t *ui_cache(void) { return RESOURCE_CACHE_AVAILABLE ? _resource_cache_start : 0; }
+/* UI histories use demand allocations, reclaimable by audio. The entire
+ * validated cache bank is shared; guaranteed SRAM remains usable if cache
+ * startup fails. No UI partition is held while its history is unused. */
+#define UI_CACHE_BYTES 0u
 static const struct { uint8_t *start, *end; } resource_banks[] = {
     { _resource_data_start, _resource_data_end },
     { _resource_retained_start, _resource_retained_end },
@@ -134,9 +135,24 @@ static inline void *resource_get(uint32_t id, uint32_t bytes)
     uint32_t size=(bytes+3u)&~3u;
     if(size && size==resource[id].size)return resource[id].ptr;
     void *p=resource_allocate(id,bytes);
+    /* UI history never competes with a sounding engine/effect. Retire whole
+     * histories only after the ordinary allocation failed; their consumers
+     * validate the handle under the audio guard before touching a snapshot. */
+    if(!p && bytes && bytes<=RESOURCE_CAPACITY &&
+       (id<RES_NOTE_HISTORY || (id>=RES_FX0 && id<RES_RECORD_UNDO)
+#if MELODEE_USB_AUDIO
+        || id==RES_USB_TRACKS
+#endif
+       ) &&
+       (resource[RES_STEP_UNDO].size || resource[RES_LOAD_UNDO].size)){
+        resource_release(RES_STEP_UNDO);resource_release(RES_LOAD_UNDO);
+        p=resource_allocate(id,bytes);
+    }
     /* A history snapshot must never prevent a voice/effect from acquiring its
      * working memory. It is disposable, unlike sounding engine state. */
-    if(!p && bytes && bytes<=RESOURCE_CAPACITY && id!=RES_RECORD_UNDO && resource[RES_RECORD_UNDO].size){
+    if(!p && bytes && bytes<=RESOURCE_CAPACITY && id!=RES_RECORD_UNDO &&
+       id!=RES_STEP_UNDO && id!=RES_LOAD_UNDO &&
+       resource[RES_RECORD_UNDO].size){
         resource_release(RES_RECORD_UNDO);recording_undo_lost=1;
         recording_undo_skip|=recording_undo_active;recording_undo_active=0;
         p=resource_allocate(id,bytes);

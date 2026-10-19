@@ -272,6 +272,7 @@ core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
 
 if core; then
+    t "shared undo RAM: eight levels, audio priority and exhaustion" undo_memory_test -O1 $FW
     t "flash storage (A/B, torn writes)" storage_test
     t "streamed banks: unpublished copies, page/header power cuts and readback" storage_stream_test
     t "streamed projects: exact codec bytes, dirty hashes, rename, legacy import and track removal" project_stream_test -O1 $FW
