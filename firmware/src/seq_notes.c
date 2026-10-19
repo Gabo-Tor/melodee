@@ -86,9 +86,9 @@ static uint32_t notes_base(void) { return ui.cursor / notes_span() * notes_span(
 /* Rebuild only the deleted event's rounded overview cell. Other events in
  * that cell keep their timing and their playback ownership. Emptying it
  * clears its tie tail as ordinary STEP deletion does. */
-static void notes_rebuild_work(track_t *t,step_t *steps,uint32_t view)
+static void notes_rebuild(track_t *t, uint32_t view)
 {
-    step_t *st = &steps[view];
+    step_t *st = &t->step[view];
     uint32_t count = 0;
     st->n = st->hit = st->acc = st->vel = 0;
     for (uint32_t i = recording_head[recording_owner(t)]; i < RECORD_MAX; i = recording_next[i]) {
@@ -106,51 +106,10 @@ static void notes_rebuild_work(track_t *t,step_t *steps,uint32_t view)
             if (j == st->n && st->n < 4u) st->note[st->n++] = r->note;
         }
     }
-    if (!count) step_delete_work(t,steps,view);
+    if (!count) step_delete(t, view);
     else if (st->vel > 110u) st->flags |= SF_ACCENT;
     else st->flags &= (uint8_t)~SF_ACCENT;
 }
-
-static void notes_rebuild(track_t *t,uint32_t view)
-{
-    step_t steps[NSTEP];memcpy(steps,t->step,sizeof steps);notes_rebuild_work(t,steps,view);
-    if(pattern_can_steps(t,steps))memcpy(t->step,steps,sizeof steps);
-}
-
-/* Build an event edit's STEP result privately. Validate this before ending
- * voices, changing slot ownership or publishing a history entry. */
-static void notes_model_steps(track_t *t,step_t *steps,const uint8_t *drop,uint32_t replace,const recorded_note_t *after)
-{
-    memcpy(steps,t->step,sizeof t->step);uint64_t touched=0;uint16_t count[NSTEP]={0};
-    if(replace<RECORD_MAX&&recording_active(t,replace))touched|=1ull<<recording_view(t,&recording[replace]);
-    if(after&&after->vel)touched|=1ull<<recording_view(t,after);
-    if(drop)for(uint32_t i=recording_head[recording_owner(t)];i<RECORD_MAX;i=recording_next[i])if((drop[i/8u]>>(i%8u))&1u)touched|=1ull<<recording_view(t,&recording[i]);
-    for(uint32_t view=0;view<NSTEP;view++)if((touched>>view)&1u)steps[view].n=steps[view].hit=steps[view].acc=steps[view].vel=0;
-    uint32_t next=recording_head[recording_owner(t)],ordered=0,due=0;
-#if MELODEE_RECORD_CURSOR
-    uint32_t period=seq_div_samples((uint32_t)t->p[P_SDIV]);
-    ordered=recording_schedule[trk_index(t)].ordered_period==period&&recording_schedule[trk_index(t)].ordered_key==recording_key(t);
-    if(after&&after->vel)due=recording_on(t,after,period);
-#endif
-    for(uint32_t pass=0;pass<=RECORD_MAX;pass++){
-        const recorded_note_t *r;
-        if(after&&after->vel&&(!ordered||next>=RECORD_MAX||recording_due[next]>=due)){r=after;after=0;}
-        else if(next<RECORD_MAX){uint32_t i=next;next=recording_next[i];if(i==replace||(drop&&((drop[i/8u]>>(i%8u))&1u))||!recording_active(t,i))continue;r=&recording[i];}
-        else {if(!after||!after->vel)break;r=after;after=0;}
-        uint32_t view=recording_view(t,r);if(view>=NSTEP||!((touched>>view)&1u))continue;
-        step_t *st=&steps[view];count[view]++;st->time=ST_NOTE;st->flags|=SF_RECORDED;
-        if(r->vel>st->vel)st->vel=r->vel;
-        uint32_t lane=drum_lane(r->note);
-        if(drum_track(t)&&r->note==DRUM_LANE_NOTE[lane]){st->hit|=1u<<lane;if(r->vel>110)st->acc|=1u<<lane;}
-        else {uint32_t j;for(j=0;j<st->n&&st->note[j]!=r->note;j++);if(j==st->n&&st->n<4u)st->note[st->n++]=r->note;}
-    }
-    for(uint32_t view=0;view<NSTEP;view++)if((touched>>view)&1u){
-        if(!count[view])step_delete_work(t,steps,view);
-        else if(steps[view].vel>110)steps[view].flags|=SF_ACCENT;else steps[view].flags&=(uint8_t)~SF_ACCENT;
-    }
-}
-static int notes_admit_event(track_t *t,uint32_t replace,const recorded_note_t *after)
-{step_t steps[NSTEP];notes_model_steps(t,steps,0,replace,after);return pattern_can_steps(t,steps);}
 
 /* One editor handles both ordinary step notes and precise performance events. */
 static int notes_have_recording(const track_t *t)

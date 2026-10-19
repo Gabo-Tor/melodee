@@ -87,7 +87,6 @@ static int recording_undo_apply(int redo)
     if(u->active||rec_on(t))return 2;
     if(u->signature!=recording_undo_signature(t))return 0;
     if(u->redo!=(uint32_t)redo)return 0;
-    if(!pattern_can_snapshots(t,u->steps))return 5;
     /* Expansion is private history work. Refuse atomically if audio has
      * acquired the spare capacity since this sparse snapshot was captured. */
     recording_undo_t *grown=resource_resize(RES_RECORD_UNDO,sizeof *u);

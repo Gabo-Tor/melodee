@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Frozen serialized bytes from 53f05c4, before changing the RAM note layout. */
-#define NPAT 8u
 #define AUDIO_CPU_FIXTURE_NO_MAIN 1
 #include "audio_cpu_fixture.c"
 int main(void)

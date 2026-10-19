@@ -206,7 +206,7 @@ static int full_pattern_archive(void)
             t->step[4].time==ST_TIE && t->p[P_SLEN]==16+(int16_t)b && step_chance(&t->step[3])==20+b && motion_count(t)==1;
     }
     bad+=check("cold flash load restores all 32 chords, ties, timing, chance and motion banks",ok && chain_patterns[0][3]==4);
-    bad+=check("full archive restores the runtime with its original active banks",put_all(0,archive,sizeof archive,st_crc32(archive,sizeof archive))==0 && trk[0].pattern==NPAT-1u && trk[3].pattern==NPAT-1u);
+    bad+=check("full archive restores the runtime with its original active banks",put_all(0,archive,sizeof archive,st_crc32(archive,sizeof archive))==0 && trk[0].pattern==7 && trk[3].pattern==7);
     return bad;
 }
 static int native_archive(void)

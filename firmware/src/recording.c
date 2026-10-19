@@ -640,10 +640,8 @@ static uint32_t recording_play_on(const track_t *t, uint32_t i, uint32_t period)
 #if MELODEE_CAPTURE_FAST
 static void recording_remove(track_t *t, uint32_t i);
 #endif
-/* The caller admitted the final overview under the same IRQ guard. */
-static int recording_note_admitted(track_t *t, uint32_t note, uint32_t vel, uint32_t step)
+static int recording_note(track_t *t, uint32_t note, uint32_t vel, uint32_t step)
 {
-
 #if MELODEE_CAPTURE_FAST
     uint32_t owner = recording_owner(t), period = seq_div_samples((uint32_t)t->p[P_SDIV]);
     uint32_t actual = t->seq_pos >= 0x7FFFFFFFu ? 0u : t->seq_idx;
@@ -706,14 +704,6 @@ static int recording_note_admitted(track_t *t, uint32_t note, uint32_t vel, uint
     recording_tracks |= (uint8_t)(1u << trk_index(t));
     recording_generation++;
     return 1;
-}
-
-/* Direct capture users only change the recorded flag. Live note entry admits
- * its final chord/hit first, avoiding repeated full-store scans. */
-static int recording_note(track_t *t,uint32_t note,uint32_t vel,uint32_t step)
-{
-    step_t marked=t->step[step];marked.flags|=SF_RECORDED;
-    return pattern_can_set_step(t,step,&marked)&&recording_note_admitted(t,note,vel,step);
 }
 
 /* The UI calls these with audio interrupts paused. Remove only this event,

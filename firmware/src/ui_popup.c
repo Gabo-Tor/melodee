@@ -204,20 +204,17 @@ static void nt_chance_v(char *b)
 }
 static void nt_chance(int32_t s)
 {
-    if(!st_free())return;
-    fm1_irq_off();step_t *at=st_at(),value=*at;
-    step_set_chance(&value,(uint32_t)clamp((int32_t)step_chance(at)+s,0,100));
-    pattern_set_step(TSEL,(uint32_t)(at-TSEL->step),&value);fm1_irq_on();
+    step_t *st = st_at();
+    if (st_free())
+        step_set_chance(st, (uint32_t)clamp((int32_t)step_chance(st) + s, 0, 100));
 }
-
 static void nt_slide_v(char *b) { str_cpy(b, st_at()->flags & SF_SLIDE ? "On" : "Off", 8); }
 static void nt_slide(void)
 {
     if (!st_free())
         return;
     fm1_irq_off();
-    step_t *at=st_at(),value=*at;value.flags^=SF_SLIDE;
-    pattern_set_step(TSEL,(uint32_t)(at-TSEL->step),&value);
+    st_at()->flags ^= SF_SLIDE;
     fm1_irq_on();
 }
 static void nt_delete(void)
@@ -315,7 +312,7 @@ static void page_sheet_open(void)
         break;
     case 4: {                                           /* "Pattern 3", "T2" */
         char t[12] = "Pattern 1";
-        fmt_int(t+8,TSEL->pattern+1);
+        t[8] = (char)('1' + TSEL->pattern % NPAT);
         str_cpy(nm, "T1", sizeof nm);
         nm[1] = (char)('1' + song.sel % NTRK);
         sheet_open(t, nm, SHEET_PATTERNS, NELEM(SHEET_PATTERNS));

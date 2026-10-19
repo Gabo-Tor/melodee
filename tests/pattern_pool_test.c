@@ -3,7 +3,6 @@
 /* Dense-capacity and seeded state-machine oracle for the actual compressed
  * store, staging handoff and point queries. Host timing is not device timing. */
 #define UI_TEST_NO_MAIN 1
-#define NPAT 8u /* Frozen fully dense eight-bank pool oracle. */
 #include "ui_test.c"
 #include <assert.h>
 static pattern_t model[NTRK][NPAT];

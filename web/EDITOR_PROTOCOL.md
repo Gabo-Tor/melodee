@@ -411,16 +411,16 @@ grid lives in the steps themselves, so every engine has it:
 ## Pattern banks (commands 73–74)
 
 INFO sends 0 in the former untagged CHAIN_ROWS byte, then retains the tagged UI, motion and backup
-capabilities. `50 01 10 10` announces 16 patterns per track and 16 bank-song rows (older firmware sends `50 01 08 10` for eight patterns); FM6's tag follows.
+capabilities. `50 01 08 10` announces eight patterns per track and 16 bank-song rows; FM6's tag follows.
 Editors must use the tag, not infer support from a version string. Older firmware retains command 33's
 project-based SONG behavior; its historical format is documented below.
 
 | cmd | Request | Reply |
 | --- | --- | --- |
-| 73 PATTERN | track 0..3, op 0 query; op 1 select, bank 0..NPAT-1; op 2 copy, source 0..NPAT-1, destination 0..NPAT-1 | track, op, rc, active bank, queued bank (127 none), bank count NPAT (8 or 16) |
+| 73 PATTERN | track 0..3, op 0 query; op 1 select, bank 0..7; op 2 copy, source 0..7, destination 0..7 | track, op, rc, active bank, queued bank (127 none), bank count 8 |
 | 74 BANK_SONG | op 0 query; op 1 set, count 0..16, count × (T1 bank, T2 bank, T3 bank, T4 bank, repeat 1..16); op 2 start; op 3 stop | op, rc, count, running, row, remaining, count × (four banks, repeat) |
 
-rc 0 succeeds, 1 rejects invalid values or a blocked action, 2 means busy or motion capacity exceeded, and 4 means shared pattern storage is full.
+rc 0 succeeds, 1 rejects invalid values or a blocked action, 2 means busy or motion capacity exceeded.
 Bank-song rows validate completely before replacing the arrangement. Pattern selection queues at that
 track's loop end while playing; selecting the active bank cancels its pending change. STOP applies queued
 choices. Copy retains four-note chords, ties, drum data, chance, timing and motion. Copying into the active
@@ -430,14 +430,6 @@ BANK_SONG switches all four tracks at track 1's loop boundary, preserves the cur
 pauses recording and sequence edits, and restores the original bank selections on STOP or the song's end.
 Each bank has LEN/DIV/SWING/GATE. Automation has a project-wide limit of 64 events; events belong to a
 track and bank, while the ON switch remains track-wide. WATCH sends RELOAD when a bank changes.
-
-Current projects and runtime backups use **FBKL** (`46 42 4B 4C`, 27,904 bytes). Four-byte magic and size precede an 11,068-byte compact FUN23 prefix. All 64 logical banks, including the active banks, are encoded in the tail. Its fields are 16 bytes of two-bit bank modes (empty/dense/sparse; mode 3 reserved), 64 three-byte LEN/DIV/SWING/GATE tuples, 64 SONG bank assignments, 64 motion bank tags, then FN61 plus 64 FM6 function bytes. Step payload starts at byte 11,480 and shares a 16,384-byte budget. Dense banks use 512 bytes; sparse banks use a block-presence/repeat byte and, for each occupied 16-step block, either one eight-byte repeated step or a 16-bit occupancy mask followed by occupied steps. Unused tail bytes are zero. The last uint32 is FNV-1a over all preceding bytes.
-
-FUN23 retains the 13,212-byte standalone extent and existing parameter/native/event offsets. Its extra owner counts occupy a previously reserved 44-byte area; active-bank identifiers grow from three to four bits. FBKL omits the four active step arrays and 96 unused control bytes from that prefix, since every bank is in the tail. Saved records retain the existing A/B flash geometry, four slots and protected sector tails. FBKK/FUN22 and older supported formats import with exact timing: each former track's eight banks map to its first eight new banks, and the rest start empty. Saving upgrades to FBKL. Older firmware cannot read FBKL: export a backup before downgrading.
-
-STEP admission counts active, staged and inactive banks against both RAM and wire budgets. It preserves the former 32 × 64 arbitrary dense-step capacity across the larger directory; fully populating all 64 banks is not guaranteed. LEN writes via SET/TRACK_PARAM round upward onto 16/32/48/64. Legacy odd lengths load unchanged until an explicit length edit.
-
-The following describes the historical FBK9 format; current writes use FBKL.
 
 Projects and runtime backups are FBK9 (`46 42 4B 39` in byte order, size 20224). Header words are magic
 0x394B4246 and size; a complete 3584-byte FUN8 record follows at byte 8. Byte 3592 holds four active bank

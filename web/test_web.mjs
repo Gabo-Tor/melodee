@@ -1518,24 +1518,12 @@ async function patternProtocol() {
     "native motion: INFO v2 retains the tagged capabilities, v1 firmware still supported");
   ok(info.patterns === 8 && info.chainRows === 16 && info.backupCaps === 3 && info.fm6.bank === 32,"patterns: tagged INFO preserves preferences, motion, backup and FM6");
   ok(eq(E.req.pattern(2,1,7)[1],[2,1,7]) && E.parse[E.CMD.PATTERN]([2,1,0,7,127,8]).active===7,"patterns: bank selection uses its track and zero-based bank");
-  const info16=E.parse[E.CMD.INFO]([...base,0,0x55,1,9,0x4d,2,64,1,0x42,1,3,0x50,1,16,16]);
-  ok(info16.patterns===16&&E.parse[E.CMD.PATTERN]([2,1,0,15,127,16]).active===15,"patterns: sixteen-bank INFO and high bank replies");
-  ok(eq(E.req.pattern(3,1,15)[1],[3,1,15])&&E.req.bankSong(1,[{banks:[15,14,13,12],repeat:1}])[1][2]===15,"patterns: high bank selection and song rows");
-  let legacyReject=false;try{E.req.bankSong(1,[{banks:[8,0,0,0],repeat:1}],8);}catch{legacyReject=true;}
-  ok(legacyReject,"patterns: legacy eight-bank request bounds stay strict");
   const rows=[{banks:[0,2,4,7],repeat:3},{banks:[7,6,5,4],repeat:1}];
   const request=E.req.bankSong(1,rows);
   const reply=E.parse[E.CMD.BANK_SONG]([1,0,2,0,0,0,...request[1].slice(2)]);
   ok(JSON.stringify(reply.rows)===JSON.stringify(rows),"patterns: SONG carries independent banks for every track");
-  let invalid=false; try { E.req.bankSong(1,[{banks:[0,1,2,16],repeat:1}]); } catch { invalid=true; }
+  let invalid=false; try { E.req.bankSong(1,[{banks:[0,1,2,8],repeat:1}]); } catch { invalid=true; }
   ok(invalid,"patterns: invalid bank-song values rejected before transport");
-  const mock=attachMock({patterns:16});
-  const mockInfo=E.parse[E.CMD.INFO](await mock.rq(E.req.info()));
-  const selected=E.parse[E.CMD.PATTERN](await mock.rq(E.req.pattern(3,1,15)));
-  const highRows=[{banks:[15,14,13,12],repeat:2}];
-  const highSong=E.parse[E.CMD.BANK_SONG](await mock.rq(E.req.bankSong(1,highRows)));
-  ok(mockInfo.patterns===16&&selected.active===15&&JSON.stringify(highSong.rows)===JSON.stringify(highRows),"patterns: sixteen-bank mock selects bank 16 and retains high-bank song rows");
-  mock.done();
   const B=await import("./fm1backup.js");
   const ids=[0,1,2,3,4,5,6,7,8], manifest=[1,0,9];
   ids.forEach(id=>manifest.push(id,...B.bkU32(id===0?20224:id===1?604:0),...B.bkU32(0)));

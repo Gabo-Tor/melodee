@@ -46,8 +46,8 @@ def restore_runtime(d,directory,fm6_mode=None):
     if fm6_mode is not None:
         # Construct a temporary live fixture in memory from the existing
         # artifact. No snapshot or modified backup is written to disk.
-        raw=bytearray(raw);off=11412 if raw[:4]==b'FBKL' else len(raw)-88
-        if raw[:4] not in (b'FBKK',b'FBKL') or raw[off:off+4]!=b'FN61' or fm6_mode not in (0,1,2):raise ValueError('Native pattern function fixture required')
+        raw=bytearray(raw);off=len(raw)-88
+        if raw[:4]!=b'FBKK' or raw[off:off+4]!=b'FN61' or fm6_mode not in (0,1,2):raise ValueError('Native FBKK function fixture required')
         for p in range(4):raw[off+4+p*16+15]=fm6_mode
         checksum=2166136261
         for byte in raw[:-4]:checksum=((checksum^byte)*16777619)&0xffffffff

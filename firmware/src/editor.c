@@ -720,7 +720,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path */
                 set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
             } else if (d->max > d->min) {
-                *vp = a[0]==0 && a[1]==P_SLEN ? pattern_length_edit(ed_rv(a+2)) : (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
+                *vp = (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
                 if (a[0] == 1 && (a[1] == G_A4 || a[1] == G_BUDGET))
                     settings_save();
                 if (a[0] == 0) {
@@ -770,8 +770,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             return;
         st = &TSEL->step[a[0]];
         if (cmd == ED_STEP_SET && na >= 9u && !chain_busy()) {
-            step_t value=*st;ed_step_put(&value,a+1,na-1u);
-            uint32_t guard=motion_guard();pattern_set_step(TSEL,a[0],&value);motion_unguard(guard);
+            ed_step_put(st, a + 1, na - 1u);
         }
         ed_w.st[a[0]] = ed_step_sig(&seq_steps(TSEL)[a[0]]);
         ed_b(a[0]);
@@ -1005,10 +1004,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 2u || a[0] >= NTRK || a[1] >= NSTEP)
             return;
         st = &trk[a[0]].step[a[1]];
-        if (na >= 10u && !chain_busy()) {
-            step_t value=*st;ed_step_put(&value,a+2,na-2u);
-            pattern_set_step(&trk[a[0]],a[1],&value);
-        }
+        if (na >= 10u && !chain_busy())
+            ed_step_put(st, a + 2, na - 2u);
         if (a[0] == song.sel)
             ed_w.st[a[1]] = ed_step_sig(&seq_steps(&trk[a[0]])[a[1]]);
         ed_b(a[0]);
@@ -1024,7 +1021,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         d = ed_tdesc(t, a[1]);
         if (na >= 4u && !param_reserved(a[1]) && !(chain_busy() && a[1] >= P_SLEN && a[1] <= P_SGATE)) {
             if (d->max > d->min)                           /* as SET: clamped; a fixed value stays */
-                t->p[a[1]] = a[1]==P_SLEN ? pattern_length_edit(ed_rv(a+2)) : (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
+                t->p[a[1]] = (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
             (void)motion_capture(t, a[1], t->p[a[1]]);
             if (scale_shared(a[1]))
                 scale_share(t);

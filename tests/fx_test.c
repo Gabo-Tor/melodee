@@ -47,7 +47,7 @@ static void legacy(void)
         else{
             assert(k%3u?bank_valid(b,n):proj_import(&proj_scratch,b,(int)n));
             assert(proj_scratch.t[0].p[P_E0]==17 && proj_scratch.motion.event[0].param==P_E0);
-            assert(proj_scratch.recording[0].on==55 && proj_scratch.recording[0].duration==217 && recorded_owner(&proj_scratch.recording[0])==NPAT+3u);
+            assert(proj_scratch.recording[0].on==55 && proj_scratch.recording[0].duration==217 && proj_scratch.recording[0].owner==11);
             assert(!project_restore_runtime(&proj_scratch));if(k%3u)bank_restore(b);
             assert(TSEL->step[0].n==3 && TSEL->step[0].note[2]==67);
             if(k%3u)assert(pattern_at(1,3)->step[7].note[0]==72);

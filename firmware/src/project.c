@@ -15,9 +15,7 @@
  *
  * Built on the Mac too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP) and engines.c. */
-#define PROJ_OLD_MAGIC 0x46554E49u
-#define PROJ_16_MAGIC 0x46554E4Au
-#define PROJ_MAGIC (NPAT > 8u ? PROJ_16_MAGIC : PROJ_OLD_MAGIC)                 /* FUN23 extends bank ownership; FUN22 and earlier import. */
+#define PROJ_MAGIC 0x46554E49u                 /* FUN22: one TONE per FX slot; FUN21 and earlier convert */
 #define PROJ_CUT_MAGIC 0x46554E48u             /* FUN21: a low and a high cut per FX slot, read as TONE */
 #define PROJ_PRE_HP_MAGIC 0x46554E47u
 #define PROJ_CUT_NP 125u                       /* FUN21 / TPLK's P_COUNT: three low cuts at P_FXTONE, three high cuts */
@@ -101,11 +99,6 @@ static uint8_t proj_p5_origin_value(const project_t *p,uint32_t track)
 #define PROJ_P5_ORIGIN_TAG1 0x35u
 #define PROJ_P5_ORIGIN_MAX 128u /* native Prophet user collection */
 #define PROJ_MPC_OCT_WIRE (PROJ_TONE_WIRE - 2u) /* tagged bank octaves in the unused project tail */
-/* FUN23 uses the unused control tail for owners 32..63, keeping every
- * legacy native/record/name offset and the 13,212-byte extent fixed. */
-#define PROJ_REC_HI (PROJ_MPC_OCT_WIRE-44u)
-#define PROJ_GAP_END PROJ_REC_HI
-#define PROJ_GAP_START (PROJ_GAP_END-96u)
 #define TMPL_MPC_OCT_G G_RESERVED25             /* template metadata only; remains an inert runtime global */
 
 /* Four signed octaves in a tagged 16-bit word; zero is an older record (all banks at zero).
@@ -162,7 +155,7 @@ static uint32_t proj_hash(const void *p, uint32_t n) { return fnv(2166136261u, p
 static uint32_t proj_sum(const project_t *p) { return proj_hash(p, sizeof *p - 4u); }
 static int proj_ok(const project_t *q)
 {
-    if ((q->magic != PROJ_MAGIC && q->magic != PROJ_OLD_MAGIC) || q->size != sizeof *q || q->sum != proj_sum(q) ||
+    if (q->magic != PROJ_MAGIC || q->size != sizeof *q || q->sum != proj_sum(q) ||
         q->sel >= NTRK || q->parts > NPART || q->phys > PROJ_PHYS ||
         !chain_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
     for (uint32_t k = 0; k < NTRK; k++) if (q->t[k].engine >= NENGINES || q->t[k].mpc_octave < -3 || q->t[k].mpc_octave > 3 || q->pattern[k] >= NPAT || !drum_patch_valid(&q->drum[k]) || !p5_patch_valid(&q->p5[k])) return 0;
@@ -172,26 +165,12 @@ static int proj_ok(const project_t *q)
 
 static int proj_unpack(project_t *q, const uint8_t *b);
 static int proj_fn_none(project_t *q);
-static int proj_legacy_owners(project_t *q)
-{
-#if NPAT > 8u
-    for(uint32_t k=0;k<NTRK;k++)if(q->pattern[k]>=8u)return 0;
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(q->recording[i].vel &&
-        (recorded_owner(&q->recording[i])>=32u||recorded_step(&q->recording[i])>=64u))return 0;
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(q->recording[i].vel){
-        uint32_t owner=recorded_owner(&q->recording[i]);
-        recorded_set_owner(&q->recording[i],owner/8u*NPAT+owner%8u);
-    }
-#endif
-    q->magic=PROJ_MAGIC;q->sum=proj_sum(q);return 1;
-}
-static int proj_current_wire(uint32_t magic){return magic==PROJ_MAGIC||magic==PROJ_OLD_MAGIC;}
 /* Prior host/runtime snapshots used ten-byte notes. External FUN/FBKK files
  * have their own fixed codec, but retain this older raw import as well. */
 static int proj_import_note10(project_t *q,const uint8_t *b,uint32_t n)
 {
     uint32_t magic,size,sum;memcpy(&magic,b,4);memcpy(&size,b+4,4);memcpy(&sum,b+n-4u,4);
-    if((magic!=PROJ_MAGIC&&magic!=PROJ_OLD_MAGIC)||size!=n||sum!=proj_hash(b,n-4u))return 0;
+    if(magic!=PROJ_MAGIC||size!=n||sum!=proj_hash(b,n-4u))return 0;
     uint32_t at=__builtin_offsetof(project_t,recording);
     for(uint32_t i=0;i<RECORD_MAX;i++){
         const uint8_t *r=b+at+i*10u;
@@ -207,16 +186,15 @@ static int proj_import_note10(project_t *q,const uint8_t *b,uint32_t n)
     uint32_t tail=__builtin_offsetof(project_t,pattern),old=at+RECORD_MAX*10u;
     /* Forward byte copy also supports an in-place shrinking import. */
     for(uint32_t i=0;i<sizeof *q-tail;i++)((uint8_t *)q)[tail+i]=b[old+i];
-    q->size=sizeof *q;if(magic==PROJ_OLD_MAGIC){if(!proj_legacy_owners(q))return 0;}else q->sum=proj_sum(q);return proj_ok(q);
+    q->size=sizeof *q;q->sum=proj_sum(q);return proj_ok(q);
 }
 /* FUN18 / FUN17 / FUN16 or a project_t (host RAM slots) -> q; 0 = not a project. */
 static int proj_import(project_t *q, const void *b, int n)
 {
-    if (n == (int)PROJ_STORE_SIZE && (((const uint32_t *)b)[0] == PROJ_MAGIC || ((const uint32_t *)b)[0] == PROJ_OLD_MAGIC || ((const uint32_t *)b)[0] == PROJ_CUT_MAGIC || ((const uint32_t *)b)[0] == PROJ_PRE_HP_MAGIC || ((const uint32_t *)b)[0] == 0x46554E46u || ((const uint32_t *)b)[0] == 0x46554E45u || ((const uint32_t *)b)[0] == 0x46554E44u || ((const uint32_t *)b)[0] == 0x46554E43u))
+    if (n == (int)PROJ_STORE_SIZE && (((const uint32_t *)b)[0] == PROJ_MAGIC || ((const uint32_t *)b)[0] == PROJ_CUT_MAGIC || ((const uint32_t *)b)[0] == PROJ_PRE_HP_MAGIC || ((const uint32_t *)b)[0] == 0x46554E46u || ((const uint32_t *)b)[0] == 0x46554E45u || ((const uint32_t *)b)[0] == 0x46554E44u || ((const uint32_t *)b)[0] == 0x46554E43u))
         return proj_unpack(q, b) && proj_fn_none(q);
     if (n == (int)sizeof *q && proj_ok((const project_t *)b)) {
         memcpy(q, b, sizeof *q);
-        if(q->magic==PROJ_OLD_MAGIC&&!proj_legacy_owners(q))return 0;
         return 1;
     }
     if(n==(int)(sizeof *q+RECORD_MAX))return proj_import_note10(q,b,(uint32_t)n);
@@ -254,28 +232,28 @@ static int proj_record_pack(uint8_t *b,const project_t *q)
         for(uint32_t i=0;i<RECORD_MAX;i++){
             const recorded_note_t *r=&q->recording[i];
             if(!r->vel || recorded_owner(r)!=owner)continue;
-            if(!recording_valid(r) || recorded_owner(r)>=NTRK*NPAT || recorded_step(r)>=64u)return 0;
+            if(!recording_valid(r) || recorded_owner(r)>=32u || recorded_step(r)>=64u)return 0;
             uint32_t pos=0;uint8_t *v=b+PROJ_REC_OFF+at++*8u;
             wire_bits_put(v,&pos,r->on,16);wire_bits_put(v,&pos,r->duration,16);
             wire_bits_put(v,&pos,r->note,7);wire_bits_put(v,&pos,r->vel,7);
             wire_bits_put(v,&pos,r->step,8);wire_bits_put(v,&pos,recorded_exponent(r),3);
             wire_bits_put(v,&pos,(uint32_t)(r->pitch+24),6);wire_bits_put(v,&pos,recorded_gate(r),1);count++;
         }
-        uint32_t dir=(owner%32u)*11u;wire_bits_put(b+(owner<32u?PROJ_REC_DIR:PROJ_REC_HI),&dir,count,11);
+        uint32_t dir=owner*11u;wire_bits_put(b+PROJ_REC_DIR,&dir,count,11);
     }
     return 1;
 }
-static int proj_record_unpack(project_t *q,const uint8_t *b,uint32_t banks)
+static int proj_record_unpack(project_t *q,const uint8_t *b)
 {
     uint32_t at=0;
-    for(uint32_t owner=0;owner<NTRK*banks;owner++){
-        uint32_t dir=(owner%32u)*11u;uint16_t count=(uint16_t)wire_bits_get(b+(owner<32u?PROJ_REC_DIR:PROJ_REC_HI),&dir,11);
+    for(uint32_t owner=0;owner<NTRK*NPAT;owner++){
+        uint32_t dir=owner*11u;uint16_t count=(uint16_t)wire_bits_get(b+PROJ_REC_DIR,&dir,11);
         if(count>RECORD_MAX-at)return 0;
         for(uint32_t i=0;i<count;i++){
             recorded_note_t *r=&q->recording[at];const uint8_t *v=b+PROJ_REC_OFF+at++*8u;uint32_t pos=0;
             r->on=wire_bits_get(v,&pos,16);r->duration=wire_bits_get(v,&pos,16);
             r->note=wire_bits_get(v,&pos,7);r->vel=wire_bits_get(v,&pos,7);
-            r->step=wire_bits_get(v,&pos,8);recorded_set_owner(r,owner/banks*NPAT+owner%banks);recorded_set_exponent(r,wire_bits_get(v,&pos,3));
+            r->step=wire_bits_get(v,&pos,8);r->owner=owner|(wire_bits_get(v,&pos,3)<<5);
             r->pitch=(int8_t)((int32_t)wire_bits_get(v,&pos,6)-24);r->length=wire_bits_get(v,&pos,1);
             if(!r->vel || !recording_valid(r))return 0;
         }
@@ -321,7 +299,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
     for(i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;if(q->g[id]<GP[id].min || q->g[id]>GP[id].max)return 0;b[PROJ_MASTER_WIRE+i]=(uint8_t)q->g[id];} b[62] = q->sel; b[63] = q->parts; b[64] = q->phys; b[66] = P_COUNT;
     for(i=0;i<FX_SLOTS;i++){int32_t v=q->g[G_MFXTONE+i];if(v<-FX_TONE_MAX || v>FX_TONE_MAX)return 0;b[PROJ_TONE_WIRE+i]=(uint8_t)(v+64);}
     uint32_t banks = 0;
-    for (t = 0; t < NTRK; t++) { if (q->pattern[t] >= NPAT) return 0; banks |= q->pattern[t] << ((NPAT>8u?4u:3u) * t); }
+    for (t = 0; t < NTRK; t++) { if (q->pattern[t] >= NPAT) return 0; banks |= q->pattern[t] << (3u * t); }
     b[65] = (uint8_t)banks; b[67] = (uint8_t)(banks >> 8);
     for (t = 0; t < NTRK; t++) {
         for (i = 0; i < P_COUNT; i++) {
@@ -333,7 +311,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
             if(!proj_step_pack(b+pos,&q->t[t].step[i]))return 0;pos+=8u;
         }
     }
-    if (pos + sizeof q->chain + sizeof q->motion + 2u + 2u*NTRK > (NPAT>8u?PROJ_GAP_START:PROJ_MPC_OCT_WIRE)) return 0;
+    if (pos + sizeof q->chain + sizeof q->motion + 2u + 2u*NTRK > PROJ_MPC_OCT_WIRE) return 0;
     memcpy(b + pos, &q->chain, sizeof q->chain); pos += sizeof q->chain;
     memcpy(b + pos, &q->motion, sizeof q->motion);
     pos += sizeof q->motion;
@@ -378,34 +356,33 @@ static int proj_unpack(project_t *q, const uint8_t *b)
     const uint32_t end = PROJ_NAME_OFF - PROJ_DRUM_BYTES - PROJ_REC_DIR_BYTES - PROJ_P5_BYTES - RECORD_MAX * 8u -
                          NTRK * FM6_PACKED - PROJ_CZ_BYTES;
     memcpy(&magic, b, 4); memcpy(&size, b + 4, 4); memcpy(&sum, b + PROJ_STORE_SIZE - 4u, 4);
-    if ((!proj_current_wire(magic) && magic != PROJ_CUT_MAGIC && magic != PROJ_PRE_HP_MAGIC && magic != 0x46554E46u && magic != 0x46554E45u && magic != 0x46554E44u && magic != 0x46554E43u) || size != PROJ_STORE_SIZE || sum != proj_hash(b, PROJ_STORE_SIZE - 4u) ||
-        (magic==PROJ_16_MAGIC&&np!=P_COUNT) || np < 8u || np > (magic==PROJ_CUT_MAGIC?PROJ_CUT_NP:P_COUNT) || (proj_current_wire(magic) && np!=122u && np!=P_COUNT) || (magic==PROJ_CUT_MAGIC && np!=PROJ_CUT_NP) || (magic==PROJ_PRE_HP_MAGIC && np!=119u) || (magic==0x46554E46u && np!=117u) || (magic==0x46554E45u && np!=116u) || (magic==0x46554E44u && np!=108u) || (magic==0x46554E43u && np!=104u) ||
+    if ((magic != PROJ_MAGIC && magic != PROJ_CUT_MAGIC && magic != PROJ_PRE_HP_MAGIC && magic != 0x46554E46u && magic != 0x46554E45u && magic != 0x46554E44u && magic != 0x46554E43u) || size != PROJ_STORE_SIZE || sum != proj_hash(b, PROJ_STORE_SIZE - 4u) ||
+        np < 8u || np > (magic==PROJ_CUT_MAGIC?PROJ_CUT_NP:P_COUNT) || (magic==PROJ_MAGIC && np!=122u && np!=P_COUNT) || (magic==PROJ_CUT_MAGIC && np!=PROJ_CUT_NP) || (magic==PROJ_PRE_HP_MAGIC && np!=119u) || (magic==0x46554E46u && np!=117u) || (magic==0x46554E45u && np!=116u) || (magic==0x46554E44u && np!=108u) || (magic==0x46554E43u && np!=104u) ||
         b[62] >= NTRK || b[63] > NPART || b[64] > PROJ_PHYS ||
-        68u + NTRK * (np - (magic==0x46554E44u?PROJ_FX_FIELDS:0u) + 2u + NSTEP * ((proj_current_wire(magic) || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u || magic==0x46554E45u)?8u:9u)) + sizeof q->chain + sizeof q->motion > end)
+        68u + NTRK * (np - (magic==0x46554E44u?PROJ_FX_FIELDS:0u) + 2u + NSTEP * ((magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u || magic==0x46554E45u)?8u:9u)) + sizeof q->chain + sizeof q->motion > end)
         return 0;
     memset(q, 0, sizeof *q); q->magic = PROJ_MAGIC; q->size = sizeof *q;
     memcpy(q->g,b+8,2u*PROJ_GLOBALS);
     for(i=G_MFXTYPE;i<G_COUNT;i++)q->g[i]=GP[i].def;
-    if(proj_current_wire(magic) || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u){
+    if(magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u){
         if(b[PROJ_FX_WIRE_OFF]!='M' || b[PROJ_FX_WIRE_OFF+1u]!='F' || b[PROJ_FX_WIRE_OFF+2u]!='X' || b[PROJ_FX_WIRE_OFF+3u]>127u)return 0;
         q->g[G_FXRETURN]=b[PROJ_FX_WIRE_OFF+3u];
         for(i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;uint8_t v=b[PROJ_MASTER_WIRE+i];if(v>GP[id].max)return 0;q->g[id]=v;}
         for(i=G_RESERVED4;i<=G_RESERVED11;i++)q->g[i]=0;
     }
-    if(proj_current_wire(magic) || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC){if(b[PROJ_FX_MODE_OFF]>1u || b[PROJ_FX_MODE_OFF+1u])return 0;q->g[G_FXMODE]=b[PROJ_FX_MODE_OFF];}
-    for(i=0;i<FX_SLOTS && (proj_current_wire(magic) || magic==PROJ_CUT_MAGIC);i++){
+    if(magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC){if(b[PROJ_FX_MODE_OFF]>1u || b[PROJ_FX_MODE_OFF+1u])return 0;q->g[G_FXMODE]=b[PROJ_FX_MODE_OFF];}
+    for(i=0;i<FX_SLOTS && (magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC);i++){
         uint32_t lo=b[PROJ_TONE_WIRE+i],hi=b[PROJ_LP_WIRE+i];
-        if(proj_current_wire(magic) ? lo<64u-FX_TONE_MAX || lo>64u+FX_TONE_MAX || hi : lo>127u || hi>127u)return 0;
-        q->g[G_MFXTONE+i]=proj_current_wire(magic)?(int16_t)((int32_t)lo-64):proj_tone_of_cuts((int32_t)lo,(int32_t)hi);
+        if(magic==PROJ_MAGIC ? lo<64u-FX_TONE_MAX || lo>64u+FX_TONE_MAX || hi : lo>127u || hi>127u)return 0;
+        q->g[G_MFXTONE+i]=magic==PROJ_MAGIC?(int16_t)((int32_t)lo-64):proj_tone_of_cuts((int32_t)lo,(int32_t)hi);
     }
     q->g[G_RESERVED24]=0;
     if(magic==0x46554E44u)for(i=G_RESERVED4;i<=G_RESERVED11;i++)q->g[i]=0;
     q->sel = b[62]; q->parts = b[63]; q->phys = b[64];
     {
         uint32_t banks = b[65] | (uint32_t)b[67] << 8;
-        uint32_t bits=magic==PROJ_16_MAGIC?4u:3u;
-        if(bits==3u && (banks&0xF000u))return 0;
-        for(t=0;t<NTRK;t++){q->pattern[t]=(uint8_t)((banks>>(bits*t))&((1u<<bits)-1u));if(q->pattern[t]>=NPAT)return 0;}
+        if (banks & 0xF000u) return 0;
+        for (t = 0; t < NTRK; t++) q->pattern[t] = (uint8_t)((banks >> (3u * t)) & 7u);
     }
     for (t = 0; t < NTRK; t++) {
         int16_t values[PROJ_CUT_NP], def[P_COUNT];
@@ -427,7 +404,7 @@ static int proj_unpack(project_t *q, const uint8_t *b)
                 q->t[t].p[P_FXTONE + i] = proj_tone_of_cuts(values[P_FXTONE + i], values[P_FXTONE + FX_SLOTS + i]);
         for (i = 0; i < NSTEP; i++) {
             step_t *s = &q->t[t].step[i]; uint32_t meta;
-            if(proj_current_wire(magic) || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u || magic==0x46554E45u){if(!step_wire_unpack(s,b+pos))return 0;pos+=8u;continue;}
+            if(magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u || magic==0x46554E45u){if(!step_wire_unpack(s,b+pos))return 0;pos+=8u;continue;}
             memcpy(s->note, b + pos, 4); pos += 4; meta = b[pos++];
             s->n = meta & 7u; s->time = (meta >> 3) & 3u; s->flags = (meta >> 5) & 3u;
             if (meta & 128u) s->flags |= SF_RECORDED;
@@ -446,7 +423,7 @@ static int proj_unpack(project_t *q, const uint8_t *b)
         for(t=0;t<NTRK;t++){uint32_t origin=b[pos+2u+t];if(origin && origin<=128u){uint32_t slot=origin-1u,bank=slot/26u,k=slot%26u,spill=bank*8u+k-18u;q->user[t]=(uint16_t)(1u+(k<18u?(16u+bank)*18u+k:spill<32u?spill/2u*18u+16u+spill%2u:378u+spill-32u));}}
     }
     proj_motion_ids(&q->motion, np);
-    if (proj_current_wire(magic) && np == P_COUNT) {
+    if (magic == PROJ_MAGIC && np == P_COUNT) {
         int8_t oct[NTRK];
         if (!mpc_octaves_unpack(oct, b[PROJ_MPC_OCT_WIRE] | (uint32_t)b[PROJ_MPC_OCT_WIRE+1u] << 8)) return 0;
         for (t = 0; t < NTRK; t++) q->t[t].mpc_octave = oct[t];
@@ -462,7 +439,7 @@ static int proj_unpack(project_t *q, const uint8_t *b)
         if (!p5_patch_valid(&q->p5[t])) return 0;
         if (!drum_patch_unpack(&q->drum[t], b + PROJ_DRUM_OFF + t * DRUM_WIRE_BYTES)) return 0;
     }
-    if (!proj_record_unpack(q,b,magic==PROJ_16_MAGIC?16u:8u)) return 0;
+    if (!proj_record_unpack(q, b)) return 0;
     for (i = 0; i < RECORD_MAX; i++) if (!recording_valid(&q->recording[i])) return 0;
     {
         char n[PROJ_NAME_LEN + 1u];
@@ -561,29 +538,6 @@ static void project_capture(project_t *p);
 #include "project_stream.c"
 #endif
 
-#if !defined(FM1_IRQ_TARGET)
-static void proj_cache_record(uint32_t slot,const uint8_t *raw,uint32_t len)
-{
-    memset(proj_bank_slot[slot],0,sizeof proj_bank_slot[slot]);memset(&proj_slot[slot],0,sizeof proj_slot[slot]);
-    if(!len)return;
-    memcpy(proj_bank_slot[slot],raw,len);
-#if NPAT > 8u
-    proj_pack(&proj_slot[slot],&proj_scratch);
-#else
-    memcpy(&proj_slot[slot],raw+8u,sizeof proj_slot[slot]);
-#endif
-}
-static int proj_cache_matches(uint32_t slot)
-{
-    if(!bank_valid(proj_bank_slot[slot],BANK_STORE_SIZE))return 0;
-#if NPAT > 8u
-    project_store_t *temp=(project_store_t *)bank_tail_work();
-    return proj_pack(temp,&proj_scratch)&&!memcmp(temp,&proj_slot[slot],sizeof *temp);
-#else
-    return !memcmp(proj_bank_slot[slot]+8u,&proj_slot[slot],sizeof proj_slot[slot]);
-#endif
-}
-#endif
 /* FNV of each slot's stored bytes, as last written or read (0: unknown): autosave writes only what differs */
 static uint32_t proj_saved_hash[4];
 static int proj_read_slot(uint32_t slot)
@@ -596,7 +550,8 @@ static int proj_read_slot(uint32_t slot)
     int valid = copy >= 0 && proj_stream_load(OBJ_BANK0 + slot, (uint32_t)copy, source.len);
     if (copy >= 0) n = (int)source.len;
 #else
-    if (proj_cache_matches(slot)) {
+    if (bank_valid(proj_bank_slot[slot], BANK_STORE_SIZE) &&
+        !memcmp(proj_bank_slot[slot] + 8u, &proj_slot[slot], sizeof proj_slot[slot])) {
         n = BANK_STORE_SIZE; memcpy(proj_wire_u.raw, proj_bank_slot[slot], BANK_STORE_SIZE);
     } else { n = sizeof proj_slot[slot]; memcpy(proj_wire_u.raw, &proj_slot[slot], sizeof proj_slot[slot]); }
 #endif
@@ -605,13 +560,7 @@ static int proj_read_slot(uint32_t slot)
 #endif
 #if MELODEE_FLASH && !defined(FM1_IRQ_TARGET)
     if (valid) {
-        if (n == BANK_STORE_SIZE) { st_read_range(OBJ_BANK0 + slot, (uint32_t)copy, 0, proj_bank_slot[slot], BANK_STORE_SIZE);
-#if NPAT > 8u
-            proj_pack(&proj_slot[slot],&proj_scratch);
-#else
-            memcpy(&proj_slot[slot],proj_bank_slot[slot]+8u,sizeof proj_slot[slot]);
-#endif
-         }
+        if (n == BANK_STORE_SIZE) { st_read_range(OBJ_BANK0 + slot, (uint32_t)copy, 0, proj_bank_slot[slot], BANK_STORE_SIZE); memcpy(&proj_slot[slot], proj_bank_slot[slot] + 8u, sizeof proj_slot[slot]); }
         else { memset(proj_bank_slot[slot], 0, sizeof proj_bank_slot[slot]); proj_bound(&proj_scratch); proj_pack(&proj_slot[slot], &proj_scratch); }
     }
 #endif
@@ -636,7 +585,9 @@ static int proj_write_slot(uint32_t slot, const uint8_t *raw, uint32_t len)
     if (!flash_ok || st_save(OBJ_BANK0 + slot, raw, len)) return 2;
 #endif
 #if !defined(FM1_IRQ_TARGET)
-    proj_cache_record(slot,raw,len);
+    memset(proj_bank_slot[slot], 0, sizeof proj_bank_slot[slot]);
+    memset(&proj_slot[slot], 0, sizeof proj_slot[slot]);
+    if (len) { memcpy(proj_bank_slot[slot], raw, len); memcpy(&proj_slot[slot], raw + 8u, sizeof proj_slot[slot]); }
 #endif
     proj_meta[slot].used = len != 0;
     proj_meta[slot].old = 0;
@@ -655,11 +606,7 @@ static int proj_publish_slot(uint32_t slot,st_stream_t *w)
     slot &= 3u;
 #if !defined(FM1_IRQ_TARGET)
     if(st_read_range(w->obj,w->head.slot,0,proj_bank_slot[slot],BANK_STORE_SIZE))return 2;
-    #if NPAT > 8u
-    proj_pack(&proj_slot[slot],&proj_scratch);
-#else
     memcpy(&proj_slot[slot],proj_bank_slot[slot]+8u,sizeof proj_slot[slot]);
-#endif
 #endif
     proj_meta[slot].used=1;proj_meta[slot].old=0;
     proj_saved_hash[slot]=proj_source_hash;
@@ -832,15 +779,6 @@ static int project_rename(uint32_t slot, const char *name)
     }
     if(proj_save_image(slot)){ui_message("SAVE ERROR");return 2;}
 #else
-#if NPAT > 8u
-    if(n==BANK_STORE_SIZE){
-        uint32_t magic;memcpy(&magic,proj_wire_u.raw,4);
-        if(magic==BANK_MAGIC)memcpy(bank_tail_work(),proj_wire_u.raw+BANK_ACTIVE_OFF,BANK_TAIL_SIZE);
-        if(!bank_prefix_pack(proj_wire_u.raw+8,p))return 2;
-        memcpy(proj_wire_u.raw+BANK_ACTIVE_OFF,bank_tail_work(),BANK_TAIL_SIZE);
-        uint32_t header[2]={BANK_MAGIC,BANK_STORE_SIZE};memcpy(proj_wire_u.raw,header,8);bank_checksum(proj_wire_u.raw);
-    }else {proj_bound(p);chain_defaults(&p->chain);if(!bank_pack(proj_wire_u.raw,p,0))return 2;}
-#else
     if (n == BANK_STORE_SIZE) {
         memcpy(proj_wire_u.raw + BANK_MOTION_OFF, bank_import_tags, sizeof bank_import_tags);
         if (!proj_pack((project_store_t *)(proj_wire_u.raw + 8u), p)) return 2;
@@ -849,7 +787,6 @@ static int project_rename(uint32_t slot, const char *name)
         proj_bound(p); chain_defaults(&p->chain);
         if (!bank_pack(proj_wire_u.raw, p, 0)) return 2;
     }
-#endif
     if (proj_write_slot(slot, proj_wire_u.raw, BANK_STORE_SIZE)) { ui_message("SAVE ERROR"); return 2; }
 #endif
     if (proj_cur == (slot & 3u))
@@ -1431,7 +1368,8 @@ static int project_used(uint32_t slot)
 {
 #if !MELODEE_FLASH
     slot &= 3u;
-    int valid = proj_cache_matches(slot);
+    int valid = bank_valid(proj_bank_slot[slot], BANK_STORE_SIZE) &&
+        !memcmp(proj_bank_slot[slot] + 8u, &proj_slot[slot], sizeof proj_slot[slot]);
     if (!valid) valid = proj_import(&proj_scratch, &proj_slot[slot], sizeof proj_slot[slot]);
     proj_meta[slot].used = (uint8_t)valid;
     if (valid) proj_name_get(proj_meta[slot].name, (const uint8_t *)proj_scratch.name);

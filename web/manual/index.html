@@ -665,7 +665,7 @@
             <tr><td>NOTES</td><td>Edit entered steps and recorded takes (piano roll; drum grid on Drum).</td></tr>
             <tr><td>PATTERN</td><td>How long the selected track’s loop is, how fast its steps run, and its own swing and note length.</td></tr>
             <tr><td>TEMPO</td><td>Project speed (BPM) and song swing; the quantize grid for the next recorded take on the selected track.</td></tr>
-            <tr><td>PATTERNS</td><td>One row per track in use, 16 patterns each, in two rows of eight.</td></tr>
+            <tr><td>PATTERNS</td><td>One row per track in use, eight patterns each.</td></tr>
             <tr><td>SONG</td><td>Arrangement of sections.</td></tr>
             <tr><td>MOTION</td><td>Knob automation for the selected pattern (shown once that pattern has some automation saved).</td></tr>
             <tr><td>DRUM HIT</td><td>On a Drum track: the macros of a selected recorded hit.</td></tr>
@@ -726,12 +726,11 @@
           <h3>Patterns</h3>
           <p>Eight patterns per track. The PATTERNS grid shows one row for each track in use; <kbd>KNOB 1</kbd>–<kbd>4</kbd> queue patterns for tracks 1–4 when that track exists. <kbd>SELECT</kbd> goes on to SONG.</p>
           <div class="shots">
-            <figure class="shot"><img src="patterns.png" alt="Patterns grid" width="240" height="240"><figcaption>PATTERNS: one track per row, with patterns 1–8 above 9–16.</figcaption></figure>
+            <figure class="shot"><img src="patterns.png" alt="Patterns grid" width="240" height="240"><figcaption>PATTERNS: one row per track, eight patterns.</figcaption></figure>
             <figure class="shot"><img src="patterns_sheet.png" alt="Patterns sheet" width="240" height="240"><figcaption>Pattern sheet: Copy to…, Delete.</figcaption></figure>
           </div>
           <ul>
-            <li>Each track has 16 patterns, up to 64 steps each. New length edits select 16, 32, 48 or 64 steps. Older projects keep their original lengths until edited. Patterns share storage: the previous capacity of 32 fully populated 64-step patterns is retained; empty and repeated material can fill more banks. “PATTERN STORAGE FULL” means the requested edit needs more space. Clear an unused pattern to make room.</li>
-            <li>Hold <kbd>SEQ</kbd> and press one of the 16 white keys to select pattern 1–16 (or use the PATTERNS grid / <kbd>SEQ</kbd>+<kbd>SELECT</kbd>). The playing pattern is lit; ones with notes glow; one waiting for the loop end breathes. Selecting an empty pattern arms one recording pass. Double-tap a used pattern key to arm one pass there. Those shortcuts disarm after the pass; an already explicit REC arming stays on. With SEQ held, the first four black keys (F♯, G♯, A♯, C♯) select tracks 1–4.</li>
+            <li>Hold <kbd>SEQ</kbd> and press one of the first eight white keys to select pattern 1–8 (or use the PATTERNS grid / <kbd>SEQ</kbd>+<kbd>SELECT</kbd>). The playing pattern is lit; ones with notes glow; one waiting for the loop end breathes. Selecting an empty pattern arms one recording pass. Double-tap a used pattern key to arm one pass there. Those shortcuts disarm after the pass; an already explicit REC arming stays on. With SEQ held, the first four black keys (F♯, G♯, A♯, C♯) select tracks 1–4.</li>
             <li>Hold a pattern key alone for a second to open its action dialog: press that key again to delete the pattern, another pattern key to copy it there, or <kbd>OCT−</kbd> to cancel. In the dialog the fourth and fifth black keys (C♯, D♯) blink: C♯ halves the pattern (the steps past the new length stay hidden), D♯ doubles it (its steps, recorded notes and motion copied after themselves, up to 64 steps). While <kbd>SEQ</kbd> is held the dialog stays open showing the length, so either key can be pressed again; letting go of <kbd>SEQ</kbd> closes it. On the playing pattern, hold <kbd>EDIT</kbd> to undo.</li>
             <li>On PATTERNS, <kbd>OCT+</kbd> opens the sheet: <strong>Copy to…</strong> (confirm before replacing a used slot) or <strong>Delete pattern</strong> (confirm). Delete removes the pattern’s manual notes, recorded notes and motion together. <kbd>OCT−</kbd> clears what is queued. Hold <kbd>EDIT</kbd> to undo.</li>
             <li>While playing, a pattern change waits until that track’s loop ends. Selecting the active pattern cancels a queued change. Destructive pattern operations (delete, clear notes or motion, or copy over a used or playing pattern) also wait for that track’s loop end. The header shows the pending action with <strong>AT LOOP END</strong>; the pattern key breathes. Live note, hit, erase and motion-lane edits stay immediate. STOP applies pending choices.</li>

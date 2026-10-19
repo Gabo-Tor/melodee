@@ -57,21 +57,21 @@ static int all_banks_persist(void)
     }
     chain_config.count = 2; chain_config.row[0] = (chain_row_t){0,3}; chain_config.row[1] = (chain_row_t){7,2};
     for (uint32_t k = 0; k < NTRK; k++) { chain_patterns[0][k] = (uint8_t)k; chain_patterns[1][k] = (uint8_t)(7-k); }
-    bad += check("complete project saves every bank", project_save(2) == 0);
+    bad += check("complete project saves all 32 banks", project_save(2) == 0);
     pattern_init(); memset(&motion,0,sizeof motion); project_load(2);
-    bad += check("project restores arrangement and active bank selection", chain_config.count == 2 && chain_patterns[0][3] == 3 && chain_patterns[1][3] == 4 && trk[3].pattern == NPAT-1u);
+    bad += check("project restores arrangement and active bank selection", chain_config.count == 2 && chain_patterns[0][3] == 3 && chain_patterns[1][3] == 4 && trk[3].pattern == 7);
     for (uint32_t k = 0; k < NTRK; k++) for (uint32_t b = 0; b < NPAT; b++) {
         track_t *t = &trk[k]; pattern_request(t,b);
         ok &= t->step[0].n == 4 && t->step[0].note[0] == 40+k*8+b && t->step[0].note[3] == 67 &&
             t->step[1].time == ST_TIE && t->p[P_SLEN] == 32+(int16_t)b && t->p[P_SSWING] == (int16_t)b &&
-            t->step[0].hit == (uint8_t)(1u<<b) && t->step[0].acc == (uint8_t)(1u<<b) && step_chance(&t->step[0]) == 20+b && motion_count(t)==1;
+            t->step[0].hit == (1u<<b) && t->step[0].acc == (1u<<b) && step_chance(&t->step[0]) == 20+b && motion_count(t)==1;
         motion_begin(); motion_step(t,0,&motion); ok &= t->p[P_LEVEL] == (int16_t)(k*8+b); motion_end();
     }
     bad += check("every bank round-trips chord, ties, timing, chance, hits and bank-specific automation", ok);
     uint8_t raw[BANK_STORE_SIZE]; project_capture(&proj_scratch); bank_pack(raw,&proj_scratch,1);
-    raw[BANK_ACTIVE_OFF] = NPAT>8u?3u:8u; bank_checksum(raw);
+    raw[BANK_ACTIVE_OFF] = 8; bank_checksum(raw);
     bad += check("invalid bank IDs are rejected even with a valid checksum", !bank_valid(raw,sizeof raw));
-    bank_pack(raw,&proj_scratch,1); raw[BANK_EXTRA_OFF+(NPAT>8u?6u:3u)] |= 0xF0; bank_checksum(raw);
+    bank_pack(raw,&proj_scratch,1); raw[BANK_EXTRA_OFF+3] |= 0xF0; bank_checksum(raw);
     bad += check("malformed inactive-bank chord is rejected before publication", !bank_valid(raw,sizeof raw) && trk[0].step[0].n == 4);
     return bad;
 }
@@ -207,17 +207,17 @@ static int doubled_banks(void)
     undo_swap();
     bad += check("  EDIT held: 32 again", t->p[P_SLEN] == 32 && motion_count(t) == 1);
     t->p[P_SLEN] = 15; pattern_key_len(0, 0, 0);
-    bad += check("  15 steps: 8 (the middle one kept)", t->p[P_SLEN] == (NPAT>8u?15:8));
+    bad += check("  15 steps: 8 (the middle one kept)", t->p[P_SLEN] == 8);
     t->p[P_SLEN] = 1; pattern_key_len(0, 0, 0);
-    bad += check("  one step: 1 STEP MIN", t->p[P_SLEN] == 1 && msg_is(NPAT>8u?"16 STEPS MIN":"1 STEP MIN"));
+    bad += check("  one step: 1 STEP MIN", t->p[P_SLEN] == 1 && msg_is("1 STEP MIN"));
     pattern_t other; pattern_read(0, 3, &other);
     other.timing[0] = 4; other.step[1] = (step_t){{61}, 1, ST_NOTE, 0, 100};
     pattern_write(0, 3, &other);
     pattern_key_len(0, 3, 1);
-    bad += check("another bank: its own LEN and steps, the one playing as it was", pattern_at(0, 3)->timing[0] == (NPAT>8u?16:8) &&
+    bad += check("another bank: its own LEN and steps, the one playing as it was", pattern_at(0, 3)->timing[0] == 8 &&
         pattern_at(0, 3)->step[5].note[0] == 61 && t->p[P_SLEN] == 1);
     pattern_key_len(0, 3, 0);
-    bad += check("  .. and halved", pattern_at(0, 3)->timing[0] == (NPAT>8u?16:4) && pattern_at(0, 3)->step[5].note[0] == 61);
+    bad += check("  .. and halved", pattern_at(0, 3)->timing[0] == 4 && pattern_at(0, 3)->step[5].note[0] == 61);
 
     ui_power_on(); t = TSEL; track_defaults_steps(t); t->p[P_SLEN] = 4;
     motion_set_event(t, 0, P_LEVEL, 50);
@@ -234,7 +234,7 @@ static int doubled_banks(void)
     pattern_key_len(0, 0, 1);
     events_block(period);
     bad += check("playing, on its last step: on into the copy (not back to step 1)", before == 3u && t->seq_idx == 4u &&
-        t->p[P_SLEN] == (NPAT>8u?16:8));
+        t->p[P_SLEN] == 8);
     seq_stop();
     return bad;
 }

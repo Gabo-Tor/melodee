@@ -452,7 +452,6 @@ static int strum_storage(void)
     memset(old.raw+PROJ_TONE_WIRE-(src-dst),0,src-dst);
     /* Rewrite the source-era engine motion ID and count, then authenticate. */
     old.raw[motion_at+__builtin_offsetof(motion_store_t,event)+__builtin_offsetof(motion_event_t,param)]=117;
-    uint32_t legacy_magic=PROJ_OLD_MAGIC;memcpy(old.raw,&legacy_magic,4);
     old.raw[66]=122;
     uint32_t hash=proj_hash(old.raw,sizeof old-4);
     memcpy(old.raw+sizeof old-4,&hash,4);

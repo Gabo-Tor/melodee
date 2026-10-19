@@ -3,7 +3,7 @@
 /* The tracks in use (song.ntrk, core.h trk_n): all NTRK to start with, always from track 1. Stage's sheet adds
  * one (track_add: the next place, its power-on sound, every pattern empty; selected, the browser open on it) or
  * removes the selected one (track_remove: stopped, after its question): the tracks after it move down a place with
- * all that is theirs (the sound and its patches, all pattern banks, their column of the song, motion, takes) and the
+ * all that is theirs (the sound and its patches, the eight patterns, their column of the song, motion, takes) and the
  * last place is left empty. A removal captures the same decoded project and
  * bank tail as SAVE, moves their tracks, then restores them. Included by project.c */
 #define TRK_BANK_BYTES ((NPAT - 1u) * NSTEP * BANK_STEP_SIZE)  /* a track's banks but the active one, packed */
@@ -23,96 +23,6 @@ static uint8_t trk_bits_remove(uint32_t bits, uint32_t k)
 }
 
 /* remove track k (in use, not the only one): 0 done, 1 refused, 2 failed (nothing changed) */
-#if NPAT > 8u
-static int track_remove(uint32_t k)
-{
-    project_t *p = &proj_scratch;
-    uint8_t *raw=bank_tail_work();
-    uint32_t n = trk_n(), last = NTRK - 1u, cur = proj_cur, i, j, r, m = 0;
-    if (k >= n || n < 2u)
-        return 1;
-    if (transport_busy()) {
-        ui_message("STOP FIRST");
-        return 1;
-    }
-    browse_commit();                                    /* (a sound still pending: into the track it was meant for) */
-    momentary_restore();
-    proj_wire_gen++;
-    project_capture(p);
-    if(!bank_pack_tail(raw,p,1))goto fail;
-    for (j = k; j < last; j++) {                        /* the record: the tracks after k down a place */
-        p->t[j] = p->t[j + 1u];
-        memcpy(p->fm6[j], p->fm6[j + 1u], FM6_PACKED);
-        memcpy(p->fm6_fn[j], p->fm6_fn[j + 1u], FM6_NFN);
-        p->cz[j] = p->cz[j + 1u];
-        p->p5[j] = p->p5[j + 1u];
-        p->drum[j] = p->drum[j + 1u];
-        p->pattern[j] = p->pattern[j + 1u];
-        p->user[j]=p->user[j+1u];
-    }
-    {   /* the last place empty: its power-on sound (project_restore_runtime: PROJ_DEF_SOUND), no steps */
-        proj_trk_t *t = &p->t[last];
-        uint32_t e = TRK_DEF[last][0];
-        t->engine = (uint8_t)e;
-        t->preset = PROJ_DEF_SOUND;
-        for (i = 0; i < P_COUNT; i++)
-            t->p[i] = param_reserved(i) ? 0 : param_desc_of(e, i)->def;
-        for (i = 0; i < NSTEP; i++)
-            step_clear(&t->step[i]);
-        p->pattern[last] = 0;
-        t->mpc_octave = 0;
-        p->user[last]=0;
-    }
-    for (i = 0; i < RECORD_MAX; i++) {                  /* takes: k's go, the later tracks' move down */
-        recorded_note_t *rn = &p->recording[i];
-        uint32_t o = recorded_owner(rn) / NPAT;
-        if (!rn->vel)
-            continue;
-        if (o == k)
-            memset(rn, 0, sizeof *rn);
-        else if (o > k)
-            recorded_set_owner(rn, recorded_owner(rn) - NPAT);
-    }
-    for (i = 0; i < p->motion.count; i++) {             /* motion: k's go, the later tracks' move down (their tags too) */
-        motion_event_t e = p->motion.event[i];
-        if ((uint32_t)(e.place >> 6) == k)
-            continue;
-        if ((uint32_t)(e.place >> 6) > k)
-            e.place = (uint8_t)(e.place - 64u);
-        p->motion.event[m] = e;
-        raw[B16_AT(BANK_MOTION_OFF) + m] = raw[B16_AT(BANK_MOTION_OFF) + i];
-        m++;
-    }
-    for (i = m; i < MOTION_MAX; i++) {
-        memset(&p->motion.event[i], 0, sizeof p->motion.event[i]);
-        raw[B16_AT(BANK_MOTION_OFF) + i] = 0;
-    }
-    p->motion.count = (uint8_t)m;
-    p->motion.on = trk_bits_remove(p->motion.on, k);
-    if(!bank_tail_remove_track(raw,k))goto fail;
-    for(r=0;r<p->chain.count;r++)p->chain.row[r].slot=raw[B16_AT(BANK_CHAIN_OFF)+r*NTRK];
-    if(p->fm6_fn_ok)memcpy(raw+B16_AT(BANK_FN_OFF)+4u,p->fm6_fn,sizeof p->fm6_fn);
-    p->parts = (uint8_t)(n - 1u);
-    p->sel = (uint8_t)(k + 1u < n ? k : k - 1u);        /* the track now in its place, else the one before */
-    p->sum=proj_sum(p);
-    if(!bank_tail_valid(raw)||project_restore_runtime(p))goto fail;
-    bank_restore_tail(raw);
-    proj_cur = (uint8_t)cur;                            /* (still the project of its slot) */
-    for (r = 0; r < CHAIN_ROWS; r++)                    /* the jam so far, the armed and solo tracks too */
-        for (j = k; j < last; j++)
-            jam.pat[r][j] = jam.pat[r][j + 1u];
-    song.rec = trk_bits_remove(song.rec, k);
-    song.rec_latch = trk_bits_remove(song.rec_latch, k);
-    track_solo = trk_bits_remove(track_solo, k);
-    track_say(k, "REMOVED");
-    return 0;
-fail:
-    proj_wire_gen++;
-    ui_message("TRACK NOT REMOVED");
-    return 2;
-}
-
-#else
 static int track_remove(uint32_t k)
 {
     project_t *p = &proj_scratch;
@@ -238,8 +148,6 @@ fail:
     ui_message("TRACK NOT REMOVED");
     return 2;
 }
-
-#endif
 
 #undef TRK_TAIL
 

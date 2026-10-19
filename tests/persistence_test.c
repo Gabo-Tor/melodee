@@ -125,11 +125,6 @@ static int staged_import_persistence(void)
     bad+=check("retry starts after committed prefix and unlocks the receive buffer",!sx_import.count&&!fm6_rx_ready&&native_used(ENGI_FM6,35)&&native_raw(ENGI_FM6,5)[118]=='B'&&native_raw(ENGI_FM6,4)[118]=='A');
     return bad;
 }
-static int saved_controls_equal(const uint8_t *raw,const project_store_t *expected)
-{
-    project_store_t decoded;
-    return bank_valid(raw,BANK_STORE_SIZE)&&proj_pack(&decoded,&proj_scratch)&&!memcmp(&decoded,expected,sizeof decoded);
-}
 int main(void)
 {
     int bad = 0, ok;
@@ -221,7 +216,7 @@ int main(void)
     fail_after = -1;
     bad += check("failed project save keeps RAM and old flash", !strcmp(ui.msg, "SAVE ERROR") &&
                   !memcmp(&proj_slot[0], &old, sizeof old) && st_load(OBJ_BANK0, got, sizeof got) == (int)sizeof got &&
-                  saved_controls_equal(got,&old));
+                  !memcmp(got + 8u, &old, sizeof old));
     project_save(0);
     bad += check("successful project save publishes new RAM", !strcmp(ui.msg, "SAVED") &&
                   proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) &&
@@ -249,7 +244,7 @@ int main(void)
         fail_after = 1;
         bad += check("failed project rename: SAVE ERROR, the slot and flash as they were",
                       project_rename(0, "DUB") == 2 && !strcmp(ui.msg, "SAVE ERROR") && !memcmp(&proj_slot[0], &keep, sizeof keep) &&
-                      st_load(OBJ_BANK0, got, sizeof got) == (int)sizeof got && saved_controls_equal(got,&keep));
+                      st_load(OBJ_BANK0, got, sizeof got) == (int)sizeof got && !memcmp(got + 8u, &keep, sizeof keep));
         fail_after = -1;
         before = erases;
         transport_req = 1;
@@ -263,12 +258,7 @@ int main(void)
     {   /* All inactive banks are validated before replacing the runtime. */
         step_t keep = trk[0].step[0];
         project_capture(&proj_scratch); bank_pack(got, &proj_scratch, 1);
-        #if NPAT > 8u
-        got[BANK_ACTIVE_OFF] |= 3u<<2; /* Reserved codec for inactive bank 2. */
-#else
-        got[BANK_EXTRA_OFF + 3u] |= 0xF0;
-#endif
-        bank_checksum(got);
+        got[BANK_EXTRA_OFF + 3u] |= 0xF0; bank_checksum(got);
         st_save(OBJ_BANK0, got, sizeof got);
         project_load(0);
         bad += check("damaged inactive-bank chord is refused with runtime unchanged", !strcmp(ui.msg,"OLD FORMAT") &&

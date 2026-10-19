@@ -528,7 +528,7 @@ static int pattern_double(track_t *t, uint32_t bank, int apply)
     }
     if (motion.count - drop + add > MOTION_MAX || recording_double(t, bank, len, 0)) { motion_unguard(f); return 2; }
     for (i = 0; i < len; i++) s[len + i] = s[i];
-    *lp = pattern_length_edit(2u * len);
+    *lp = (int16_t)(2u * len);
     if (!pattern_can_write(k, bank, &copy)) { motion_unguard(f); return 4; }
     if (!apply) { motion_unguard(f); return 0; }
     recording_double(t, bank, len, 1);
@@ -564,8 +564,8 @@ static int pattern_half(track_t *t, uint32_t bank, int apply)
     pattern_read(trk_index(t), bank, &copy);
     lp = copy.timing;
     len = (uint32_t)clamp(*lp, 1, NSTEP);
-    if (len <= (NPAT>8u?16u:1u)) { motion_unguard(f); return 3; }
-    if (apply) { *lp = pattern_length_edit((len + 1u) / 2u); pattern_write(trk_index(t), bank, &copy); }
+    if (len < 2u) { motion_unguard(f); return 3; }
+    if (apply) { *lp = (int16_t)((len + 1u) / 2u); pattern_write(trk_index(t), bank, &copy); }
     motion_unguard(f);
     return 0;
 }

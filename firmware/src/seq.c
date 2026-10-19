@@ -253,8 +253,7 @@ static volatile uint32_t beat_pos, beat_n;      /* clock units into the beat, be
 /* destructive edits wait for a track's loop end while it plays (ui_input.c dq_poll): its loop ends so far; the banks one
  * waits to destroy; the tracks kept silent from a loop end until it is done (a UI frame that missed the last step) */
 static volatile uint16_t seq_loops[NTRK];
-static volatile uint16_t seq_pend[NTRK];
-static volatile uint8_t seq_hush;
+static volatile uint8_t seq_pend[NTRK], seq_hush;
 static const step_t SEQ_HUSH_STEP = {.time = ST_REST};
 static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
 {
@@ -438,7 +437,7 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
     uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, k;
     uint32_t next = t->seq_pos == 0x7FFFFFFFu;      /* Start and the note in one block: step 0 fires after it */
     uint32_t idx = next ? 0u : t->seq_idx % len;
-    step_t value,*s;
+    step_t *s;
     /* Every recording source rounds to the closest swung onset, including
      * the last-to-first transition. Guard the upcoming live note from
      * being retriggered when that step is entered. */
@@ -449,8 +448,8 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
     }
     if (t->rh_n && t->rh_start != idx)
         rec_finish(t);
-    uint32_t previous_gate=step_gate(&t->step[idx]);
-    value=t->step[idx];s=&value;
+    s = &t->step[idx];
+    if (!recording_note(t, note, vel, idx)) return;
     if (drum_track(t)) {                            /* DRUM: into the grid, no holds (hits) */
         uint32_t l = drum_lane(note);
         if (s->time != ST_NOTE || (!s->n && !s->hit)) {
@@ -476,9 +475,6 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
         }
         if (vel > s->vel)
             s->vel = (uint8_t)vel;
-        s->flags|=SF_RECORDED;
-        if(!pattern_can_set_step(t,idx,s)||!recording_note_admitted(t,note,vel,idx))return;
-        t->step[idx]=*s; /* Admitted above, within the same audio interrupt. */
         t->seq_active = 1;
         if (next) {                                 /* it sounds now: step 0 must not trigger it again */
             if (t->rskip_idx != idx)
@@ -490,6 +486,12 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
         s->flags |= SF_RECORDED;
         return;
     }
+    if ((!t->rh_n || t->rh_start != idx) && step_gate(s))
+        for (k = 1; k < len && t->step[(idx + k) % len].time == ST_TIE; k++) {
+            step_t *tail = &t->step[(idx + k) % len];
+            memset(tail, 0, sizeof *tail);
+            tail->time = ST_REST;
+        }
     if (s->time != ST_NOTE || !s->n || trk_vmode(t) != V_POLY) {
         s->n = 0;                                   /* a fresh step */
         s->flags = 0;
@@ -511,14 +513,6 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
     else if (vel > s->vel)
         s->vel = (uint8_t)vel;
     s->probability = 0;
-    if(!s->hit)s->acc=255;
-    s->flags|=SF_RECORDED;
-    if(!pattern_can_set_step(t,idx,s)||!recording_note_admitted(t,note,vel,idx))return;
-    t->step[idx]=*s; /* Admitted above, within the same audio interrupt. */
-    if ((!t->rh_n || t->rh_start != idx) && previous_gate)
-        for (k = 1; k < len && t->step[(idx + k) % len].time == ST_TIE; k++) {
-            step_t tail={.time=ST_REST};pattern_set_step(t,(idx+k)%len,&tail);
-        }
     t->seq_active = 1;
     if (!s->hit)
         s->acc = 255;                              /* retain the held gate until its actual release */
@@ -557,7 +551,9 @@ static void rec_hold(track_t *t, uint32_t idx, uint32_t len)
         return;                                     /* never over the note's onset */
     s = &t->step[idx];
     if (s->flags & SF_RECORDED) return;             /* another recorded onset keeps its own release */
-    step_t original=*s,value=*s;s=&value;
+    t->rh_bak = *s;
+    t->rh_last = (uint8_t)idx;
+    t->rh_ties++;
     for (k = 0; k < 4u; k++)
         s->note[k] = 0;
     s->n = 0;
@@ -566,7 +562,6 @@ static void rec_hold(track_t *t, uint32_t idx, uint32_t len)
     s->vel = 0;
     s->hit = 0;
     s->acc = 255;
-    if(pattern_set_step(t,idx,s)){t->rh_bak=original;t->rh_last=(uint8_t)idx;t->rh_ties++;}
 }
 
 /* Onsets snap to the nearest step, but the duration comes from elapsed input
@@ -587,13 +582,16 @@ static void rec_finish(track_t *t)
         span = step_samples(t, period, idx);
     }
     if (t->rh_ties && t->rh_last != idx && t->rh_last == (idx + 1u) % len)
-        pattern_set_step(t,t->rh_last,&t->rh_bak);
+        t->step[t->rh_last] = t->rh_bak;
     for (uint32_t i = 1; i < count; i++) {
         step_t *s = &t->step[(t->rh_start + i) % len];
         if (s->flags & SF_RECORDED) continue;
-        step_t tie={.time=ST_TIE,.acc=255};pattern_set_step(t,(t->rh_start+i)%len,&tie);
+        memset(s, 0, sizeof *s);
+        s->time = ST_TIE;
+        s->acc = 255;
     }
-    if(!t->step[idx].hit){step_t value=t->step[idx];value.acc=(uint8_t)clamp((int32_t)((uint64_t)duration*255u/span),1,255);pattern_set_step(t,idx,&value);}
+    if (!t->step[idx].hit)
+        t->step[idx].acc = (uint8_t)clamp((int32_t)((uint64_t)duration * 255u / span), 1, 255);
     t->rh_elapsed = 0;
 }
 
@@ -929,13 +927,6 @@ static void recording_quant_position(const recorded_note_t *r, uint32_t at, uint
     uint32_t rounded = out->on >= RECORD_UNIT / 2u;
     recorded_set_step(out, actual, rounded, rounded && actual + 1u == len);
 }
-typedef struct {uint32_t a,b,len;} recording_quant_context_t;
-static void recording_quant_project(track_t *t,uint32_t i,recorded_note_t *out,const void *context)
-{
-    const recording_quant_context_t *c=context;(void)t;
-    if(recording_flags[i]&8u)recording_quant_position(&recording[i],recording_due[i],c->a,c->b,c->len,out);
-    else *out=recording[i];
-}
 /* Only this take is committed. Preflight every destination before changing any
  * stored timing; an unrelated manual note or its tie tail is never overwritten.
  * Rebuild the overview in one bounded pass, preserving independent gates and
@@ -962,23 +953,6 @@ static void recording_quantize(track_t *t)
             blocked = 1; break;
         }
     }
-    step_t preview[NSTEP];memcpy(preview,t->step,sizeof preview);uint64_t planned=0;
-    recording_quant_context_t context={a,b,len};
-    if(q&&!blocked){
-        for(uint32_t i=recording_head[owner];i<RECORD_MAX;i=recording_next[i]){
-            if(!(recording_flags[i]&8u)||!recording_active(t,i))continue;
-            recorded_note_t target;recording_quant_project(t,i,&target,&context);
-            if(target.on==recording[i].on&&target.step==recording[i].step)continue;
-            uint32_t source=recording_view(t,&recording[i]),view=recording_view(t,&target);
-            if(!(preview[view].flags&SF_RECORDED)){
-                preview[view].probability=t->step[source].probability;
-                preview[view].flags=(t->step[source].flags&SF_SLIDE)|SF_RECORDED;preview[view].time=ST_NOTE;
-            }
-            planned|=1ull<<source|1ull<<view;
-        }
-        seq_erase_rebuild_projected(t,preview,planned,0,recording_quant_project,&context);
-        if(!pattern_can_steps(t,preview))blocked=1;
-    }
     uint64_t touched = 0;
     for (uint32_t i = recording_head[owner]; i < RECORD_MAX; i = recording_next[i]) {
         if (!(recording_flags[i] & 8u)) continue;
@@ -1003,7 +977,7 @@ static void recording_quantize(track_t *t)
         recording_due[i] = recording_raw_on(t, &recording[i], period);
     }
     if (touched) {
-        memcpy(t->step,preview,sizeof preview);
+        seq_erase_rebuild(t, touched);
         recording_generation++;
         recording_schedule[trk_index(t)].period = 0;
         recording_schedule[trk_index(t)].ordered_period = 0;

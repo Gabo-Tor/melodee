@@ -41,12 +41,13 @@
 #if MELODEE_RECORD_QUEUE && !MELODEE_RECORD_CURSOR
 #error "The release queue requires the ordered onset cursor"
 #endif
-/* Four active banks share compressed storage with the remaining banks. */
+/* Host capacity fixtures can exercise the larger identifier space before a
+ * new project schema and the device UI enable it in shipping builds. */
 #ifndef NSTEP
 #define NSTEP 64
 #endif
 #ifndef NPAT
-#define NPAT 16u
+#define NPAT 8u
 #endif
 _Static_assert(NSTEP <= 128u && NTRK * NPAT <= 64u, "recorded-note identifiers");
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
