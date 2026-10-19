@@ -28,6 +28,7 @@ static const layer_t LAYERS[LAYER_N] = {
     {0, 0, 0, "", {{0, 0}, {0, 0}, {0, 0}}},
     {B_GLO, LK_SET, FAM_HOME, "[GLO] SET", {{KC_PLAY, "RESTART"}, {KC_OCTDN, "UNDO"}, {KC_GLO, "DONE"}}},
     {B_SCL, LK_SET, FAM_SCL, "[SCL] SET", {{KC_KEYS, "ROOT"}, {KC_OCTDN, "UNDO"}, {KC_SCL, "DONE"}}},
+    {B_FX, LK_HOLD, FAM_HOME, "PUNCH", {{KC_KEYS, "PUNCH"}, {KC_OCTDN, "BACK"}, {0, 0}}},
 };
 /* SCL's knobs: the key and its chord (cur_page() while the layer edits or draws them: page_over) */
 static const page_t LY_SCL = {"SCL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_CHRD, P_VOIC}};
@@ -42,6 +43,7 @@ static struct {
     uint32_t tap[4];                   /* GLO TAP: the last taps (fm1_ms) */
     uint8_t ntap, dt_l, dtap, rp_dirty;
     uint32_t dt_ms;
+    uint8_t punch_pick;
     struct { uint8_t home, page, act, seq, fam[FAM_COUNT]; } nv;
 } lys;
 
@@ -49,7 +51,7 @@ static const uint32_t LY_DTAP_MS=300u;
 
 
 
-static int layer_allowed(void) { return !ui.menu && !ui.confirm && !ui.uboot && !name_on(); }
+static int layer_allowed(void) { return !ui.menu && !ui.confirm && !ui.uboot && !name_on() && !new_on() && !pop.on && !smap.on; }
 static uint32_t ly_bit(uint32_t l) { return 1u << panel.btn[LAYERS[l].btn]; }
 static uint32_t ly_down(uint32_t l) { return l && ((fm1_in.buttons & ly_bit(l)) != 0u || ui.lock == l); }
 static uint32_t layer_bits(void)
@@ -64,7 +66,7 @@ static uint32_t layer_bits(void)
 static uint32_t layer_btn(void) { return LAYERS[ui.layer % LAYER_N].btn; }
 static const char *layer_head(void)
 {
-    static const char *const locked[LAYER_N] = {"", "", "[GLO] LOCK", "[SCL] LOCK"};
+    static const char *const locked[LAYER_N] = {"", "", "[GLO] LOCK", "[SCL] LOCK", "PUNCH LOCK"};
     return ui.lock ? locked[ui.layer % LAYER_N] : LAYERS[ui.layer % LAYER_N].head;
 }
 static uint32_t layer_open(void) { return ui.ly && (ui.ly_t0 & LY_OPEN) && ly_down(ui.ly) && layer_allowed() ? ui.ly : 0u; }
@@ -82,6 +84,8 @@ static void layer_masks(void)
     kb_mask = m | (layer_allowed() && !ui.ly ? 1u << panel.btn[B_SEQ] : 0u);
 
     kb_lock = m && ui.lock ? 1u : 0u;
+    punch_panel_mask = m & ly_bit(LAYER_FX);
+    punch_panel_lock = m && ui.lock == LAYER_FX;
 
 }
 
@@ -105,6 +109,7 @@ static void layer_arm(uint32_t pressed, uint32_t now)
 static void layer_opened(uint32_t l)
 {
     uint32_t k;
+    if (l == LAYER_FX) { punch_target = song.sel; return; }
     lys.l = (uint8_t)l;
     lys.trk = song.sel;
     for (k = 0; k < 4u; k++)
@@ -125,6 +130,7 @@ static void layer_let_go(uint32_t quiet)
 
     if (lys.rp_dirty) { lys.rp_dirty=0; settings_save(); }
     ui.ly_t0=0; ui.ly=0; ui.lock=0; kb_lock=0;
+    punch_keys = 0;
 }
 static void layer_lock_input(uint32_t pressed)
 {
@@ -173,7 +179,7 @@ static uint32_t layer_gesture(uint32_t now, uint32_t combo)
 /* the map shows while the button is held open, and after it while its keys are still held */
 static void layer_show(void)
 {
-    uint32_t show = layer_allowed() ? (layer_open() ? layer_open() : kb_layer ? ui.layer : 0u) : 0u;
+    uint32_t show = layer_allowed() ? (layer_open() ? layer_open() : kb_layer && ui.layer != LAYER_FX ? ui.layer : 0u) : 0u;
     if (show != ui.layer) {
         ui.layer = (uint8_t)show;
         ui.force = 1;
@@ -217,7 +223,7 @@ static void glo_tap(void)
 static void layer_key(uint32_t l, uint32_t k)
 {
     uint32_t p = key_place(k), i;
-
+    if (l == LAYER_FX) { lys.punch_pick = (uint8_t)k; return; }
     if (l == LAYER_GLO) {
         if (key_black(k)) {
             if (p < trk_n())
@@ -248,13 +254,22 @@ static void layer_keys(uint32_t keys)
         if ((lys.solo >> k) & 1u)
             s |= 1u << key_place(k);
     track_solo = (uint8_t)s;
+    /* Only keys claimed by this layer can punch: notes held before FX keep
+     * sounding, and their releases still go to their original track. */
+    punch_keys = layer_allowed() && (layer_open() == LAYER_FX || ui.layer == LAYER_FX) ? punch_claimed : 0u;
 }
 
 /* KNOB 1..4 in the open layer: its own (GLO levels), else the four of its page */
 static void layer_knob(uint32_t k, int32_t s)
 {
     uint32_t l = layer_open();
-    if (l == LAYER_GLO) {                        /* T1..T4 LEVEL (those in use), recorded as on MIXER */
+    if (l == LAYER_FX) {
+        volatile uint8_t *v = k == 0u ? &punch_target : k == 1u ? &punch_repeats : k == 2u ? &punch_gate : &punch_chance;
+        int32_t lo = k == 1u ? 1 : k == 2u ? 10 : 0, hi = k == 0u ? (int32_t)trk_n() : k == 1u ? 8 : 100;
+        int32_t value = k == 0u && *v == NTRK ? (int32_t)trk_n() : *v;
+        value = clamp(value + s * (k >= 2u ? 5 : 1), lo, hi);
+        *v = (uint8_t)(k == 0u && value == (int32_t)trk_n() ? NTRK : value);
+    } else if (l == LAYER_GLO) {                 /* T1..T4 LEVEL (those in use), recorded as on MIXER */
         int16_t *vp = &trk[k].p[P_LEVEL];
         if (k >= trk_n())
             return;
@@ -270,6 +285,11 @@ static void layer_knob(uint32_t k, int32_t s)
         ui.home = h;
         ui.page = pg;
     }
+}
+
+static void layer_punch_select(int32_t s)
+{
+    lys.punch_pick = (uint8_t)clamp((int32_t)lys.punch_pick + s, 0, PN_COUNT - 1);
 }
 
 /* PLAY with GLO held open: RESTART (from the top, playing on); stopped: PLAY. 1 = done here */
@@ -289,6 +309,10 @@ static int layer_play(void)
 static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
 {
     uint32_t dn = panel.btn[B_OCTDN], up = panel.btn[B_OCTUP], k, mine;
+    if (ui.ly == LAYER_FX) {
+        if (oct & 1u) layer_let_go(1);
+        return 0;
+    }
     if (layer_set_open())
         lys.oct |= (uint8_t)(((pressed >> dn) & 1u) | ((pressed >> up) & 1u) << 1);
     mine = oct & lys.oct;
@@ -322,7 +346,9 @@ static uint32_t layer_leds(void)
     uint32_t mask = scale_mask(TSEL), root = (uint32_t)TSEL->p[P_ROOT] % 12u;
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k), b = (uint32_t)key_black(k), on = 0, e;
-        if (l == LAYER_GLO) {
+        if (l == LAYER_FX) {
+            on = ((punch_keys >> k) & 1u) || blink;
+        } else if (l == LAYER_GLO) {
             on = b ? p < trk_n() && glo_sounding(p) :
                  p < NTRK ? p < trk_n() && (((lys.solo >> k) & 1u) | blink) : p == 4u ? blink :
                  p == 7u && !song.g[G_CLOCK] && blink;
@@ -417,7 +443,14 @@ static void layer_cards(uint32_t l)
     char val[12];
     const char *unit;
     uint32_t c;
-    if (l == LAYER_GLO) {                        /* T1..T4 LEVEL (the track's icon; muted: dim) */
+    if (l == LAYER_FX) {
+        if (punch_target == NTRK) str_cpy(val, "ALL", sizeof val);
+        else { val[0] = 'T'; val[1] = (char)('1' + punch_target); val[2] = 0; }
+        draw_column(0, "TRACK", val, "", VAL(0), -1, ICON_NONE);
+        fmt_int(val, punch_repeats); draw_column(1, "REPEAT", val, "", VAL(1), (punch_repeats - 1) * 255 / 7, ICON_NONE);
+        fmt_int(val, punch_gate); draw_column(2, "GATE", val, "%", VAL(2), punch_gate * 255 / 100, ICON_NONE);
+        fmt_int(val, punch_chance); draw_column(3, "CHNC", val, "%", VAL(3), punch_chance * 255 / 100, ICON_NONE);
+    } else if (l == LAYER_GLO) {                 /* T1..T4 LEVEL (the track's icon; muted: dim) */
         for (c = 0; c < NTRK; c++) {
             if (c >= trk_n()) {                         /* (a track not in use: an empty card) */
                 draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);
@@ -436,6 +469,22 @@ static void layer_cards(uint32_t l)
         page_over = 0;
         ui.home = h;
         ui.page = pg;
+    }
+}
+
+static void layer_punch(void)
+{
+    uint32_t pick = lys.punch_pick, first = pick > 1u ? pick - 1u : 0u;
+    if (first > PN_COUNT - 4u) first = PN_COUNT - 4u;
+    for (uint32_t i = first; i < first + 4u; i++) {
+        int32_t y = 2 + (int32_t)(i - first) * 30;
+        uint32_t active = (punch_keys >> i) & 1u;
+        uint16_t bg = active ? T_ACCENT : i == pick ? T_RAISE : T_SURF, ink = active ? T_BG : T_TEXT;
+        char note[8]; str_cpy(note, N_NOTE[(53u + i) % 12u], sizeof note);
+        fmt_int(note + str_len(note), (int32_t)((53u + i) / 12u) - 1);
+        if (active || i == pick) cv_rrect(8, y, 224, 28, 5, bg, T_SURF);
+        cv_text_on(14, ty_y(y + 14, TY_LB), TY_LB, note, active ? T_BG : T_MID, bg);
+        cv_free_text(60, ty_y(y + 14, TY_TX), ty_fit(TY_TX, PUNCH_NAME[i], 166), PUNCH_NAME[i], ink, bg, 166);
     }
 }
 
@@ -460,6 +509,8 @@ static void draw_layer(void)
                (uint32_t)(trk[0].p[P_MUTE] | trk[1].p[P_MUTE] << 1 | trk[2].p[P_MUTE] << 2 | trk[3].p[P_MUTE] << 3) * 131u;
     else if (l == LAYER_SCL)
         sig += (uint32_t)TSEL->p[P_SCALE] * 31u;
+    else if (l == LAYER_FX)
+        sig += punch_keys * 31u + lys.punch_pick * 40503u;
 
     if (l == LAYER_GLO) {                               /* (R6: levels at the top, the keys as a keyboard under them) */
         if (ui.force || sig != ui.layer_sig) {
@@ -474,7 +525,7 @@ static void draw_layer(void)
             cv_begin_band(240,H_GRAPH,T_BG,band);
             cv_rrect(BOX_X, 0, BOX_W, H_GRAPH, 6, T_SURF, T_BG);
             cv_bg = T_SURF;
-            layer_scl();
+            if (l == LAYER_FX) layer_punch(); else layer_scl();
             cv_blit_band(0, Y_GRAPH);
         }
     }

@@ -156,7 +156,12 @@ static int32_t fx_tone_hz(int32_t v)
 /* the low cut ECHO (100 Hz), ROOM and REVERB (150 Hz) keep at FULL and under a high cut: what enters them never booms */
 #define FX_FLOOR_ECHO 100
 #define FX_FLOOR_SPACE 150
-static int32_t fx_floor_hz(int32_t type) { return type == 6 ? FX_FLOOR_ECHO : FX_FLOOR_SPACE; }
+static int32_t fx_floor_hz(int32_t type) {
+#if MELODEE_ECHOVERB_TEST
+    if(type==8)return 0; /* the audition's feedback loop supplies its own low cut */
+#endif
+    return type == 6 ? FX_FLOOR_ECHO : FX_FLOOR_SPACE;
+}
 static int32_t fx_low_cut_hz(int32_t type, int32_t v)   /* an ECHO / ROOM / REVERB slot's low cut at TONE v */
 {
     int32_t f = fx_floor_hz(type), t = v > 0 ? fx_tone_hz(v) : 0;

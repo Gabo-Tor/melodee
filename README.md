@@ -262,7 +262,8 @@ and patterns; settings represented by multiple patch bytes can use multiple even
   moving its playhead and turning most controls no longer resend the whole screen.
 - **More sound and performance:** dual-core rendering is on by default, DSP signal paths use the
   FM-1's native single-precision FPU. Modulation, stereo spread and screen sleep are included;
-  the retired hold/latch controls are gone; **FX** opens the selected track's new insert page.
+  **FX** taps open the selected track's rack; hold FX for 27 MIDI punch-ins on the internal sounds,
+  or double-tap to lock the punch-in page. Note keys play rolls, flams, echoes, pitch/velocity changes and dropouts.
 - **808 and 909 kits:** both DRUM kits synthesize every voice in real time. The 909 kick, snare,
   toms, rim and clap use circuit models from
   [fm1-x0x](https://github.com/charlesvestal/fm1-x0x/tree/201e5c5c1ac056a028a006bd1eabb23ac1bb174d);

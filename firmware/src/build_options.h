@@ -3,6 +3,12 @@
 /* Shared by the application and assembly startup. Explicit build overrides win. */
 #ifndef MELODEE_BUILD_OPTIONS_H
 #define MELODEE_BUILD_OPTIONS_H
+#ifndef MELODEE_ECHOVERB_TEST
+#define MELODEE_ECHOVERB_TEST 0 /* opt-in 64 KiB mono PCM echo/diffusion audition */
+#endif
+#if MELODEE_ECHOVERB_TEST != 0 && MELODEE_ECHOVERB_TEST != 1
+#error "MELODEE_ECHOVERB_TEST must be 0 or 1"
+#endif
 #ifndef MELODEE_DUAL_CORE
 #define MELODEE_DUAL_CORE 1     /* paired FM6/Prophet kernels; serial fallback if CPU1 is unavailable */
 #endif

@@ -261,6 +261,9 @@ static inline __attribute__((always_inline)) int32_t fx_tone_input(fx_state_t *f
     float x=fx_tone_section(&f->q[0][0],(float)input,slew,1);
     return (int32_t)fx_tone_section(&f->q[0][1],x,slew,0);
 }
+#if MELODEE_ECHOVERB_TEST
+#include "fx_echoverb.h"
+#endif
 /* Tiny time effects run at FS/4. ECHO: 10..370 ms, 8 KiB. ROOM: four
  * damped combs at 13..26 ms, 2 KiB. They are intentionally lo-fi. Each echo
  * loses its lows too (a one-pole low cut in the loop, ~FX_RATE / (2 pi 2^shift)),
@@ -597,6 +600,9 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     if(profiling){type=(fx_profile_control>>(slot*4u))&15u;target=type?(bus?32768:100*256):0;}
 #endif
     uint32_t quality=(type==FX_ECHO || type==FX_REVERB)?(uint32_t)clamp(settings_fx_quality,0,2):0u;
+#if MELODEE_ECHOVERB_TEST
+    if(type==FX_REVERB)quality=2u; /* this audition always runs at the native rate */
+#endif
     uint32_t changed=f->type!=type || f->quality!=quality;
     if(f->type && type && changed && f->mix)target=0;
     if(!target && !f->mix){
@@ -627,6 +633,9 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     if(f->type>=FX_ECHO){
         uint32_t bytes=f->type==FX_CHORUS?FX_CHORUS_BYTES:f->type==FX_ROOM?2048u:f->type==FX_REVERB?FX_REVERB_BYTES:8192u;
         if(f->quality)bytes*=1u<<((f->type==FX_REVERB?3u:2u)-fx_time_shift(f));
+#if MELODEE_ECHOVERB_TEST
+        if(f->type==FX_REVERB)bytes=sizeof(fx_echoverb_t);
+#endif
         if(!f->failed && !resource[RES_FX0+si].size){
             void *(*volatile allocate)(uint32_t,uint32_t)=fx_memory;mem=allocate(RES_FX0+si,bytes);if(!mem)f->failed=1;
         }else if(resource[RES_FX0+si].size)mem=resource[RES_FX0+si].ptr;
@@ -647,11 +656,16 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
         int32_t step[2]={(delay-f->rev_l)/(int32_t)n,(512*65536-delay-f->rev_r)/(int32_t)n};
         void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t)=fx_chorus_run;run(f,mem,n,step,target);
     }else if(f->type==FX_REVERB){
+#if MELODEE_ECHOVERB_TEST
+        void (*volatile run)(fx_state_t *,fx_echoverb_t *,uint32_t,int32_t,int32_t *,int32_t *)=fx_echoverb_run;
+        run(f,(fx_echoverb_t *)mem,n,target,fx_left,fx_right);
+#else
         /* Design the slow drift beside the other block-rate coefficients,
          * keeping sine lookup calls outside the small SRAM sample kernel. */
         int32_t drift[8];for(uint32_t k=0;k<8u;k++)drift[k]=fx_sine(f->phase*(k+1u)+k*0x23456789u)*f->character/1024;
         f->phase+=n*11380u;void (*volatile setup)(fx_state_t *)=fx_reverb_setup;setup(f);
         void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=f->quality?fx_reverb_hifi:fx_reverb;run(f,mem,n,drift,target,fx_left,fx_right);
+#endif
     }else if(f->type==FX_ECHO && f->quality){void (*volatile run)(fx_state_t *,int16_t *,uint32_t,int32_t)=fx_echo_hifi;run(f,mem,n,target);}
     else if(f->type>=FX_ECHO){void (*volatile run)(fx_state_t *,int16_t *,uint32_t,int32_t)=fx_time;run(f,mem,n,target);}
     else {
@@ -731,11 +745,17 @@ static int fx_single_reverb(const track_t *t)
 }
 static void fx_reverb_private_kernel(void *data)
 {
-    fx_reverb_job_t *j=data;fx_state_t *f=j->f;int32_t drift[8];AP_START(start);
+    fx_reverb_job_t *j=data;fx_state_t *f=j->f;AP_START(start);
+#if MELODEE_ECHOVERB_TEST
+    void (*volatile run)(fx_state_t *,fx_echoverb_t *,uint32_t,int32_t,int32_t *,int32_t *)=fx_echoverb_run;
+    run(f,(fx_echoverb_t *)j->mem,j->n,j->target,j->left,j->right);
+#else
+    int32_t drift[8];
     for(uint32_t k=0;k<8u;k++)drift[k]=fx_sine(f->phase*(k+1u)+k*0x23456789u)*f->character/1024;
     f->phase+=j->n*11380u;void (*volatile setup)(fx_state_t *)=fx_reverb_setup;setup(f);
     void (*volatile run)(fx_state_t *,int16_t *,uint32_t,const int32_t *,int32_t,int32_t *,int32_t *)=f->quality?fx_reverb_hifi:fx_reverb;
     run(f,j->mem,j->n,drift,j->target,j->left,j->right);
+#endif
 #if MELODEE_AUDIO_PROFILE
     j->elapsed=AUDIO_PROFILE_TICKS()-start;
 #endif

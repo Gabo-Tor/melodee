@@ -377,7 +377,8 @@ static const struct { const char *k, *s; } CELL_SHORT[] = {
     {"DETUNE", "DTUNE"}, {"CUTOFF", "CUT"}, {"UNISON", "UNI"}, {"FREQ A", "FRQ A"}, {"FREQ B", "FRQ B"},
     {"AT LFO", "ATLFO"}, {"AT FLT", "ATFLT"}, {"FILTER", "FILT"}, {"FINE B", "FINEB"}, {"GLMOD", "GLMD"},
     {"SECTION", "SECT"}, {"LENGTH", "LEN"}, {"REPEAT", "REP"}, {"JITTER", "JITT"}, {"VIBRATO", "VIB"},
-    {"TEMPO", "BPM"}, {"SNAPPY", "SNAP"}, {"SEND 1", "FX 1"}, {"SEND 2", "FX 2"}, {"SEND 3", "FX 3"}};
+    {"TEMPO", "BPM"}, {"SNAPPY", "SNAP"}, {"SEND 1", "FX 1"}, {"SEND 2", "FX 2"}, {"SEND 3", "FX 3"},
+    {"DIFFUSE", "DIFF"}};
 static const char *cell_label(const char *label, int32_t room)
 {
     uint32_t i;
@@ -816,6 +817,10 @@ static void draw_columns(void)
             if (d->fmt == F_ENUM && (col_style == CS_CAPTURE ||
                 (d->names == N_FX && (*vp == FX_REVERB || *vp == FX_CHORUS))))
                 str_cpy(val, d->names[clamp(*vp, d->min, d->max)], sizeof val);
+#if MELODEE_ECHOVERB_TEST
+            if (d->names == N_FX && *vp == FX_REVERB && col_style != CS_CAPTURE)
+                str_cpy(val, "E.V", sizeof val); /* full name in the rack, picker and slot header */
+#endif
         }
         draw_column(c, d->label, val, unit, (cur_page()->scope == SC_CZ1 &&   /* CZ-1: no effect on the tone as it is */
                     !cz_ed_active(cz_patch[song.sel % NTRK].raw, cur_page()->id[c])) ||

@@ -268,6 +268,8 @@ phys_ref() {
 sound && t "FX performance: all effects, four-track mixer, shared send bus and ordered three-effect chains" fx_performance -O2 $FW -- "$OUT/fx_performance" full
 sound && t "FX: three-slot chains, reverb decay/density/rate conversion, smooth Tape, track ownership, dry bypass and frozen legacy storage" fx_test -O1 $FW
 sound && t "FX fidelity: rates, timings, full-rate bandwidth, transitions, memory admission and settings" fx_fidelity_test -O1 $FW
+sound && t "Echoverb audition: native PCM, 64 KiB bound, controls/tails and memory admission" echoverb_test -O2 $FW
+core && t "MIDI punch: panel gestures, note ownership, deadlines, queue limits and unchanged patterns" midi_punch_test -O1 $FW
 core && t "EQ accelerator: register layout, isolated histories and bounded timeout" eq_hw_test
 core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
@@ -413,6 +415,7 @@ if sound && [ $TABLES = 1 ]; then
         -O2 $FW -pthread
     t "audio: 1296 ordered engine assignments, releases, controls and concurrent PCM parity" audio_matrix_test -O2 $FW -pthread
     t "Reverb inserts: private tanks, fallback and failed-worker drops" reverb_parallel_test -O2 $FW -pthread
+    t "Echoverb audition: private tanks, serial/concurrent parity and failed-worker drops" echoverb_parallel_test:reverb_parallel_test -DMELODEE_ECHOVERB_TEST=1 -O2 $FW -pthread
     t "CZ-1: every knob changes a full tone; the dim ones leave INIT and factory tones bit for bit" cz1_knob_test -O2 $FW
     t "native fp32: independent numerical references, exact pitch, quiet signals and fractional envelopes" synth_fpu_test \
         -O2 $FW

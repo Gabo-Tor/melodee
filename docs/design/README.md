@@ -286,6 +286,54 @@ CLASSIC uses 8 KiB per ECHO and 4 KiB per REVERB; 22.05k uses 16 KiB per slot an
 also cost more processing time. If a buffer cannot fit, the existing MEMORY FULL display applies and the slot
 passes dry audio; lowering FX RATE retries allocation. Both fonts and all values have render scenes (menu_fx_*).
 
+## MIDI punch-in (2026-10-19)
+
+A single **FX** tap opens the audio rack as before. Hold FX to open **PUNCH**;
+double-tap within 300 ms to keep **PUNCH LOCK** open. Press FX again or OCT− to
+close. Holding a note key applies its effect; releasing it cancels new repeats.
+Releasing an unlatched FX button closes immediately, even with keys still down.
+Those keys remain silent until released. Notes held before FX retain their
+original ownership. PLAY and REC keep working. Menus, dialogs and pickers cannot
+start punch-ins. Status lives in the shared header, retaining transport and REC.
+
+The effects operate on internal engine notes from patterns, recorded playback,
+ARP and live input. They do not modify the stored beat, live recording data,
+sound parameters or USB MIDI output. Transposed note-offs retain their original
+mapping across key releases and target changes. Stop, panic and sound changes
+cancel pending generated notes. Started notes retain their proper releases.
+
+KNOB 1 selects T1..T4 (tracks in use) or ALL; each opening starts on the selected
+track. KNOB 2 sets the note echo's repeat count (1..8), KNOB 3 the generated-note
+gate (10..100%), KNOB 4 CHANCE (0..100%; zero bypasses). SELECT browses the map;
+pressing a key scrolls to its assignment and highlights all held effects. Key
+LEDs blink when available and stay lit while held. Controls are performance
+state, independent of project/preset storage.
+
+| Key | Effect | Key | Effect | Key | Effect |
+|---|---|---|---|---|---|
+| F3 | Roll 1/4 | D4 | Triple | B4 | Pitch scatter |
+| F#3 | Roll 1/8T | D#4 | Double | C5 | Accent |
+| G3 | Roll 1/8 | E4 | Echo 1/4 | C#5 | Velocity dice |
+| G#3 | Roll 1/16T | F4 | Echo 1/8 | D5 | Soft |
+| A3 | Roll 1/16 | F#4 | Echo 1/16 | D#5 | Short gate |
+| A#3 | Roll 1/32 | G4 | Octave down | E5 | Humanize |
+| B3 | Roll 1/32T | G#4 | Fifth down | F5 | Drop half |
+| C4 | Roll 1/64 | A4 | Octave up | F#5 | Drop 3/4 |
+| C#4 | Flam | A#4 | Fifth up | G5 | Drop all |
+
+The canonical map is `PUNCH_NAME` in `firmware/src/midi_punch.c`, indexed by
+chromatic keys F3..G5. Rolls freeze the most recent hit/chord on each target;
+with no previous note, they capture the next onset/chord. The fastest held roll
+wins. Pitch and velocity colours can be combined with rolls. Echo repeats decay
+by 25% per hit; flam adds a hit after 20 ms, double/triple after 1/32 intervals.
+Short gate closes the new note after 1/64; humanize delays new onsets by 0..20 ms
+and an early note-off cancels an unstarted note. Dropouts suppress new onsets;
+they leave already held notes alone. Pitch scatter chooses −2..+2 semitones;
+out-of-range transpositions stay silent. Note deadlines run in real sample time,
+including while an external clock is stopped, with fixed queue admission and
+no audio-interrupt allocation. Render scenes cover held/locked/all/end/recording
+in both fonts and all palettes.
+
 ## Large type (2026-10-14)
 
 The 1.54" panel (27.7 mm across) needs larger text: every screen is set in four type roles, and Settings > FONT picks

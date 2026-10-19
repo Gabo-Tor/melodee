@@ -205,6 +205,9 @@ static void pv_rack_rows(void)
                     }
                 }
                 menu_words(nm, N_FX[clamp(bus[j * FX_PARAMS], 0, FX_COUNT - 1)], sizeof nm);
+#if MELODEE_ECHOVERB_TEST
+                if (bus[j * FX_PARAMS] == FX_REVERB) str_cpy(nm, "EV", sizeof nm);
+#endif
                 x = cv_free_text(x, ty_y(13, TY_LB), TY_LB, nm, T_MID, bg, vx - x) + 8;
             }
             if (!n)
@@ -632,7 +635,11 @@ static void pv_fx(int32_t h)
     int32_t mix = p[1], cha = p[3], tone = master ? song.g[G_MFXTONE + slot] : TSEL->p[P_FXTONE + slot];
     int32_t ly = h - lf->h - 4, sy = ly - 9, low = (fx_has_tone((int32_t)type) && !failed ? sy - 6 : h - lf->h - 10) * 16;
     int32_t top = (lf->h + 10) * 16, cy = (top + low) / 32, py = cy * 16;
-    cv_free_text(12, 6, lf, hint[type], T_MID, T_PANEL, PV_PANEL_W - 24);
+    const char *description=hint[type];
+#if MELODEE_ECHOVERB_TEST
+    if(type==FX_REVERB)description="Mono echo / diffusion";
+#endif
+    cv_free_text(12, 6, lf, description, T_MID, T_PANEL, PV_PANEL_W - 24);
     for (int32_t x = 0; x < 208; x++) {
         int32_t ph = (int32_t)(sine_i((uint32_t)x * 0x06000000u) >> 10), y = cy * 16;
         if (type == FX_PHASER || type == FX_WIDTH || type == FX_CHORUS) y += ph * mix / 9;

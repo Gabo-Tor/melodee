@@ -541,7 +541,7 @@ static void trk_note_on_work(track_t *t, uint32_t note, uint32_t vel)
     }
 }
 
-static void trk_note_on(track_t *t,uint32_t note,uint32_t vel)
+static void trk_note_on_raw(track_t *t,uint32_t note,uint32_t vel)
 {
 #if MELODEE_ADMISSION
     const track_t *previous=voice_admitting;uint8_t previous_parts=voice_admitting_p5parts;
@@ -554,7 +554,7 @@ static void trk_note_on(track_t *t,uint32_t note,uint32_t vel)
 #endif
 }
 
-static void trk_note_off(track_t *t, uint32_t note)
+static void trk_note_off_raw(track_t *t, uint32_t note)
 {
     uint32_t i, k = 0, mode = trk_vmode(t), chord = trk_chord(t), held = 0;
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */
@@ -590,8 +590,11 @@ static void trk_note_off(track_t *t, uint32_t note)
         }
 }
 
+#include "midi_punch.c"
+
 static void trk_all_off(track_t *t)
 {
+    punch_forget((uint32_t)(t - trk));
     uint32_t i;
     for (i = 0; i < NVOICE; i++) {
         t->v[i].gate = 0;
@@ -640,7 +643,7 @@ static void engine_block(track_t *t)
             uint32_t n = t->xp_n;
             t->xp_n = 0;
             for (i = 0; i < n; i++)
-                trk_note_on(t, t->xp_note[i], t->xp_vel[i]);
+                trk_note_on_raw(t, t->xp_note[i], t->xp_vel[i]);
         }
     }
     for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */

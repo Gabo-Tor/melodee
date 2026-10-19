@@ -47,8 +47,9 @@ int main(void)
     uint32_t used=resource_used();midi_event(0xb0,0,91,127);midi_event(0xb0,0,93,127);
     assert(!TSEL->p[P_RESERVED34] && !TSEL->p[P_RESERVED36] && used==resource_used());
     for(uint32_t i=0;i<NPAGES;i++)assert(PAGES[i].fam<FAM_COUNT && !str_eq(PAGES[i].title,"SLICER"));
-    ui_power_on();press(B_FX);btn_down(B_FX);frames(800);assert(!ui.layer && cur_page()->fam==FAM_FX);
-    key_down(white(0));frame();assert(gates() && !kb_layer);key_up(white(0));btn_up(B_FX);frame();
-    puts("No effects: old values/automation silent, notes survive, no legacy FX allocations or controls, normal keys: OK");
+    ui_power_on();press(B_FX);btn_down(B_FX);frames(800);assert(ui.layer==LAYER_FX && cur_page()->fam==FAM_FX);
+    key_down(white(0));frame();assert(!gates() && kb_layer);key_up(white(0));btn_up(B_FX);frame();
+    assert(!ui.layer && !punch_keys);
+    puts("No effects: old values/automation silent, notes survive, no legacy FX allocations or controls; new punch keys silent: OK");
     return 0;
 }

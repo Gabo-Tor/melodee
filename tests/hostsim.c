@@ -97,6 +97,7 @@ static uint64_t now_ns(void)
 
 static void host_tracks_init(void)                /* as melodee_init: defaults, empty patterns */
 {
+    punch_init();
     cz_init();
     pattern_init();
     uint32_t i, k;
