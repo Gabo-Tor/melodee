@@ -624,7 +624,7 @@ async function trackEffects() {
     const dump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
     ok(eq(dump.p.slice(96,108),fx),"FX: factory, user and librarian sound loads preserve all three track slots");
     ok(eq(dump.p.slice(111,114),[24,-21,-22]),"FX: sound loads preserve TONE");
-    for (const retired of [6,8]) {
+    for (const retired of [6]) {
       for (const id of [96,100,104]) await rq(E.req.set(0,id,retired));
       const retiredDump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
       ok([96,100,104].every(id=>retiredDump.p[id]===0),`FX: retired type ${retired} maps to OFF in all track slots`);

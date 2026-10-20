@@ -138,14 +138,14 @@ enum {                          /* per-track parameters */
 #define FX_PARAMS 4u
 /* Append-only IDs: shared descriptors stop at FX_AUDIO_COUNT. */
 enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_AUDIO_COUNT, FX_MIDIVERB = FX_AUDIO_COUNT, FX_MIDIDELAY, FX_COUNT };
-/* Slots 6 and 8 are retired audio effects; never reuse their stored IDs. */
-static int fx_retired(int32_t type) { return type == FX_ECHO || type == FX_REVERB; }
+/* Slot 6 stays retired. Slot 8 restores our native Echoverb audition. */
+static int fx_retired(int32_t type) { return type == FX_ECHO; }
 static int fx_is_midi(int32_t type) { return type == FX_MIDIVERB || type == FX_MIDIDELAY; }
 #define FX_CHAIN_COUNT (NPART+1u)
 #define FX_STATE_COUNT (FX_CHAIN_COUNT*FX_SLOTS)
 #define FX_TONE_MAX 63
 static int param_fx_tone(uint32_t id) { return id>=P_FXTONE && id<=P_FX3TONE; }
-static int fx_has_tone(int32_t type) { return type==FX_ROOM; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
+static int fx_has_tone(int32_t type) { return type==FX_ROOM || type==FX_REVERB; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
 static int param_fx(uint32_t id) { return (id>=P_FXTYPE && id<=P_FX3CHAR) || param_fx_tone(id); }
 /* TONE -63..63 -> the cut it sets (Hz), 0 = FULL (none but the effect's own floor, fx_floor_hz): below 0 a high cut,
  * 2640 Hz at -1 down to 120 Hz at -63; above 0 a low cut, 150 Hz at 1 up to 1280 Hz at 63 (squared: fine steps where
@@ -160,7 +160,7 @@ static int32_t fx_tone_hz(int32_t v)
 #define FX_FLOOR_ECHO 100
 #define FX_FLOOR_SPACE 150
 static int32_t fx_floor_hz(int32_t type) {
-    (void)type; return FX_FLOOR_SPACE;
+    return type==FX_REVERB ? 0 : FX_FLOOR_SPACE;
 }
 static int32_t fx_low_cut_hz(int32_t type, int32_t v)   /* an ECHO / ROOM / REVERB slot's low cut at TONE v */
 {

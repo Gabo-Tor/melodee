@@ -25,7 +25,7 @@ typedef struct {
 } layer_t;
 static const layer_t LAYERS[LAYER_N] = {
     {0, 0, 0, "", {{0, 0}, {0, 0}, {0, 0}}},
-    {0, 0, 0, "", {{0, 0}, {0, 0}, {0, 0}}},
+    {B_FX, LK_HOLD, FAM_FX, "[FX] HOLD", {{KC_KEYS, "PUNCH"}, {0, 0}, {0, 0}}},
     {B_GLO, LK_SET, FAM_HOME, "[GLO] SET", {{KC_PLAY, "RESTART"}, {KC_OCTDN, "UNDO"}, {KC_GLO, "DONE"}}},
     {B_SCL, LK_SET, FAM_SCL, "[SCL] SET", {{KC_KEYS, "ROOT"}, {KC_OCTDN, "UNDO"}, {KC_SCL, "DONE"}}},
 };
@@ -55,7 +55,7 @@ static uint32_t ly_down(uint32_t l) { return l && ((fm1_in.buttons & ly_bit(l)) 
 static uint32_t layer_bits(void)
 {
     uint32_t l, m = 0;
-    for (l = LAYER_GLO; l < LAYER_N; l++)
+    for (l = LAYER_FX; l < LAYER_N; l++)
         m |= ly_bit(l);
     if (step_modifier_context())
         m &= ~step_modifier_mask();                      /* synth STEP: SCL, EDIT edit notes */
@@ -64,7 +64,7 @@ static uint32_t layer_bits(void)
 static uint32_t layer_btn(void) { return LAYERS[ui.layer % LAYER_N].btn; }
 static const char *layer_head(void)
 {
-    static const char *const locked[LAYER_N] = {"", "", "[GLO] LOCK", "[SCL] LOCK"};
+    static const char *const locked[LAYER_N] = {"", "[FX] LOCK", "[GLO] LOCK", "[SCL] LOCK"};
     return ui.lock ? locked[ui.layer % LAYER_N] : LAYERS[ui.layer % LAYER_N].head;
 }
 static uint32_t layer_open(void) { return ui.ly && (ui.ly_t0 & LY_OPEN) && ly_down(ui.ly) && layer_allowed() ? ui.ly : 0u; }
@@ -82,6 +82,9 @@ static void layer_masks(void)
     kb_mask = m | (layer_allowed() && !ui.ly ? 1u << panel.btn[B_SEQ] : 0u);
 
     kb_lock = m && ui.lock ? 1u : 0u;
+    punch_panel_mask = (m & ly_bit(LAYER_FX));
+    punch_panel_lock = punch_panel_mask && ui.lock == LAYER_FX;
+    if (!layer_allowed()) { punch.req=-1; punch.keybit=0; }
 
 }
 
@@ -91,7 +94,7 @@ static void layer_arm(uint32_t pressed, uint32_t now)
     uint32_t l;
     if (ui.ly)
         return;
-    for (l = LAYER_GLO; l < LAYER_N; l++)
+    for (l = LAYER_FX; l < LAYER_N; l++)
         if (pressed & ly_bit(l) & layer_bits()) {
             lys.dtap=lys.dt_l==l && fm1_ms-lys.dt_ms<=LY_DTAP_MS;
             lys.dt_l=0;
@@ -107,6 +110,7 @@ static void layer_opened(uint32_t l)
     uint32_t k;
     lys.l = (uint8_t)l;
     lys.trk = song.sel;
+    if (l == LAYER_FX) return;
     for (k = 0; k < 4u; k++)
         if (l == LAYER_GLO) {
             lys.v[k] = trk[k].p[P_MUTE];
@@ -253,6 +257,10 @@ static void layer_keys(uint32_t keys)
 static void layer_knob(uint32_t k, int32_t s)
 {
     uint32_t l = layer_open();
+    if (l == LAYER_FX) {
+        if (!k) ui.punch_view=(uint8_t)clamp((int32_t)ui.punch_view+s,0,PUNCH_NFX-1u);
+        return;
+    }
     if (l == LAYER_GLO) {                 /* T1..T4 LEVEL (those in use), recorded as on MIXER */
         int16_t *vp = &trk[k].p[P_LEVEL];
         if (k >= trk_n())
@@ -321,7 +329,9 @@ static uint32_t layer_leds(void)
     uint32_t mask = scale_mask(TSEL), root = (uint32_t)TSEL->p[P_ROOT] % 12u;
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k), b = (uint32_t)key_black(k), on = 0, e;
-        if (l == LAYER_GLO) {
+        if (l == LAYER_FX) {
+            on = punch.req == punch_fx_of_key(k) || blink;
+        } else if (l == LAYER_GLO) {
             on = b ? p < trk_n() && glo_sounding(p) :
                  p < NTRK ? p < trk_n() && (((lys.solo >> k) & 1u) | blink) : p == 4u ? blink :
                  p == 7u && !song.g[G_CLOCK] && blink;
@@ -438,9 +448,38 @@ static void layer_cards(uint32_t l)
     }
 }
 
+static void draw_punch_layer(void)
+{
+    int32_t fx=punch.req>=0?punch.req:(int32_t)ui.punch_view;
+    uint32_t first=(uint32_t)(fx>2?fx-2:0);
+    if(first>PUNCH_NFX-5u)first=PUNCH_NFX-5u;
+    uint32_t sig=first*131u+(uint32_t)(punch.req+1)*7919u+ui.punch_view*40503u+ux.gen;
+    if(!ui.force && ui.layer_sig==sig)return;
+    ui.layer_sig=sig;
+    for(uint32_t band=0;band<240-H_HEAD;band+=CV_MAX/240u){
+        cv_begin_band(240,240-H_HEAD,T_BG,band);
+        cv_text_on(12,10,TY_TX,"MASTER PUNCH",T_TEXT,T_BG);
+        cv_text_on(12,38,TY_LB,"Hold a key to apply",T_SEC,T_BG);
+        for(uint32_t row=0;row<5;row++){
+            uint32_t id=first+row,key=punch_key_of_fx(id);
+            int32_t y=64+(int32_t)row*24;
+            uint16_t fill=(int32_t)id==punch.req?T_ACCENT:id==ui.punch_view?T_RAISE:T_BG;
+            uint16_t ink=(int32_t)id==punch.req?T_BG:T_TEXT;
+            static const char *const note[12]={"F","F#","G","G#","A","A#","B","C","C#","D","D#","E"};
+            char name[5];str_cpy(name,note[key%12u],sizeof name);
+            uint32_t n=str_len(name);name[n]=(char)('3'+(key+5u)/12u);name[n+1u]=0;
+            cv_rrect(6,y,228,23,4,fill,T_BG);
+            cv_text_on(12,ty_y(y+12,TY_LB),TY_LB,name,ink,fill);
+            cv_text_on(64,ty_y(y+12,TY_LB),TY_LB,PUNCH_NAME[id],ink,fill);
+        }
+        cv_text_on(12,190,TY_LB,"Knob 1: browse keys",T_SEC,T_BG);
+        cv_blit_band(0,H_HEAD);
+    }
+}
 static void draw_layer(void)
 {
     uint32_t l = ui.layer % LAYER_N, sig = l * 7919u + ux.gen * 977u, c;
+    if(l==LAYER_FX){draw_punch_layer();return;}
     if (l == LAYER_GLO) {                               /* the four levels as strips at the top, each track's colour */
         uint8_t cs = col_style;
         if (ui.force)

@@ -38,12 +38,14 @@ static double run(const char *kind,const uint8_t modes[3],int tracks,int setting
     uint64_t i0=instructions(),t0=now_ns();
     for(int i=0;i<frames;i++)block(tracks,mixer,i+256);
     double ns=(double)(now_ns()-t0)/(frames*CTL),ipc=(double)(instructions()-i0)/(frames*CTL);
-    for(int t=0;t<(mixer>=2?1:tracks);t++)for(int s=0;s<3;s++)if(modes[s]){uint32_t si=mixer>=2?NPART*3+s:t*3+s;assert(fx_state[si].type==modes[s] && !fx_state[si].failed);}
-    printf("%s,%u,%u,%u,%d,%d,%.3f,%.3f,%u\n",kind,modes[0],modes[1],modes[2],tracks,setting,ipc,ns,resource_used());
+    for(int t=0;t<(mixer>=2?1:tracks);t++)for(int s=0;s<3;s++)if(modes[s]){uint32_t si=mixer>=2?NPART*3+s:t*3+s;assert(fx_state[si].type==modes[s] && (!fx_state[si].failed || modes[s]==FX_REVERB));}
+    uint32_t rejected=0;
+    for(uint32_t si=0;si<FX_STATE_COUNT;si++)if(fx_state[si].failed){assert(fx_state[si].type==FX_REVERB && !resource[RES_FX0+si].size);rejected++;}
+    printf("%s,%u,%u,%u,%d,%d,%.3f,%.3f,%u,%u\n",kind,modes[0],modes[1],modes[2],tracks,setting,ipc,ns,resource_used(),rejected);
     return ipc;
 }
 int main(int argc,char **argv){
-    uint32_t matrix_rows=0;int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes");
+    uint32_t matrix_rows=0;int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes,rejected_echoverb_slots");
     for(int setting=0;setting<2;setting++)for(int tracks=1;tracks<=4;tracks+=3)for(int type=0;type<FX_AUDIO_COUNT;type++){
         if(fx_retired(type))continue;
         uint8_t modes[3]={type,0,0};double cost=run("single",modes,tracks,setting,0,2048);

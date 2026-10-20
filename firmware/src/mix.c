@@ -77,6 +77,8 @@ static uint32_t division_samples(uint32_t quarter, uint32_t div)
 }
 static uint32_t div_samples(uint32_t div) { return division_samples(beat_samples(), div); }
 
+#include "punch.c"
+
 /* External sequencing uses musical units, independent of the measured tempo.
  * 24 clocks/beat and every division divide exactly; tempo estimates only set
  * LFO timing and the display, never move an already recorded step. */
@@ -301,8 +303,10 @@ static __attribute__((noinline,section(".dsp_text"))) void master_samples(int32_
         if(fx_bus_result){uint32_t ret=(uint32_t)gain*2u;
             l+=((fx_scale(fx_left[i],ret)>>2)*(int32_t)song.master_q12)>>10;
             r+=((fx_scale(fx_right[i],ret)>>2)*(int32_t)song.master_q12)>>10;}
-        master_out(&l,&r);out[2u*i]=l;out[2u*i+1u]=r;
+        mix_l[i]=l;mix_r[i]=r;
     }
+    punch_process(mix_l,mix_r,n);
+    for(uint32_t i=0;i<n;i++){int32_t l=mix_l[i],r=mix_r[i];master_out(&l,&r);out[2u*i]=l;out[2u*i+1u]=r;}
     fx_bus_mix=gain;
 }
 static __attribute__((noinline)) void mix_block(int32_t *out,uint32_t n)

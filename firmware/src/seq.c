@@ -250,6 +250,11 @@ static void arp_off(track_t *t)                  /* the sounding arp note ends (
 /* n and gate_n: sample time (INT), musical units (MIDI); a stopped external
  * transport uses real time converted to musical units for a tapped note's gate. */
 static volatile uint32_t beat_pos, beat_n;      /* clock units into the beat, beat of the bar (0..3) */
+static uint32_t punch_clock_samples(void)
+{
+    uint32_t beat = beat_samples();
+    return midi_sync_active ? (uint32_t)((uint64_t)beat_pos * beat / MIDI_BEAT_UNITS) : beat_pos;
+}
 /* destructive edits wait for a track's loop end while it plays (ui_input.c dq_poll): its loop ends so far; the banks one
  * waits to destroy; the tracks kept silent from a loop end until it is done (a UI frame that missed the last step) */
 static volatile uint16_t seq_loops[NTRK];
@@ -792,6 +797,14 @@ static void keyboard_block(void)
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
             kb_trk[k] = song.sel;
             if (kb_asleep) { kb_note[k]=KB_SILENT; continue; }
+            if ((fm1_in.buttons & punch_panel_mask) || punch_panel_lock) {
+                kb_note[k] = KB_SILENT;
+                kb_layer |= 1u << k;
+                punch_claimed |= 1u << k;
+                punch.req = (int8_t)punch_fx_of_key(k);
+                punch.keybit = 1u << k;
+                continue;
+            }
             if ((fm1_in.buttons & kb_mask) || kb_lock) {       /* a layer's button held: the key is the layer's (ui_layer.c), */
                 kb_note[k] = KB_SILENT;           /* a quick-layer key */
                 kb_layer |= 1u << k;
@@ -810,6 +823,10 @@ static void keyboard_block(void)
             kb_lat(k);
 #endif
         } else {
+            if (punch_claimed & (1u << k)) {
+                punch_claimed &= ~(1u << k);
+                if (punch.keybit == (1u << k)) { punch.req = -1; punch.keybit = 0; }
+            }
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
                 continue;
@@ -985,6 +1002,7 @@ static void recording_quantize(track_t *t)
 
 static void seq_stop(void)
 {
+    punch.req=-1; punch.keybit=0;
     for (uint32_t t = 0; t < NTRK; t++) midi_insert_cancel(t);
     kb_strum_pending = midi_strum_pending = 0; /* STOP cancels the unplayed part of live sweeps. */
     cin_left=0; click_req=0; clk.env=0; audition_request=0; if(audition_active)audition_stop();

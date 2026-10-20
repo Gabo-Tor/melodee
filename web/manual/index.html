@@ -594,12 +594,16 @@
             <tr><td>TAPE</td><td>RATE</td><td>JITTER — drifting filters.</td></tr>
             <tr><td>SPIT</td><td>RATE</td><td>BITE — a resonant band that jumps and saturates.</td></tr>
             <tr><td>ROOM</td><td>SIZE</td><td>DECAY — a small space.</td></tr>
+            <tr><td>ECHOVERB</td><td>TIME</td><td>DIFFUSE — 10–500 ms echo into a diffuse space.</td></tr>
             <tr><td>CHORUS</td><td>RATE</td><td>DEPTH — stereo pitch movement. Start MIX near 50%.</td></tr>
           </tbody>
         </table>
         <p><strong>TONE</strong> goes from DARK through FULL to THIN. Below FULL it cuts highs; above FULL it cuts lows from what enters the wet effect. The dry sound stays intact. ROOM also keeps a low cut at FULL to stop bass building up in their tails.</p>
         <p>MIX at zero, or OFF, fades that slot dry. If a time effect cannot get its buffer, the picture says <strong>MEMORY FULL</strong>; turn the slot off and on to try again. Hold <kbd>OCT+</kbd> for the sound sheet. Tap <kbd>OCT−</kbd> to return from a slot to its rack, from SHARED to FX, and from FX to Stage.</p>
-        <p>Audio Echo, Reverb, Echoverb and punch FX are removed. Old Echo/Reverb slots load as OFF. ROOM and CHORUS retain their 2 KiB buffers; bypass releases them. MIDIVerb and MIDIDelay use note events instead of audio echo buffers.</p>
+        <p>ECHOVERB is available again with TIME (10–500 ms), DIFFUSE and TONE. It uses about 59 KiB per slot; bypass releases the buffer. Old audio Echo slots load OFF. ROOM and CHORUS retain their 2 KiB buffers. MIDIVerb and MIDIDelay remain note inserts.</p>
+        <h3>Master punch effects</h3>
+        <p>Hold <kbd>FX</kbd> and press a key to apply one of SLOOP’s 27 audio effects to the whole stereo master, including shared returns and USB stereo capture. Release the effect key for dry audio. Double-tap FX to lock the layer and tap again to close. KNOB 1 browses the key reference. Keys held before FX keep playing; effect keys produce no notes or MIDI.</p>
+        <p>The effects include loops, reverse, tape stop, half speed, filter sweeps, phone, crush, alias, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan, freeze, mono and fade. FREEZE uses Echoverb to hold 186 ms of captured master audio. The optional punch history uses 64 KiB while the layer is in use; hold FX briefly before reverse/rewind. If memory is unavailable the header shows FX MEMORY; close FX, reduce effect memory use and reopen to retry.</p>
         <h3>Shared return</h3>
         <p>The Shared row feeds one shared three-slot return after this track’s level and pan. In the <strong>SHARED</strong> rack, <kbd>KNOB 2</kbd> selects slots A–C or RETURN, <kbd>KNOB 1</kbd> chooses a slot’s effect, <kbd>KNOB 3</kbd> sets <strong>ROUTE</strong>, and <kbd>KNOB 4</kbd> sets the selected amount. <kbd>OCT+</kbd> opens a slot. Hold <kbd>OCT+</kbd>, or tap it on RETURN, for Routing and Clear shared FX (asks first).</p>
         <ul>

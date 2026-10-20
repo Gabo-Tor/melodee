@@ -267,7 +267,9 @@ phys_ref() {
 # the longest first: they set the length of the run
 sound && t "FX performance: all effects, four-track mixer, shared send bus and ordered three-effect chains" fx_performance -O2 $FW -- "$OUT/fx_performance" full
 sound && t "FX: remaining inserts, smooth Tape, track ownership, dry bypass and retired-effects RAM reclamation" fx_test -O1 $FW
-core && t "Removed audio/punch FX: retired IDs, old tanks reclaimed and playable FX keys" retired_fx_test -O1 $FW
+core && t "Retired Echo: reserved ID and reclaimed tanks; restored Echoverb and master punch controls" retired_fx_test -O1 $FW
+sound && t "Master audio punch: 27 effects, history, freeze, transitions and key ownership" punch_master_test -O1 $FW
+sound && t "Echoverb: native history, controls, tails and arena integration" echoverb_test -O1 $FW
 core && t "MIDI inserts: native release tails, timed note repeats, ownership, UI and persistence" midi_insert_test -O1 $FW
 core && t "EQ accelerator: register layout, isolated histories and bounded timeout" eq_hw_test
 core && job web_tests

@@ -7,7 +7,7 @@
 
 static void buffers(void)
 {
-    const uint32_t retired[] = {FX_ECHO, FX_REVERB};
+    const uint32_t retired[] = {FX_ECHO};
     const uint32_t sizes[] = {4096, 8192, 16384, 32768, 65536};
     ui_power_on();
     for (uint32_t r = 0; r < NELEM(retired); r++)
@@ -34,10 +34,10 @@ static void storage(void)
 {
     ui_power_on();
     for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) {
-        trk[tr].p[P_FXTYPE+s*FX_PARAMS] = (s&1u) ? FX_REVERB : FX_ECHO;
+        trk[tr].p[P_FXTYPE+s*FX_PARAMS] = FX_ECHO;
         trk[tr].p[P_FXMIX+s*FX_PARAMS] = 127;
     }
-    for (uint32_t s = 0; s < FX_SLOTS; s++) song.g[G_MFXTYPE+s*FX_PARAMS] = (s&1u) ? FX_ECHO : FX_REVERB;
+    for (uint32_t s = 0; s < FX_SLOTS; s++) song.g[G_MFXTYPE+s*FX_PARAMS] = FX_ECHO;
     project_t q; project_store_t p; project_capture(&q);
     assert(proj_pack(&p,&q) && proj_import(&proj_scratch,&p,sizeof p));
     for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!proj_scratch.t[tr].p[P_FXTYPE+s*FX_PARAMS]);
@@ -45,7 +45,7 @@ static void storage(void)
     template_save(); template_load();
     for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!trk[tr].p[P_FXTYPE+s*FX_PARAMS]);
     for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!song.g[G_MFXTYPE+s*FX_PARAMS]);
-    const uint32_t kept[] = {FX_ROOM,FX_CHORUS,FX_MIDIVERB,FX_MIDIDELAY};
+    const uint32_t kept[] = {FX_ROOM,FX_REVERB,FX_CHORUS,FX_MIDIVERB,FX_MIDIDELAY};
     for (uint32_t k = 0; k < NELEM(kept); k++) {
         TSEL->p[P_FXTYPE] = (int16_t)kept[k]; project_capture(&q);
         assert(proj_pack(&p,&q) && proj_import(&proj_scratch,&p,sizeof p));
@@ -57,14 +57,15 @@ static void controls(void)
 {
     ui_power_on();
     assert(FX_ECHO == 6 && FX_ROOM == 7 && FX_REVERB == 8 && FX_CHORUS == 9 && FX_MIDIVERB == 10 && FX_MIDIDELAY == 11);
-    assert(!N_FX[FX_ECHO][0] && !N_FX[FX_REVERB][0] && !N_AUDIO_FX[FX_ECHO][0] && !N_AUDIO_FX[FX_REVERB][0]);
-    assert(enum_orig(&TP[P_FXTYPE],FX_ECHO)==FX_OFF && enum_orig(&GP[G_MFXTYPE],FX_REVERB)==FX_OFF);
+    assert(!N_FX[FX_ECHO][0] && str_eq(N_FX[FX_REVERB],"ECHOVERB") && !N_AUDIO_FX[FX_ECHO][0] && str_eq(N_AUDIO_FX[FX_REVERB],"ECHOVERB"));
+    assert(enum_orig(&TP[P_FXTYPE],FX_ECHO)==FX_OFF && enum_orig(&GP[G_MFXTYPE],FX_REVERB)==FX_REVERB);
     assert(enum_step(&TP[P_FXTYPE],FX_SPIT,FX_ECHO)==FX_ROOM);
-    assert(enum_step(&TP[P_FXTYPE],FX_ROOM,FX_REVERB)==FX_CHORUS);
-    assert(enum_rows(&TP[P_FXTYPE])==FX_COUNT-2 && enum_rows(&GP[G_MFXTYPE])==FX_AUDIO_COUNT-2);
-    btn_down(B_FX);frames(800);assert(!ui.layer && !ui.ly && !(kb_mask & (1u<<panel.btn[B_FX])));
-    key_down(white(0));frame();assert(gates() && !kb_layer);key_up(white(0));frame();assert(!gates());
-    btn_up(B_FX);frame();assert(!ui.layer && cur_page()->fam==FAM_FX);
+    assert(enum_step(&TP[P_FXTYPE],FX_ROOM,FX_REVERB)==FX_REVERB);
+    assert(enum_rows(&TP[P_FXTYPE])==FX_COUNT-1 && enum_rows(&GP[G_MFXTYPE])==FX_AUDIO_COUNT-1);
+    press(B_FX);assert(cur_page()->fam==FAM_FX);
+    btn_down(B_FX);frames(800);assert(ui.layer==LAYER_FX);
+    key_down(white(0));frame();assert(!gates() && kb_layer);key_up(white(0));frame();assert(!gates());
+    btn_up(B_FX);frames(100);assert(!ui.layer);
     printf("Retired FX: picker holes skipped; FX keeps note keys playable; remaining slot state %zu bytes x %u\n",sizeof(fx_state_t),FX_STATE_COUNT);
 }
 int main(void) { buffers(); storage(); controls(); return 0; }

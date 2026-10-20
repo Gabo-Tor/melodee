@@ -144,6 +144,7 @@ static void melodee_init(void)
 {
     uint32_t i;
     midi_insert_init();
+    punch_reset();
     chain_defaults(&chain_config);
     pattern_init();
     for (i = 0; i < G_COUNT; i++)

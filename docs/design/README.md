@@ -164,8 +164,13 @@ place status cards over knobs, lists, waveforms, or notes.
 - **Left:** transport, BPM, then the REC mark. A filled REC mark means the selected track is ready/recording;
   an outline means it is waiting or another track is armed.
 - **Right:** the active transport status replaces the page/engine title and optional navigation marks. Priority:
-  `ERASING`, then `WAIT LOOP` (waiting for the selected track's loop boundary), then brief action feedback, then
+  `ERASING`, then `WAIT LOOP` (waiting for the selected track's loop boundary), then master punch status, then brief action feedback, then
   the normal context. Keep transport, BPM, and REC visible. Use REC colour for recording states.
+- **Master punch:** show the active effect's compact SLOOP name through its final
+  wet fade; FX HOLD / FX LOCK while its layer is open without an active effect;
+  FX MEMORY while a requested buffered effect cannot allocate. Clear on release,
+  cancellation or layer close, as appropriate. Use the label font if necessary;
+  never turn this ongoing state into a toast.
 - **Optional context:** octave, song row, page dots, and the low-battery glyph use the remaining header space in
   the normal layout. Never overlap or truncate a status to preserve optional context. Use a concise, documented
   label that fits both Rubik and Melodee Pixel; `WAIT LOOP` is the header label for “waiting for loop”.
@@ -247,12 +252,12 @@ gone). Its sheet (OCT+ held, or OCT+ on RETURN) holds Routing too and Clear shar
 
 A **slot's page** shows while the slot holds an effect, so SELECT never stops on an empty one: FX, the slots in use,
 SHARED, its slots in use. The header names the effect. Audio controls are MIX, RATE (ROOM: SIZE), the
-effect's DEPTH / FOCUS / JITTER / BITE / DECAY, and TONE (ROOM only).
+effect's DEPTH / FOCUS / JITTER / BITE / DECAY / DIFFUSE, and TONE (ROOM and ECHOVERB).
 The picture says what the effect does and draws its sound; WIDTH says "Mono changes the tone", a time effect without its
 buffer "MEMORY FULL". No hint rows. A shared slot's footer is "All tracks" with the four track colours. These controls
 belong to the project and track, never the instrument preset; shared MIX defaults fully wet.
 
-**TONE** (ROOM; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
+**TONE** (ROOM and ECHOVERB; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
 FULL a high cut from 2640 Hz down to 120 Hz, above it a low cut from 150 Hz up to 1280 Hz (core.h `fx_tone_hz`, fine
 steps where the ear needs them). Smooth 6 dB/octave cuts shape the wet input; the dry signal stays intact.
 
@@ -267,11 +272,12 @@ records load FULL.
 Screens for every effect, the racks (picker, list, SPLIT), SHARED's sheet and TONE's two sides are rendered and linted
 in every palette by `tests/ui_render.c` (fx_*).
 
-Audio ECHO, REVERB and the ECHOVERB audition are retired (2026-10-19).
-Their stored IDs 6 and 8 remain reserved and import as OFF. Neither is shown
-in the effect lists. The DSP kernels, private reverb worker, fidelity setting
-and their buffers are removed. ROOM and CHORUS retain their 2 KiB buffers and
-release them on bypass; filter effects allocate no audio delay memory.
+Audio ECHO remains retired: stored ID 6 imports as OFF. ECHOVERB is restored
+at its previous audition ID 8 (2026-10-20), in track and shared racks. It runs
+at 44.1 kHz with 10–500 ms PCM16 mono delay, nested allpass diffusion, TIME,
+DIFFUSE and TONE. It allocates 60,340 bytes per active slot and releases on
+bypass. There is no fidelity setting or private reverb worker. ROOM and CHORUS
+retain their 2 KiB buffers; filter effects allocate no audio delay memory.
 
 ### MIDI track inserts (2026-10-19)
 
@@ -303,11 +309,29 @@ panic, sound changes or editing a delay's controls cancel its track's queued
 echoes.
 No audio delay buffer is allocated for either MIDI insert.
 
-## FX button (2026-10-19)
+## FX button (2026-10-20)
 
-FX opens the track's rack. There is no held or double-tap punch FX layer, no
-punch key ownership, and no punch status, history, mappings or generated-note
-queue. Holding FX keeps note keys playable. GLO and SCL retain their layers.
+Tap FX for the track rack. Hold FX and press a key for SLOOP's 27 master punch
+effects, in its original white/black key layout. Double-tap FX locks the layer;
+tap FX again to close it. The latest pressed effect key owns the sound until
+that key releases; releasing another key does not change it. A key held before
+FX remains a normal instrument note. Effect keys generate no notes or MIDI and
+are not recorded. KNOB 1 browses a readable key reference; other knobs are
+consumed, including their release frame, without editing the underlying page.
+
+The complete dry stereo mix and shared returns pass through punch DSP before
+the existing master DC blocker, limiter and clipper, including stereo USB
+capture. Individual USB track stems remain before the master effects. Loops,
+gate and modulation use song tempo, including measured external clock; a
+64-sample wet fade joins each change. Loops hold their captured samples across
+history wraps. Punch history requests one optional 64 KiB allocation while the
+layer is in use, captures from layer entry, and releases after the layer and
+all effect keys close. Hold FX briefly before reverse/rewind to capture past
+audio. If allocation fails, buffered effects stay dry and the header says
+FX MEMORY; filter/kill/gate/mono/fade effects still work. Close and reopen FX
+to retry after reducing memory use. FREEZE reuses this same allocation for
+Echoverb, captures 186 ms of the master, then holds undamped feedback until
+release. It does not require a rack Echoverb slot. See ../SLOOP_PUNCH_FX.md.
 
 ## Large type (2026-10-14)
 

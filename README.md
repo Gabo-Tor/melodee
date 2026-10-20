@@ -708,12 +708,22 @@ SPLIT, each shared slot has its own track send. Effects, routing and send levels
 save with projects and templates; sound changes preserve them. Four mono USB
 stems include each track's inserts; the stereo master includes the shared return.
 
-**Audio Echo, Reverb, Echoverb and the punch FX layer have been removed.** Their
-DSP kernels, reverb worker workspace and punch-note state no longer occupy RAM.
-FX holds and double taps open no performance layer and do not claim note keys.
-Old projects and templates load audio Echo/Reverb slots as OFF; their IDs remain
-reserved, preserving all other effects and stored notes. FX RATE has been removed.
-MIDIVerb and MIDIDelay use a small fixed note queue rather than audio echo tanks.
+**SLOOP master punch FX and ECHOVERB are available.** Hold FX and press any of
+its 27 keys for loops, reverse, tape stop, half speed, filter sweeps, crush,
+aliasing, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan,
+freeze, mono or fade. Double-tap FX to lock the layer; tap it again to close.
+Release the effect key to restore dry audio. KNOB 1 browses the key reference.
+The effects process the complete stereo master, including shared returns and
+USB stereo capture. They do not alter notes or instrument patches.
+
+ECHOVERB returns at its previous audition ID 8, with TIME (10–500 ms), DIFFUSE
+and TONE in track/shared racks. FREEZE uses the same Echoverb code to hold a
+capture of the master, without requiring a rack slot. Buffered punches request
+64 KiB while in use; ECHOVERB uses about 59 KiB per slot. MEMORY FULL / FX MEMORY
+indicates insufficient working memory. Hold FX briefly before reverse/rewind
+so the optional history contains past audio. See [implementation and key map](docs/SLOOP_PUNCH_FX.md).
+Audio Echo ID 6 stays retired and loads OFF. MIDIVerb and MIDIDelay remain note
+inserts. The old FX RATE fidelity setting is removed.
 
 With **CLK TRS** or **CLK USB**, musical timing follows MIDI clock pulses directly, so tempo
 changes do not shift the pattern. DIV sets the pattern's step length, while TEMPO QNT independently

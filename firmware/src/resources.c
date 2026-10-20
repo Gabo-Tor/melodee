@@ -14,7 +14,7 @@ enum { RES_ENGINE0, RES_NOTE_HISTORY = RES_ENGINE0 + NPART, RES_FX0,
 #if MELODEE_USB_AUDIO
        RES_USB_TRACKS,
 #endif
-       RES_COUNT };
+       RES_PUNCH, RES_COUNT };
 static uint8_t recording_undo_lost;
 static uint8_t recording_undo_active, recording_undo_skip;
 static struct { void *ptr; uint32_t size; } resource[RES_COUNT];
@@ -139,7 +139,7 @@ static inline void *resource_get(uint32_t id, uint32_t bytes)
      * histories only after the ordinary allocation failed; their consumers
      * validate the handle under the audio guard before touching a snapshot. */
     if(!p && bytes && bytes<=RESOURCE_CAPACITY &&
-       (id<RES_NOTE_HISTORY || (id>=RES_FX0 && id<RES_RECORD_UNDO)
+       (id==RES_PUNCH || id<RES_NOTE_HISTORY || (id>=RES_FX0 && id<RES_RECORD_UNDO)
 #if MELODEE_USB_AUDIO
         || id==RES_USB_TRACKS
 #endif

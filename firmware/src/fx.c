@@ -248,6 +248,7 @@ static inline __attribute__((always_inline)) int32_t fx_tone_input(fx_state_t *f
     float x=fx_tone_section(&f->q[0][0],(float)input,slew,1);
     return (int32_t)fx_tone_section(&f->q[0][1],x,slew,0);
 }
+#include "fx_echoverb.h"
 /* ROOM: four damped combs at 13..26 ms, quarter-rate, 2 KiB. */
 static __attribute__((noinline,section(".dsp_text"))) void fx_time(fx_state_t *restrict f,int16_t *restrict mem,uint32_t n,int32_t target)
 {
@@ -471,7 +472,7 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     }
     f->rate=(int16_t)clamp(p[2],0,127);f->character=(int16_t)clamp(p[3],0,127);
     if(fx_has_tone(f->type)){   /* the low cut (section 0: the floor, TONE above 0 higher), TONE below 0 the high cut (1) */
-        uint32_t slot=si%FX_SLOTS,master=si/FX_SLOTS==NPART,div=4u;
+        uint32_t slot=si%FX_SLOTS,master=si/FX_SLOTS==NPART,div=f->type==FX_REVERB?1u:4u;
         int32_t tone=clamp(master?song.g[G_MFXTONE+slot]:trk[si/FX_SLOTS].p[P_FXTONE+slot],-FX_TONE_MAX,FX_TONE_MAX);
         for(uint32_t k=0;k<2u;k++){   /* (a2: the cutoff now, Hz; 0 off) */
             int32_t hz=k?(tone<0?fx_tone_hz(tone):0):fx_low_cut_hz(f->type,tone);
@@ -486,8 +487,8 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     if(profiling){f->rate=(fx_profile_control>>12u)&127u;f->character=(fx_profile_control>>19u)&127u;}
 #endif
     int16_t *mem=0;
-    if(f->type==FX_ROOM || f->type==FX_CHORUS){
-        uint32_t bytes=2048u; /* only ROOM and CHORUS own a short audio buffer */
+    if(f->type==FX_ROOM || f->type==FX_CHORUS || f->type==FX_REVERB){
+        uint32_t bytes=f->type==FX_REVERB?sizeof(fx_echoverb_t):2048u;
         if(!f->failed && !resource[RES_FX0+si].size){
             void *(*volatile allocate)(uint32_t,uint32_t)=fx_memory;mem=allocate(RES_FX0+si,bytes);if(!mem)f->failed=1;
         }else if(resource[RES_FX0+si].size)mem=resource[RES_FX0+si].ptr;
@@ -500,7 +501,8 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
     if(!plan->active)return 0;
     fx_state_t *f=plan->f;int16_t *mem=plan->mem;int32_t target=plan->target;
     void (*volatile copy)(fx_state_t *,uint32_t)=fx_copy;copy(f,n);
-    if(f->type==FX_CHORUS){
+    if(f->type==FX_REVERB){fx_echoverb_run(f,(fx_echoverb_t *)mem,n,target,fx_left,fx_right);}
+    else if(f->type==FX_CHORUS){
         if(!n)return 1;
         if(!f->age){f->rev_l=f->rev_r=256*65536;f->age=1;}
         f->phase+=LFO_INC[f->rate]*n/CTL;
