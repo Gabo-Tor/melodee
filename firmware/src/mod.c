@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "performance_options.h"
 /* Modulation matrix: per track four slots, each SRC -> DST by AMT (-64..63), added to the fixed
  * routings (ENV DEST, LFO DEST). Runs in the audio ISR (mix.c mix_part, voice.c track_render).
  *
@@ -48,9 +49,6 @@ enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_RESERVED6, MD_RESERV
 _Static_assert(NELEM(N_MSRC) == MS_N && NELEM(N_MDST) == MD_N, "N_MSRC / N_MDST == MS_* / MD_*");
 _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M4AMT + 1 == P_FM1_ATK, "matrix slots: 3 ids each");
 #define NMSLOT 4u
-#ifndef MELODEE_MOD_CACHE
-#define MELODEE_MOD_CACHE 0
-#endif
 #if MELODEE_MOD_CACHE
 #define MOD_BEGIN_REFERENCE mod_begin_reference
 #else

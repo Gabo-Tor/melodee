@@ -143,7 +143,7 @@ static void fm1_fault(const fm1_crash_t *c)
 static void melodee_init(void)
 {
     uint32_t i;
-    punch_init();
+    midi_insert_init();
     chain_defaults(&chain_config);
     pattern_init();
     for (i = 0; i < G_COUNT; i++)

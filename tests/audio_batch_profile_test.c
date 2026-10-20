@@ -50,9 +50,32 @@ static void engine_split(uint32_t id)
     assert(AB_LOAD(&audio_batch_worker_mask)==0xabu);
     audio_batch_flush();for(uint32_t i=0;i<CTL;i++)assert(out[i]==8);
 }
+static void dense_group(void)
+{
+    /* Sixteen admitted voices plus four final fade blocks must stay in one
+     * pipeline. Splitting this workload used to stall preparation at voice 13. */
+    int32_t out[CTL]={0};uint32_t value=1;online=join_ok=1;advances=0;
+    for(uint32_t k=0;k<20u;k++)audio_batch_push(render,&value,sizeof value,out,CTL,AP_FM6);
+    assert(!advances && audio_batch_count==20u && audio_batch_started);
+    audio_batch_flush();assert(advances==20u);
+    for(uint32_t i=0;i<CTL;i++)assert(out[i]==20);
+}
+static void ghost_cost_split(void)
+{
+    int32_t out[CTL]={0};uint32_t value=1;online=join_ok=1;
+    audio_batch_native_fm6=1;
+    audio_batch_push_cost(render,&value,sizeof value,out,CTL,AP_FM6_CONTROL,5600u);
+    for(uint32_t k=0;k<12u;k++)audio_batch_push(render,&value,sizeof value,out,CTL,AP_FM6);
+    /* A native ghost group contributes its measured cost to the partition. */
+    assert(__builtin_popcount(AB_LOAD(&audio_batch_worker_mask))==7);
+    audio_batch_flush();for(uint32_t i=0;i<CTL;i++)assert(out[i]==13);
+    audio_batch_native_fm6=0;
+}
 int main(void)
 {
     scenario(1,1);scenario(0,1);scenario(1,0);
+    dense_group();
+    ghost_cost_split();
     const uint32_t ids[]={AP_PROPHET,AP_FM6,AP_CZ,AP_SID,AP_808,AP_909};
     for(uint32_t k=0;k<sizeof ids/sizeof ids[0];k++)engine_split(ids[k]);
     int32_t out[CTL]={0};uint32_t value=1;online=join_ok=1;advances=0;

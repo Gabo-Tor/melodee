@@ -205,9 +205,7 @@ static void pv_rack_rows(void)
                     }
                 }
                 menu_words(nm, N_FX[clamp(bus[j * FX_PARAMS], 0, FX_COUNT - 1)], sizeof nm);
-#if MELODEE_ECHOVERB_TEST
-                if (bus[j * FX_PARAMS] == FX_REVERB) str_cpy(nm, "EV", sizeof nm);
-#endif
+
                 x = cv_free_text(x, ty_y(13, TY_LB), TY_LB, nm, T_MID, bg, vx - x) + 8;
             }
             if (!n)
@@ -631,14 +629,12 @@ static void pv_fx(int32_t h)
     uint32_t master = pg->scope == SC_GLOBAL, slot = (pg->id[0] - (master ? G_MFXMIX : P_FXMIX)) / FX_PARAMS;
     const int16_t *p = (master ? song.g : TSEL->p) + pg->id[0] - 1u;   /* TYPE MIX RATE CHAR */
     uint32_t type = (uint32_t)clamp(p[0], 0, FX_COUNT - 1), failed = fx_state[(master ? NPART : song.sel % NPART) * FX_SLOTS + slot].failed;
-    static const char *const hint[FX_COUNT]={"Dry signal","Moving notches","All-pass L / dry R","Random vowels","Phase / crossover jitter","Jumping resonance","Short lo-fi echoes","Small lo-fi space","Diffused stereo reverb","Stereo pitch shimmer"};
+    static const char *const hint[FX_COUNT]={"Dry signal","Moving notches","All-pass L / dry R","Random vowels","Phase / crossover jitter","Jumping resonance","Dry signal","Small lo-fi space","Dry signal","Stereo pitch shimmer","Envelope release tail","Repeating notes"};
     int32_t mix = p[1], cha = p[3], tone = master ? song.g[G_MFXTONE + slot] : TSEL->p[P_FXTONE + slot];
     int32_t ly = h - lf->h - 4, sy = ly - 9, low = (fx_has_tone((int32_t)type) && !failed ? sy - 6 : h - lf->h - 10) * 16;
     int32_t top = (lf->h + 10) * 16, cy = (top + low) / 32, py = cy * 16;
     const char *description=hint[type];
-#if MELODEE_ECHOVERB_TEST
-    if(type==FX_REVERB)description="Mono echo / diffusion";
-#endif
+
     cv_free_text(12, 6, lf, description, T_MID, T_PANEL, PV_PANEL_W - 24);
     for (int32_t x = 0; x < 208; x++) {
         int32_t ph = (int32_t)(sine_i((uint32_t)x * 0x06000000u) >> 10), y = cy * 16;

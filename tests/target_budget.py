@@ -29,7 +29,6 @@ FUNCS = ["phase_render", "sid_render", "cz_native_render", "cz_native_wave", "fo
          "mod_begin", "mod_voice", "mod_end",                 # the modulation matrix (mod.c), called when active
          "fx_filter", "fx_down", "fx_up", "fx_time", "mix_fx_samples",
          "fx_tape",                                        # fused, smoothed stereo Tape path
-         "fx_reverb",                                      # reduced-rate tank and input conversion
          "fx_chorus",                                      # full-rate integer stereo taps
          "mix_extra_sends", "fx_bus_kernel",                # optional independent sends and returns
          ]

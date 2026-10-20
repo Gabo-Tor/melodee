@@ -108,6 +108,9 @@ static int audio_worker_join(void)
             audio_worker_retire();
             return 0;
         }
+        /* Give the worker SRAM bandwidth while awaiting its completion.
+         * Target AW_IDLE is a bounded register-only pause, never a sleep. */
+        AW_IDLE();
     }
     uint32_t elapsed = AW_TICKS() - start;
 #if MELODEE_AUDIO_PROFILE

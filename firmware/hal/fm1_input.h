@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "../src/performance_options.h"
 /* FM-1 input HAL: key/button/encoder matrix and LEDs.
  *
  * One 11-column x 6-row diode matrix behind a 2x74HC595 chain (PA4 SER, PA3
@@ -70,9 +71,6 @@
 #define FM1_NKEY 41u              /* ids: 0..13 buttons, 14..40 note keys */
 #define FM1_NENC 7u
 
-#ifndef MELODEE_PANEL_FAST
-#define MELODEE_PANEL_FAST 0
-#endif
 
 
 /* key id at (physical column, packed row bit), -1 = none */

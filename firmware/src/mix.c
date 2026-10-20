@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "performance_options.h"
 /* Engine output -> optional stereo insert -> track level -> master.
  * The bypass retains the original level/pan/spread path exactly. */
 #include "fx.c"
@@ -103,9 +104,6 @@ typedef struct {
     int32_t lvl, gl, gr;
 } mix_cache_t;
 static mix_cache_t mix_cache[NTRK];
-#ifndef MELODEE_MIX_FAST
-#define MELODEE_MIX_FAST 0
-#endif
 static __attribute__((noinline)) void mix_cache_update(const track_t *t, mix_cache_t *mc)
 {
     mc->level=t->p[P_LEVEL];mc->pan=t->p[P_PAN];mc->valid=1;
@@ -210,21 +208,19 @@ static uint32_t batch_rendered[NPART];static uint8_t batch_spread_on[NPART],batc
 static __typeof__(mod) batch_mod[NPART];
 #if MELODEE_DUAL_CORE
 static uint8_t batch_posted[NPART];
-static uint32_t batch_reverb_track=NPART;
 #endif
 static int16_t batch_params[NPART][P_COUNT];
 static __attribute__((noinline)) void mix_prepare_batch(uint32_t n,uint32_t nt)   /* nt: the tracks in use */
 {
     audio_batch_active=1;
 #if MELODEE_DUAL_CORE
-    memset(batch_posted,0,sizeof batch_posted);batch_reverb_track=NPART;
-    /* Native FM6 preparation includes releasing/ghost envelopes on CPU0.
-     * This measured mixed Prophet/FM6 class needs more service allowance;
-     * do not allocate or change engine priority while inspecting it. */
-    audio_batch_fm6_controls=0;
-    for(uint32_t p=0;p<nt && !audio_batch_fm6_controls;p++)if(trk[p].engine==ENGI_FM6 && resource[RES_ENGINE0+p].size==sizeof(fm6_part_t)){
+    memset(batch_posted,0,sizeof batch_posted);
+    /* Keep the measured CPU0 service reserve for native FM6 workloads.
+     * Per-voice controls and ghosts themselves are costed queue jobs. */
+    audio_batch_native_fm6=0;
+    for(uint32_t p=0;p<nt && !audio_batch_native_fm6;p++)if(trk[p].engine==ENGI_FM6 && resource[RES_ENGINE0+p].size==sizeof(fm6_part_t)){
         const fm6_part_t *f=resource[RES_ENGINE0+p].ptr;
-        for(uint32_t v=0;v<NVOICE;v++)if(f->v[v].played && !f->v[v].still && !f->v[v].frozen){audio_batch_fm6_controls=1;break;}
+        for(uint32_t v=0;v<NVOICE;v++)if(f->v[v].played && !f->v[v].still && !f->v[v].frozen){audio_batch_native_fm6=1;break;}
     }
 #endif
     for(uint32_t p=0;p<nt;p++){
@@ -277,28 +273,7 @@ static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
     if(rendered || fx_active(t)){
         if(!rendered){memset(part_buf,0,n*sizeof *part_buf);if(spread_on)memset(spread_buf,0,n*sizeof *spread_buf);}
         AP_START(fx_start);int wet;
-#if MELODEE_DUAL_CORE && MELODEE_BATCH_AUDIO && !MELODEE_LEGACY_EXTRAS
-        uint32_t p=(uint32_t)(t-trk);
-        if(batch_ready && batch_reverb_track==p){
-            batch_reverb_track=NPART;wet=fx_reverb_private_take(t,part_buf,n);
-        }else{
-            uint32_t next=p+1u;int paired=0;fx_plan_t first;
-            if(batch_ready && fx_reverb_parallel_enabled && audio_worker_online && next<trk_n() &&
-               !batch_mod[next].on && !batch_spread_on[next] && fx_single_reverb(t) && fx_single_reverb(&trk[next])){
-                const engine_t *e=ENGINES[trk[next].engine];uint32_t nr=batch_rendered[next];
-                if(nr && e->post){e->post(&trk[next],batch_pcm[next],n,nr);batch_posted[next]=1;}
-                if(!nr)memset(batch_pcm[next],0,n*sizeof batch_pcm[next][0]);
-                if(fx_reverb_private_start(t,&trk[next],batch_pcm[next],n,&first)){batch_reverb_track=next;paired=1;}
-            }
-            if(paired){   /* (fx_pan in .dsp_text: past a direct jump from flash in builds without RAM audio) */
-                void (*volatile pan)(track_t *,int32_t *,uint32_t)=fx_pan;pan(t,part_buf,n);
-                wet=fx_slot_run(&first,n);fx_post_pan(t,n);
-            }
-            else wet=fx_process(t,part_buf,n);
-        }
-#else
         wet=fx_process(t,part_buf,n);
-#endif
         AP_END(AP_FX,fx_start);
         if(wet){
             void (*volatile run)(track_t *,uint32_t)=mix_fx_samples;run(t,n);

@@ -2133,16 +2133,16 @@ function makeMockDevice(opt = {}) {
     D("DEG", F.INT, 1, 12, 1));                      /* 83: QNT MPC, the degree of each bank's pad 02 */
   TP.push(...["KICK","SNARE","CLAP","HATCL","HATOP","TOM","RIM","BELL"].map(n=>D(n,F.PCT,0,127,127)));
   TP.push(E("SYNC", ["OFF","4BAR","2BAR","1/1","1/2","1/4","1/8","8T","1/16","16T","1/32"],0), E("TRIG",["NOTE","FREE"],0), E("POL",["BI","UNI"],0), D("SPRD",F.PCT,0,127,0));
-  for(let slot=0;slot<3;slot++)TP.push(E("FX", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","ECHO","ROOM","REVERB","CHORUS"],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
+  for(let slot=0;slot<3;slot++)TP.push(E("FX", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","","CHORUS","MIDIVerb","MIDIDelay"],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
   TP.push(D("SEND",F.PCT,0,127,0),D("SEND 2",F.PCT,0,127,0),D("SEND 3",F.PCT,0,127,0));
   for(let slot=0;slot<3;slot++)TP.push(D("TONE",F.TONE,-63,63,0));
   TP.push(E("STRUM",["OFF","1/8","1/16","1/32","1/64","1/128","16T","32T"],0),E("STROKE",["DOWN","UP","ALT"],0));
-  for(let slot=0;slot<3;slot++)GP.push(E("TYPE", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","ECHO","ROOM","REVERB","CHORUS"],0),D("MIX",F.PCT,0,127,127),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
+  for(let slot=0;slot<3;slot++)GP.push(E("TYPE", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","","CHORUS"],0),D("MIX",F.PCT,0,127,127),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
   GP.push(D("RETURN",F.PCT,0,127,100),E("MODE",["CHAIN","SPLIT"],0),D("BUDGET",F.INT,8,32,16,null,"pts"));
   for(let slot=0;slot<3;slot++)GP.push(D("TONE",F.TONE,-63,63,0));
   const P_COUNT = 124, G_COUNT = 45, NSTEP = 64, P_E0 = 116, G_ENGSEL = 20, P_RESERVED45 = 45;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const enumOrig = (d, v) => d.fmt === F.ENUM && d.names ? aliasOf(d.names, v - d.min) + d.min : v;   /* params.c enum_orig */
+  const enumOrig = (d, v) => d.fmt === F.ENUM && d.names ? (d.names[v - d.min] === "" ? 0 : aliasOf(d.names, v - d.min) + d.min) : v;   /* params.c enum_orig */
   /* four tracks (firmware v3), four synth parts (1.0); engine / preset / p / step below are the selected track's */
   const SCALE_DEGREES = [12, 7, 7, 7, 7, 5, 5, 7, 7, 7, 7, 7, 6, 6, 8, 8, 5, 7, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 29, 31, 34, 36, 41, 53, 7, 7, 12, 12, 7, 8, 16, 43, 8, 12, 12, 12, 12, 12, 12, 12, 12, 7, 8, 22, 5, 7, 13, 13, 7, 7, 7, 7, 7, 7]; /* generated scale degree counts */
   const NTRK = 4;

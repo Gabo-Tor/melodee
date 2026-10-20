@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+#include "performance_options.h"
 /* A bounded performance store shared by the project's 32 banks. Step notes
  * are its editable overview; the original onsets, velocities and independent
  * releases live here. QNT commits a grid to the new take when it finishes. */
@@ -277,9 +278,6 @@ static int recording_active(const track_t *t, uint32_t i)
     uint32_t view = recording_view(t, r);
     return t->step[view].time == ST_NOTE && (t->step[view].flags & SF_RECORDED);
 }
-#ifndef MELODEE_RECORD_INDEX
-#define MELODEE_RECORD_INDEX 0
-#endif
 #if MELODEE_RECORD_INDEX
 /* Active banks only: exact pitch bits per rounded overview cell (4096 B).
  * Dirty cells coalesce deletions/edits; rebuilding scans one bank once, never
@@ -634,9 +632,6 @@ static uint32_t recording_play_on(const track_t *t, uint32_t i, uint32_t period)
     (void)t; (void)period;
     return recording_due[i];
 }
-#ifndef MELODEE_CAPTURE_FAST
-#define MELODEE_CAPTURE_FAST 0 /* 1: owner-list capture allocation, same slot and state */
-#endif
 #if MELODEE_CAPTURE_FAST
 static void recording_remove(track_t *t, uint32_t i);
 #endif

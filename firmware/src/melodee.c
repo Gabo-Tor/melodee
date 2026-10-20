@@ -9,9 +9,6 @@
  * (core.h: the SLICE engine), MELODEE_ICONS (icons.c, the parameter icons; on by default),
  * MELODEE_OTA_RAMONLY (ota.c). */
 #include "build_options.h"      /* defaults shared with crt0.S */
-#ifndef MELODEE_CACHE_RAM
-#define MELODEE_CACHE_RAM 0     /* opt-in: seven data-cache ways as RAM; keep the full data cache for audio by default */
-#endif
 #ifndef MELODEE_CORE1_TEST
 #define MELODEE_CORE1_TEST 0    /* editor command 79 injects CPU1 failures (tools/core1_fault_test.py); never release */
 #endif

@@ -43,8 +43,9 @@ static double run(const char *kind,const uint8_t modes[3],int tracks,int setting
     return ipc;
 }
 int main(int argc,char **argv){
-    int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes");
-    for(int setting=0;setting<2;setting++)for(int tracks=1;tracks<=4;tracks+=3)for(int type=0;type<FX_COUNT;type++){
+    uint32_t matrix_rows=0;int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes");
+    for(int setting=0;setting<2;setting++)for(int tracks=1;tracks<=4;tracks+=3)for(int type=0;type<FX_AUDIO_COUNT;type++){
+        if(fx_retired(type))continue;
         uint8_t modes[3]={type,0,0};double cost=run("single",modes,tracks,setting,0,2048);
         /* Apple instruction counters are deterministic; leave 20% headroom
          * above the measured ~112 instructions per stereo sample frame.
@@ -53,18 +54,9 @@ int main(int argc,char **argv){
         run("mixer",modes,tracks,setting,1,2048);run("send",modes,tracks,setting,2,2048);run("separate-send",modes,tracks,setting,3,2048);
         if(type){modes[1]=modes[2]=type;run("triple",modes,tracks,setting,0,2048);run("mixer-triple",modes,tracks,setting,1,2048);run("send-triple",modes,tracks,setting,2,2048);run("separate-send-triple",modes,tracks,setting,3,2048);}
     }
-    if(full)for(int a=1;a<FX_COUNT;a++)for(int b=1;b<FX_COUNT;b++)for(int c=1;c<FX_COUNT;c++)for(int setting=0;setting<2;setting++){
-        uint8_t modes[3]={a,b,c};run("matrix",modes,4,setting,0,256);
+    if(full)for(int a=1;a<FX_AUDIO_COUNT;a++)for(int b=1;b<FX_AUDIO_COUNT;b++)for(int c=1;c<FX_AUDIO_COUNT;c++)for(int setting=0;setting<2;setting++){
+        if(fx_retired(a)||fx_retired(b)||fx_retired(c))continue;
+        matrix_rows++;uint8_t modes[3]={a,b,c};run("matrix",modes,4,setting,0,256);
     }
-    for(uint32_t q=1;q<3u;q++){
-        settings_fx_quality=q;
-        for(int type=FX_ECHO;type<=FX_REVERB;type+=2){
-            uint8_t modes[3]={type,0,0};
-            run(q==1?"22k-single":"44k-single",modes,1,0,0,2048);
-            run(q==1?"22k-mixer":"44k-mixer",modes,4,1,1,2048);
-            run(q==1?"22k-send":"44k-send",modes,4,1,2,2048);
-        }
-    }
-    settings_fx_quality=0;
-    fprintf(stderr,"FX performance: all effects, three-slot/four-track chains, mixer and %u-row matrix passed (%u)\n",full?2u*(FX_COUNT-1u)*(FX_COUNT-1u)*(FX_COUNT-1u):0u,checksum);return 0;
+    fprintf(stderr,"FX performance: all effects, three-slot/four-track chains, mixer and %u-row matrix passed (%u)\n",matrix_rows,checksum);return 0;
 }

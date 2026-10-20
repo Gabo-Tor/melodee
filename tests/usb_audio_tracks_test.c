@@ -82,12 +82,12 @@ static struct result stereo_render(int insert, int send, uint32_t master)
         host_tracks_init();
         for (uint32_t k = 0; k < NPART; k++) host_preset(&trk[k], HOST_SYNTH, 0);
         trk[0].p[P_PAN] = -40;
-        trk[0].p[P_FXTYPE] = insert ? FX_ECHO : FX_OFF;
+        trk[0].p[P_FXTYPE] = insert ? FX_CHORUS : FX_OFF;
         trk[0].p[P_FXMIX] = 100;
         trk[0].p[P_FXRATE] = 30;
         trk[0].p[P_FXCHAR] = 80;
         trk[0].p[P_FXSEND] = send ? 127 : 0;
-        song.g[G_MFXTYPE] = send ? FX_REVERB : FX_OFF;
+        song.g[G_MFXTYPE] = send ? FX_ROOM : FX_OFF;
         song.g[G_MFXMIX] = 127;
         song.g[G_FXRETURN] = 127;
         song.master_q12 = master;

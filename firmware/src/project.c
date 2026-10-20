@@ -367,7 +367,7 @@ static int proj_unpack(project_t *q, const uint8_t *b)
     if(magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC || magic==0x46554E46u){
         if(b[PROJ_FX_WIRE_OFF]!='M' || b[PROJ_FX_WIRE_OFF+1u]!='F' || b[PROJ_FX_WIRE_OFF+2u]!='X' || b[PROJ_FX_WIRE_OFF+3u]>127u)return 0;
         q->g[G_FXRETURN]=b[PROJ_FX_WIRE_OFF+3u];
-        for(i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;uint8_t v=b[PROJ_MASTER_WIRE+i];if(v>GP[id].max)return 0;q->g[id]=v;}
+        for(i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;uint8_t v=b[PROJ_MASTER_WIRE+i];if(v>GP[id].max)return 0;q->g[id]=(i%FX_PARAMS==0u && fx_retired(v))?FX_OFF:v;}
         for(i=G_RESERVED4;i<=G_RESERVED11;i++)q->g[i]=0;
     }
     if(magic==PROJ_MAGIC || magic==PROJ_CUT_MAGIC || magic==PROJ_PRE_HP_MAGIC){if(b[PROJ_FX_MODE_OFF]>1u || b[PROJ_FX_MODE_OFF+1u])return 0;q->g[G_FXMODE]=b[PROJ_FX_MODE_OFF];}
@@ -843,6 +843,7 @@ static int project_restore_runtime(const project_t *input)
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE)
             song.g[i] = global_reserved(i) ? 0 : (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
+    for (i = 0; i < FX_SLOTS; i++) if (fx_retired(song.g[G_MFXTYPE+i*FX_PARAMS])) song.g[G_MFXTYPE+i*FX_PARAMS] = FX_OFF;
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
@@ -854,6 +855,7 @@ static int project_restore_runtime(const project_t *input)
             const param_desc_t *d = param_desc_of(e, i);
             t->p[i] = param_reserved(i) ? 0 : eng_extra_retired(e) && i >= P_E0 ? s->p[i] : (int16_t)clamp(s->p[i], d->min, d->max);
         }
+        for (i = 0; i < FX_SLOTS; i++) if (fx_retired(t->p[P_FXTYPE+i*FX_PARAMS])) t->p[P_FXTYPE+i*FX_PARAMS] = FX_OFF;
         t->preset = eng_extra_retired(e) ? s->preset : (uint8_t)(ENGINES[e]->npresets ? (s->preset >= PROJ_DEF_KEEP ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
         t->pattern = p->pattern[k];
         memcpy(t->step, s->step, sizeof t->step);
@@ -1036,7 +1038,7 @@ static int tmpl_take(const uint8_t *b,uint32_t len)
         if(np==PROJ_CUT_NP)for(uint32_t i=0;i<FX_SLOTS;i++)tmpl.t[k].p[P_FXTONE+i]=proj_tone_of_cuts(values[P_FXTONE+i],values[P_FXTONE+FX_SLOTS+i]);
     }
     uint32_t native=__builtin_offsetof(tmpl_t,master)-__builtin_offsetof(tmpl_t,fm6);memcpy(tmpl.fm6,b+off,native);
-    for(uint32_t i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;uint32_t v=np>=117u?b[off+native+i]:(uint32_t)GP[id].def;if(v>GP[id].max)return 0;tmpl.master[i]=(uint8_t)v;}
+    for(uint32_t i=0;i<FX_SLOTS*FX_PARAMS;i++){uint32_t id=G_MFXTYPE+i;uint32_t v=np>=117u?b[off+native+i]:(uint32_t)GP[id].def;if(v>GP[id].max)return 0;tmpl.master[i]=(uint8_t)((i%FX_PARAMS==0u && fx_retired((int32_t)v))?FX_OFF:v);}
     tmpl.master[12]=np>=117u?b[off+native+12u]:(uint8_t)GP[G_FXRETURN].def;if(tmpl.master[12]>127u)return 0;
     tmpl.master[13]=np>=119u?b[off+native+13u]:0;
     for(uint32_t i=0;i<FX_SLOTS;i++)

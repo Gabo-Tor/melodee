@@ -266,10 +266,9 @@ phys_ref() {
 # ------------------------------------------------------------------ tests ---
 # the longest first: they set the length of the run
 sound && t "FX performance: all effects, four-track mixer, shared send bus and ordered three-effect chains" fx_performance -O2 $FW -- "$OUT/fx_performance" full
-sound && t "FX: three-slot chains, reverb decay/density/rate conversion, smooth Tape, track ownership, dry bypass and frozen legacy storage" fx_test -O1 $FW
-sound && t "FX fidelity: rates, timings, full-rate bandwidth, transitions, memory admission and settings" fx_fidelity_test -O1 $FW
-sound && t "Echoverb audition: native PCM, 64 KiB bound, controls/tails and memory admission" echoverb_test -O2 $FW
-core && t "MIDI punch: panel gestures, note ownership, deadlines, queue limits and unchanged patterns" midi_punch_test -O1 $FW
+sound && t "FX: remaining inserts, smooth Tape, track ownership, dry bypass and retired-effects RAM reclamation" fx_test -O1 $FW
+core && t "Removed audio/punch FX: retired IDs, old tanks reclaimed and playable FX keys" retired_fx_test -O1 $FW
+core && t "MIDI inserts: native release tails, timed note repeats, ownership, UI and persistence" midi_insert_test -O1 $FW
 core && t "EQ accelerator: register layout, isolated histories and bounded timeout" eq_hw_test
 core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
@@ -313,6 +312,7 @@ if core; then
     t "USB audio: endpoint lifecycle and packet ownership" usb_audio_driver_test
     run "USB descriptors: MIDI, CDC and audio configurations" python3 tests/usb_audio_desc_test.py
     run "resident audio: call graph and flash/RAM ABI boundaries" python3 tests/audio_ram_test.py
+    run "performance defaults: local/compiler agreement and explicit reference overrides" python3 tests/performance_defaults_test.py
     t "removed effects: old songs and motion, MIDI, physical input and dry output" no_effects_test -O1 $FW
     t "resident audio: four-track resource budget and removed buses" ram_audio_test -O2 $FW
     t "resident/cache undo: validated eight levels and bounded fallback" ui_resident_cache:ui_test -DMELODEE_RAM_AUDIO=1 -DMELODEE_CACHE_RAM=1 $FW
@@ -414,8 +414,6 @@ if sound && [ $TABLES = 1 ]; then
     t "paired FM6/Prophet voices: serial/concurrent sample equality and eight-voice allocation" dual_core_test \
         -O2 $FW -pthread
     t "audio: 1296 ordered engine assignments, releases, controls and concurrent PCM parity" audio_matrix_test -O2 $FW -pthread
-    t "Reverb inserts: private tanks, fallback and failed-worker drops" reverb_parallel_test -O2 $FW -pthread
-    t "Echoverb audition: private tanks, serial/concurrent parity and failed-worker drops" echoverb_parallel_test:reverb_parallel_test -DMELODEE_ECHOVERB_TEST=1 -O2 $FW -pthread
     t "CZ-1: every knob changes a full tone; the dim ones leave INIT and factory tones bit for bit" cz1_knob_test -O2 $FW
     t "native fp32: independent numerical references, exact pitch, quiet signals and fractional envelopes" synth_fpu_test \
         -O2 $FW

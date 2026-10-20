@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+#include "performance_options.h"
 /* SID: the Commodore MOS 6581 / 8580, a whole chip per note.
  *
  * Each note plays its own SID, clocked as in a PAL C64 (985248 Hz) and modelled at the register level as reSID
@@ -45,9 +46,6 @@
  * Engine ID 3 was LOFI: its projects keep the ID and load as SID. */
 
 /* Experimental exact filter-output specialization; device acceptance pending. */
-#ifndef MELODEE_SID_FAST
-#define MELODEE_SID_FAST 0
-#endif
 
 static const char *const N_SID_MODEL[] = {"6581", "8580", "C64 6581", "C64 8580"};
 static const char *const N_SID_WAVE[] = {"TRI", "SAW", "PULSE", "NOISE", "TRI+SAW", "TRI+PLS", "SAW+PLS", "T+S+P"};
@@ -247,9 +245,9 @@ static uint32_t sid_sustain(const int16_t *p)   /* the 4-bit sustain as the coun
 }
 
 /* delta cycles of the envelope generator (reSID 0.16 EnvelopeGenerator::clock) */
-static void sid_env_clock(sid_voice_t *s, const int16_t *p, uint32_t delta)
+static void sid_env_clock_release(sid_voice_t *s, const int16_t *p, uint32_t delta, uint32_t release)
 {
-    uint32_t period = s->hr ? SID_RATE[0] : sid_period(p, s->state), sustain = sid_sustain(p);
+    uint32_t period = s->hr ? SID_RATE[0] : release && s->state == SID_RELEASE ? SID_RATE[SID_ADSR_RATE[release] >> 4] : sid_period(p, s->state), sustain = sid_sustain(p);
     int32_t step = (int32_t)period - (int32_t)s->rate_counter;
     if (step <= 0)                                     /* the ADSR delay: the counter is past the period, it */
         step += 0x7fff;                                /* counts on to its wrap first */
@@ -299,6 +297,9 @@ static void sid_env_clock(sid_voice_t *s, const int16_t *p, uint32_t delta)
     }
 }
 
+static void sid_env_clock(sid_voice_t *s, const int16_t *p, uint32_t delta)
+{ sid_env_clock_release(s, p, delta, 0); }
+
 static void sid_note_on(track_t *t, voice_t *v)
 {
     sid_voice_t *s = sid_voice(t, v);
@@ -336,7 +337,7 @@ static int sid_done(track_t *t, voice_t *v)
     uint32_t c = s->cycle_frac + SID_CYC_Q16, hr = s->hr;
     s->env_prev = s->env;
     s->cycle_frac = (uint16_t)c;
-    sid_env_clock(s, t->p, c >> 16);
+    sid_env_clock_release(s, t->p, c >> 16, midi_verb[t-trk]);
     if (hr && !s->hr) {                                /* C64: the hard restart is over: the note's registers go */
         s->latch = 1;                                  /* in with its gate, its frames count from it */
         s->frame = (int32_t)SID_FRAME_Q16;

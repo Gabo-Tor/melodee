@@ -141,7 +141,7 @@ and an optional autosave setting. The original release downloads included
 standard and single-core firmware; the current installer offers dual-core firmware only.
 
 - **Effects:** three inserts per track and a shared three-slot return, with independent
-  sends. Choose Phaser, Width, Formant, Tape, Spit, Echo, Room, Reverb or Chorus.
+  sends. Choose Phaser, Width, Formant, Tape, Spit, Room or Chorus; tracks also offer MIDIVerb and MIDIDelay.
   Effects save with projects and templates; sound changes preserve the track's effects.
 - **One-pass recording:** arm a track before PLAY to record from step zero, or arm it
   during playback to record at its next pattern start. Recording ends after one pass.
@@ -262,8 +262,8 @@ and patterns; settings represented by multiple patch bytes can use multiple even
   moving its playhead and turning most controls no longer resend the whole screen.
 - **More sound and performance:** dual-core rendering is on by default, DSP signal paths use the
   FM-1's native single-precision FPU. Modulation, stereo spread and screen sleep are included;
-  **FX** taps open the selected track's rack; hold FX for 27 MIDI punch-ins on the internal sounds,
-  or double-tap to lock the punch-in page. Note keys play rolls, flams, echoes, pitch/velocity changes and dropouts.
+  **FX** opens the selected track's rack.
+  Track inserts also offer **MIDIVerb** (envelope release) and **MIDIDelay** (timed note repeats with velocity decay).
 - **808 and 909 kits:** both DRUM kits synthesize every voice in real time. The 909 kick, snare,
   toms, rim and clap use circuit models from
   [fm1-x0x](https://github.com/charlesvestal/fm1-x0x/tree/201e5c5c1ac056a028a006bd1eabb23ac1bb174d);
@@ -686,49 +686,34 @@ replaces that event. **RECORDING FULL** leaves existing recordings intact; clear
 recorded steps makes space for new takes. Notes held longer than 128
 nominal steps are capped at that duration.
 
-Each track has **three serial FX inserts**, all usable together, including repeated
-effect types. Press **FX** and turn **SELECT** between **FX 1**, **FX 2** and **FX 3**.
-KNOB 1 chooses **OFF, PHASER, WIDTH, FORMANT, TAPE, SPIT, ECHO, ROOM, REVERB, CHORUS**;
-KNOB 2 sets **MIX**; KNOB 3 sets rate (Echo's time / Room's and Reverb's size);
-KNOB 4 sets depth, focus, jitter, bite, repeats or decay.
-The page follows `docs/design`: four rings, a track-colour picture, the normal
-name picker, OCT+ sound actions and OCT- back to Stage. FX settings belong to
-the track and save with projects and templates. Loading or saving a preset,
-changing engines, Init sound and sound undo preserve the track's effects.
+Each track has **three FX insert slots**. Press **FX** for the rack; KNOB 2 selects
+its row, KNOB 1 the effect, and KNOB 4 its amount. OCT+ opens an effect's controls;
+SELECT visits occupied slots and the shared rack. Audio choices are **Phaser,
+Width, Formant, Tape, Spit, Room and Chorus**. Track slots also offer **MIDIVerb**
+(envelope release) and **MIDIDelay** (note repeats with tempo divisions and
+velocity decay). The MIDI effects are available only on individual tracks.
 
-Phaser sweeps four all-pass sections per side. Width processes the left side
-and keeps the right dry; collapsing it to mono changes its tone. Formant jumps
-among five vowel shapes. Tape drifts two parallel crossover filters, smoothly
-changes the middle band's polarity, and rolls off the top. JITTER increases the
-movement without abrupt filter or phase switches. Its stereo filters run in
-one software pass with no delay buffer. Spit abruptly retunes a resonant
-band-pass and saturates it. Echo is a short, reduced-rate delay (10–370 ms,
-8 KiB per slot); Room keeps its small damped four-comb character (2 KiB).
-Reverb adds a diffused stereo eight-delay feedback tank with input and output
-allpasses (4 KiB per slot). Its **DEPTH** knob increases the wet body and extends
-the tail, from a short space to a deeper wash, with subtle delay drift for
-fuller diffusion and a softly bounded wet return. **MIX** sets the balance and
-**SIZE** sets the reflection spacing. Filter FX, Echo and Room run at **11.025 kHz**; Reverb runs at **5.5125 kHz**. Synths and the dry path stay at **44.1 kHz**.
-Reverb uses an inexpensive averaging input filter and interpolates the wet
-return; the rate conversion needs no additional buffer. Turning MIX to zero or
-selecting OFF fades to dry and releases the time-effect buffer. An allocation
-failure bypasses only that slot and shows MEMORY FULL; bypass and re-enable to retry.
+Phaser sweeps all-pass sections, Width processes the left side with the right
+dry, Formant makes vowel shapes, Tape drifts smooth crossover filters, and Spit
+retunes a resonant saturated band. These filters require no audio delay buffer.
+**Room** retains its damped four-comb sound at 11.025 kHz and **2 KiB per slot**;
+its controls are MIX, SIZE, DECAY and TONE. **Chorus** uses two modulated stereo
+taps at 44.1 kHz and **2 KiB per slot**, with MIX, RATE and DEPTH controls.
+OFF / MIX 0 fades to dry and frees their buffer. A failed allocation leaves the
+slot dry and shows MEMORY FULL; switch it off and on to retry.
 
-Chorus adds two smoothly modulated stereo delay taps at full **44.1 kHz**, using
-**2 KiB per slot** and integer sample processing. **RATE** sets the modulation
-speed, **DEPTH** sets pitch movement, and **MIX** blends the delayed signal with
-dry audio (start near 50%). Its delay is centred at 5.8 ms with up to +/-2.9 ms
-of movement. It has no feedback or extra filters; OFF / MIX 0 releases its buffer.
-For several tracks, use one Chorus in the shared send chain to save processing.
+**Shared** opens three shared audio slots, with CHAIN or SPLIT routing and a
+RETURN level. In CHAIN, each track's SEND feeds the three slots in series. In
+SPLIT, each shared slot has its own track send. Effects, routing and send levels
+save with projects and templates; sound changes preserve them. Four mono USB
+stems include each track's inserts; the stereo master includes the shared return.
 
-SELECT also visits **FX SEND** and **SEND FX 1–3**. SEND is the selected track's post-volume, post-pan amount into one shared stereo chain; RETURN blends that chain into the main output. Set a shared TYPE (for example REVERB), then raise SEND on the tracks that should feed it. Shared MIX defaults fully wet. **FX SEND > MODE** chooses **CHAIN** (the default) or **SPLIT** (separate sends). SPLIT exposes **FX SENDS > SEND 1–3** for each track: each global slot receives its own mix of tracks and its return joins the dry output. SEND 1 shares the existing SEND level; SEND 2 and SEND 3 are remembered when returning to CHAIN. The routing choice and send levels are saved in projects and the boot template; older projects load as CHAIN. Changing MODE fades the return before resetting the global effect tails. Switching the shared chain off fades its return to silence. The three track inserts remain available, and preset changes keep SEND. One shared Reverb uses 4 KiB regardless of the number of sending tracks. Its processing uses CPU1 when available; CPU0 prepares the dry output, then joins before the final limiter. Four mono USB stems remain individual tracks; the stereo master includes the shared return.
-
-Old FX/slicer sends, IDs, motion and key assignments remain inert. Previous
-FUN16 projects, FBKK banks, TPLF templates and old user presets load with the new
-FX off. FUN17 projects and TPLG templates retain their original effect in slot 1,
-with slots 2 and 3 off. FUN18 projects and TPLH templates preserve all three inserts. New FUN19 projects and TPLI templates also store SEND and the shared return, with the shared chain off for older music. Eight-byte packed steps keep the project and bank extents unchanged. Four mono USB
-recording stems include the complete chain, averaged after
-pan; Width therefore has the same mono tradeoff on a stem.
+**Audio Echo, Reverb, Echoverb and the punch FX layer have been removed.** Their
+DSP kernels, reverb worker workspace and punch-note state no longer occupy RAM.
+FX holds and double taps open no performance layer and do not claim note keys.
+Old projects and templates load audio Echo/Reverb slots as OFF; their IDs remain
+reserved, preserving all other effects and stored notes. FX RATE has been removed.
+MIDIVerb and MIDIDelay use a small fixed note queue rather than audio echo tanks.
 
 With **CLK TRS** or **CLK USB**, musical timing follows MIDI clock pulses directly, so tempo
 changes do not shift the pattern. DIV sets the pattern's step length, while TEMPO QNT independently

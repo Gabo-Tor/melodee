@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+#include "performance_options.h"
 /* DRUM's KIT 808 (eng_drum.c): an analog kit modelled on the TR-808's voice circuits. A lane plays one circuit at a
  * time (dr8_t, in each lane): the instrument of the note struck, from the 808's own
  * General MIDI map (DR_GM: three toms and three congas, maracas, claves, cowbell, cymbal), else the 808's nearest to
@@ -27,9 +28,6 @@
  * toms and congas (at the hit: SD, rim shot, claves), TONE the BD's and SD's tone, DECY the BD's, the open hat's
  * and the cymbal's decay, SNAP the snappy, ACC how far velocity moves the level too (drum_amp; the circuits alone
  * make a hit at 127 only ~2 dB louder than at 64), KICK ROUND the BD without its attack, DRV as on every kit. Ported from Melodee's drum part of before 1.0 (drums.c). */
-#ifndef MELODEE_DRUM_FAST
-#define MELODEE_DRUM_FAST 0
-#endif
 
 enum { DR_BD, DR_SD, DR_LT, DR_MT, DR_HT, DR_LC, DR_MC, DR_HC, DR_RS, DR_CL, DR_CP, DR_MA, DR_CB, DR_CY,
        DR_OH, DR_CH, DR_N };

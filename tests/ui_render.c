@@ -481,10 +481,9 @@ enum { S_HOME, S_HOME_IDLE, S_HOME_NOTE, S_HOME_CHORD, S_HOME_INVERSION, S_HOME_
        S_REF_SHEET_SOUND, S_REF_SHEET_SONG, S_REF_PICKER_WAVE, S_REF_PICKER_MODE, S_REF_SECTIONS_P5, S_REF_MAP_P5, S_REF_MAP_FM6,
        S_REF_SCL_LIST, S_REF_SHEET_PROJECT, S_REF_SHEET_NOTE, S_REF_SHEET_HIT, S_REF_MOTION,
        S_REF_SHEET_MOTION, S_REF_MOD, S_REF_PICKER_MOD, S_REF_ARP, S_REF_PATTERN,
-       S_REF_FMEG, S_REF_GRID, S_REF_SCALES, S_FX_PHASER, S_FX_WIDTH, S_FX_FORMANT, S_FX_TAPE, S_FX_SPIT, S_FX_ECHO, S_FX_ROOM, S_FX_REVERB, S_FX_CHORUS, S_FX_FULL, S_FX_SLOT2, S_FX_SLOT3, S_FX_RACK, S_FX_RACK_SPLIT, S_FX_RACK_PICK, S_FX_RACK_LIST, S_FX_BUS1, S_FX_BUS2, S_FX_BUS3, S_FX_SHARED, S_FX_SHARED_SPLIT, S_FX_SHARED_SHEET, S_FX_TONE_DARK, S_FX_TONE_THIN, S_BOOT_MIGRATION, S_BOOT_UPDATE, S_BOOT_ERROR, S_BOOT_COMPLETE, S_BOOT_WIPE_CONFIRM, S_BOOT_WIPING, S_BOOT_UPDATE_ERROR, S_MAP_DRUM_KIT, S_MAP_DRUM_HIT, S_MAP_DRUM_CATEGORY,
+       S_REF_FMEG, S_REF_GRID, S_REF_SCALES, S_FX_PHASER, S_FX_WIDTH, S_FX_FORMANT, S_FX_TAPE, S_FX_SPIT, S_FX_ROOM, S_FX_CHORUS, S_FX_FULL, S_FX_SLOT2, S_FX_SLOT3, S_FX_RACK, S_FX_RACK_SPLIT, S_FX_RACK_PICK, S_FX_RACK_LIST, S_FX_BUS1, S_FX_BUS2, S_FX_BUS3, S_FX_SHARED, S_FX_SHARED_SPLIT, S_FX_SHARED_SHEET, S_FX_TONE_DARK, S_FX_TONE_THIN, S_BOOT_MIGRATION, S_BOOT_UPDATE, S_BOOT_ERROR, S_BOOT_COMPLETE, S_BOOT_WIPE_CONFIRM, S_BOOT_WIPING, S_BOOT_UPDATE_ERROR, S_MAP_DRUM_KIT, S_MAP_DRUM_HIT, S_MAP_DRUM_CATEGORY,
        S_STAGE_UNUSED1, S_STAGE_UNUSED3, S_MIXER_UNUSED2, S_MENU_TRACKS,
-       S_MENU_FX_CLASSIC, S_MENU_FX_22, S_MENU_FX_44,
-       S_PUNCH_PEEK, S_PUNCH_LOCK, S_PUNCH_ALL, S_PUNCH_END, S_PUNCH_REC, S_COUNT };
+       S_FX_MIDIVERB, S_FX_MIDIDELAY, S_FX_MIDI_RACK, S_FX_MIDI_LIST, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "home_chord", "home_inversion", "home_wide", "home_released", "home_fm6", "message", "message_key", "presets", "presets_nofav", "presets_cat", "presets_pending", "presets_recent", "user",
     "project", "project_boot", "tempo", "song_empty", "song", "step", "pattern", "motion", "drum",
     "mixer", "mixer_pan", "env", "env_dest", "lfo", "mod", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -508,9 +507,9 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "h
     "home_select_level", "pattern_key_dialog", "stage_1track_rec",
     "mixer_1track", "mixer_2tracks", "mixer_3tracks", "patterns_2tracks", "song_2tracks", "layer_glo_2tracks", "new_roles_1track",
     "stage_long", "stage_3tracks_long", "stage_2tracks_long", "stage_1track_long",
-    "ref_stage_held", "ref_stage_released", "ref_stage_cutoff", "ref_stage_drum", "ref_browser", "ref_patterns", "ref_song", "ref_env", "ref_lfo", "ref_edit_osc", "ref_mixer", "ref_notes", "ref_settings", "ref_dialog", "ref_sheet_sound", "ref_sheet_song", "ref_picker_wave", "ref_picker_mode", "ref_sections_p5", "ref_map_p5", "ref_map_fm6", "ref_scl_list", "ref_sheet_project", "ref_sheet_note", "ref_sheet_hit", "ref_motion", "ref_sheet_motion", "ref_mod", "ref_picker_mod", "ref_arp", "ref_pattern", "ref_fmeg", "ref_grid", "ref_scales", "fx_phaser", "fx_width", "fx_formant", "fx_tape", "fx_spit", "fx_echo", "fx_room", "fx_reverb", "fx_chorus", "fx_full", "fx_slot2", "fx_slot3", "fx_rack", "fx_rack_split", "fx_rack_pick", "fx_rack_list", "fx_bus1", "fx_bus2", "fx_bus3", "fx_shared", "fx_shared_split", "fx_shared_sheet", "fx_tone_dark", "fx_tone_thin", "boot_migration", "boot_update", "boot_error", "boot_complete", "boot_wipe_confirm", "boot_wiping", "boot_update_error", "map_drum_kit", "map_drum_hit", "map_drum_category",
+    "ref_stage_held", "ref_stage_released", "ref_stage_cutoff", "ref_stage_drum", "ref_browser", "ref_patterns", "ref_song", "ref_env", "ref_lfo", "ref_edit_osc", "ref_mixer", "ref_notes", "ref_settings", "ref_dialog", "ref_sheet_sound", "ref_sheet_song", "ref_picker_wave", "ref_picker_mode", "ref_sections_p5", "ref_map_p5", "ref_map_fm6", "ref_scl_list", "ref_sheet_project", "ref_sheet_note", "ref_sheet_hit", "ref_motion", "ref_sheet_motion", "ref_mod", "ref_picker_mod", "ref_arp", "ref_pattern", "ref_fmeg", "ref_grid", "ref_scales", "fx_phaser", "fx_width", "fx_formant", "fx_tape", "fx_spit", "fx_room", "fx_chorus", "fx_full", "fx_slot2", "fx_slot3", "fx_rack", "fx_rack_split", "fx_rack_pick", "fx_rack_list", "fx_bus1", "fx_bus2", "fx_bus3", "fx_shared", "fx_shared_split", "fx_shared_sheet", "fx_tone_dark", "fx_tone_thin", "boot_migration", "boot_update", "boot_error", "boot_complete", "boot_wipe_confirm", "boot_wiping", "boot_update_error", "map_drum_kit", "map_drum_hit", "map_drum_category",
     "stage_unused_1track", "stage_unused_3tracks", "mixer_unused_2tracks", "menu_unused_tracks",
-    "menu_fx_classic", "menu_fx_22", "menu_fx_44", "punch_peek", "punch_lock", "punch_all", "punch_end", "punch_rec"};
+    "fx_midiverb", "fx_mididelay", "fx_midi_rack", "fx_midi_list"};
 
 /* the scenes of the UI design screens: the state the UI-redesign
  * prototype drew them from (its setup(): two pattern tracks, the drum pattern on track 4, a synthetic scope),
@@ -1205,14 +1204,21 @@ static void setup(int s)
         trk[0].p[P_RESERVED36] = 127; trk[2].p[P_RESERVED36] = 1; trk[3].p[P_MUTE] = 1;
         song.rec = 1u | 8u; ui.hot_col = 3; ui.hot_t = 30;
         break;
-    case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ECHO: case S_FX_ROOM: case S_FX_REVERB: case S_FX_CHORUS: case S_FX_FULL:
-        TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ECHO:s-S_FX_PHASER+1);go_title("FX 1");
+    case S_FX_MIDIVERB: case S_FX_MIDIDELAY: case S_FX_MIDI_RACK: case S_FX_MIDI_LIST:
+        TSEL->p[P_FXTYPE] = FX_MIDIVERB; TSEL->p[P_FXMIX] = 84;
+        TSEL->p[P_FX2TYPE] = FX_MIDIDELAY; TSEL->p[P_FX2MIX] = 84;
+        TSEL->p[P_FX2RATE] = 4; TSEL->p[P_FX2CHAR] = 72;
+        if (s == S_FX_MIDIVERB || s == S_FX_MIDIDELAY) go_title(s == S_FX_MIDIVERB ? "FX 1" : "FX 2");
+        else { go_title("FX"); fx_rack_row[0] = 1; if (s == S_FX_MIDI_LIST) { vlist_open(ui.page, 0); vl.sel = FX_MIDIDELAY; } }
+        break;
+    case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ROOM: case S_FX_CHORUS: case S_FX_FULL:
+        TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ROOM:s==S_FX_ROOM?FX_ROOM:s==S_FX_CHORUS?FX_CHORUS:s-S_FX_PHASER+1);go_title("FX 1");
         TSEL->p[P_FXMIX]=84;TSEL->p[P_FXRATE]=60;TSEL->p[P_FXCHAR]=72;
         if(s==S_FX_FULL)fx_state[(song.sel%NPART)*FX_SLOTS].failed=1;
         break;
     case S_FX_RACK: case S_FX_RACK_SPLIT: case S_FX_RACK_PICK: case S_FX_RACK_LIST: case S_FX_SHARED: case S_FX_SHARED_SPLIT: case S_FX_SHARED_SHEET:
     case S_FX_TONE_DARK: case S_FX_TONE_THIN: {       /* the mock's chain: Echo, Room; shared Reverb, Echo */
-        static const int16_t ins[8]={FX_ECHO,84,60,72,FX_ROOM,51,70,64},bus[8]={FX_REVERB,127,90,100,FX_ECHO,51,60,72};
+        static const int16_t ins[8]={FX_ROOM,84,60,72,FX_ROOM,51,70,64},bus[8]={FX_CHORUS,127,90,100,FX_ROOM,51,60,72};
         memcpy(TSEL->p+P_FXTYPE,ins,sizeof ins);memcpy(song.g+G_MFXTYPE,bus,sizeof bus);
         TSEL->p[P_FXSEND]=81;TSEL->p[P_FXSEND2]=40;TSEL->p[P_FXSEND3]=0;song.g[G_FXRETURN]=100;
         song.g[G_FXMODE]=s==S_FX_RACK_SPLIT || s==S_FX_SHARED_SPLIT;
@@ -1225,12 +1231,12 @@ static void setup(int s)
         break;
     }
     case S_FX_BUS1: case S_FX_BUS2: case S_FX_BUS3:
-        for(uint32_t slot=0;slot<3;slot++){uint32_t b=G_MFXTYPE+slot*4;song.g[b]=slot==0?FX_REVERB:slot==1?FX_TAPE:FX_ECHO;song.g[b+1]=127;song.g[b+2]=90;song.g[b+3]=100;}
+        for(uint32_t slot=0;slot<3;slot++){uint32_t b=G_MFXTYPE+slot*4;song.g[b]=slot==0?FX_CHORUS:slot==1?FX_TAPE:FX_ROOM;song.g[b+1]=127;song.g[b+2]=90;song.g[b+3]=100;}
         go_title(s==S_FX_BUS1?"SEND FX 1":s==S_FX_BUS2?"SEND FX 2":"SEND FX 3");break;
     case S_FX_SLOT2: case S_FX_SLOT3:
         for(uint32_t slot=0;slot<FX_SLOTS;slot++){
             uint32_t base=P_FXTYPE+slot*FX_PARAMS;
-            TSEL->p[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ECHO:FX_REVERB);
+            TSEL->p[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ROOM:FX_CHORUS);
             TSEL->p[base+1]=84;TSEL->p[base+2]=60;TSEL->p[base+3]=72;
         }
         go_title(s==S_FX_SLOT2?"FX 2":"FX 3");
@@ -1370,11 +1376,6 @@ static void setup(int s)
     case S_STAGE_UNUSED3: song.ntrk = 3; go_home(); track_select(1); break;
     case S_MIXER_UNUSED2: song.ntrk = 2; go_page(GR_TRK); trk[0].peak = 9000; break;
     case S_MENU_TRACKS: ui.menu = 1; ui.menu_sel = MI_TRACKS; break;
-    case S_MENU_FX_CLASSIC: case S_MENU_FX_22: case S_MENU_FX_44:
-        ui.menu=1;ui.menu_sel=MI_FX_QUALITY;settings_fx_quality=(uint8_t)(s-S_MENU_FX_CLASSIC);break;
-    case S_STAGE_T1_REC: song.ntrk = 1; GLO_SELECT |= TRACKS_HIDE; song.sel = 0; demo_pat16(&trk[0], DEMO_ACID); song.rec = 1u; go_home(); break;
-    case S_MENU_AUTOSAVE_OFF: ui.menu=1;ui.menu_sel=MI_AUTOSAVE;settings_autosave=0;break;
-    case S_MENU_HOLD: ui.menu = 1; ui.menu_sel = MI_HOLD; settings_hold = 2; break;
 #if MELODEE_USB_AUDIO
     case S_MENU_USB: ui.menu = 1; ui.menu_sel = MI_USB; ua_off_want = UA_OFF_IN; break;   /* (OUT only) */
     case S_MENU_USB_STEREO: ui.menu = 1; ui.menu_sel = MI_USB_INPUT; ua_tracks_want = 0; break;
@@ -1391,14 +1392,6 @@ static void setup(int s)
     case S_GLO_EXT: go_home(); ui.layer = LAYER_GLO; song.g[G_CLOCK] = 1; trk[0].p[P_MUTE] = trk[3].p[P_MUTE] = 1; break;
     case S_SCL_PEEK: go_title("ENV"); ui.layer = LAYER_SCL; break;
     case S_SCL_ACTIVE: go_home(); ui.layer = LAYER_SCL; TSEL->p[P_ROOT] = 3; TSEL->p[P_SCALE] = 2; ui.hot_col = 1; ui.hot_t = 30; break;
-    case S_PUNCH_PEEK: case S_PUNCH_LOCK: case S_PUNCH_ALL: case S_PUNCH_END: case S_PUNCH_REC:
-        go_home(); ui.layer = LAYER_FX; ui.msg_t = 0;
-        punch_target = s == S_PUNCH_ALL ? NTRK : 0; punch_repeats = 8; punch_gate = 100; punch_chance = 100;
-        lys.punch_pick = s == S_PUNCH_END ? PN_MUTE : s == S_PUNCH_PEEK ? 0 : PN_RANDOM_PITCH;
-        punch_keys = s == S_PUNCH_PEEK ? 0 : PN_BIT(lys.punch_pick) | PN_BIT(PN_ROLL16);
-        if (s != S_PUNCH_PEEK) ui.lock = LAYER_FX;
-        if (s == S_PUNCH_REC) { song.rec = 1; song.playing = 1; song.g[G_BPM] = 300; }
-        break;
     case S_LAYER_HINT: go_page(GR_TRK); ui.msg_t = 0; layer_tap(LAYER_GLO); break;
     /* NAME (ui_name.c): USER SAVE prefilled; a letter cycling (RS: S, R next); 123 on a project; an empty project name
      * (the placeholder); 12 of the widest letters, the cursor past them; playing (OCT+ dim) */

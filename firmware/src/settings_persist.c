@@ -1,5 +1,4 @@
 #include "recording_preferences.h"
-#include "fx_preferences.h"
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Shared PER5 layout: each feature updates only its own fields, preserving
@@ -89,10 +88,6 @@ static int settings_import(persist_t *p, int n)
     p->palette = palette_to_stored(palette_from_stored(p->palette));
     settings_screen=p->favorites.factory[15][27] < 8u ? p->favorites.factory[15][27] : 0u;
     settings_autosave = p->favorites.factory[15][28] != AUTOSAVE_OFF_TAG;
-    {
-        const uint8_t *q = p->favorites.factory[FX_PREF_ROW] + FX_PREF_BYTE;
-        settings_fx_quality = q[0]=='F' && q[1]=='Q' && q[2]==1u && q[3]<=2u ? q[3] : 0u;
-    }
     settings.magic = SETTINGS_MAGIC;
     settings.palette = palette_from_stored(p->palette);
     settings.lowcut = 0;
@@ -141,9 +136,6 @@ static void settings_export(persist_t *p)
     {
         uint8_t *q = p->favorites.factory[FX_PREF_ROW] + FX_PREF_BYTE;
         memset(q, 0, 4);
-        if (settings_fx_quality && settings_fx_quality<=2u) {
-            q[0]='F';q[1]='Q';q[2]=1u;q[3]=settings_fx_quality;
-        }
     }
 #if MELODEE_USB_AUDIO
     p->ext.usb_off = ua_off;

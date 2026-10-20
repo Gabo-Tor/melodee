@@ -202,7 +202,7 @@ and incremental redraws when the state ends or the selected track changes (`test
   TEMPO, GLOBAL, SYSTEM stay knobs (BPM and TUNE are turned while playing, their digits roll); TEMPO's third knob is
   the selected track's Quantize (TIMING's page retired, Kerem 2026-10-10).
 - **Knob pages** (played while tweaked): four rings over the page's picture (R5): the engines' EDIT pages, ENV, LFO,
-  DLY, REVERB, CHORUS, FX, SLICER, ARP, PATTERN; and the pages of four settings or fewer: CHORD (over its chord),
+  CHORUS, FX, ARP, PATTERN; and the pages of four settings or fewer: CHORD (over its chord),
   ENV DEST, LFO DEST, LFO 2 (over the LFO), ARP 2 (over the notes it plays), DLY 2 (over the echoes); MIXER,
   Stage, PATTERNS direct.
 - **ENV / LFO follow the engine** (Kerem, 2026-10-10): the Prophet, FM6 and CZ-1 have envelopes and LFOs of their own
@@ -246,24 +246,18 @@ each) and RETURN (the four track colours as its numeral); KNOB 3 is ROUTE, Chain
 gone). Its sheet (OCT+ held, or OCT+ on RETURN) holds Routing too and Clear shared FX (asks first).
 
 A **slot's page** shows while the slot holds an effect, so SELECT never stops on an empty one: FX, the slots in use,
-SHARED, its slots in use. The header names the effect ("ECHO", "REVERB"). Its four knobs are the ones played: MIX,
-TIME or RATE (ECHO: TIME, ROOM and REVERB: SIZE), the effect's DEPTH / FOCUS / JITTER / BITE / REPEAT / DECAY, and TONE.
+SHARED, its slots in use. The header names the effect. Audio controls are MIX, RATE (ROOM: SIZE), the
+effect's DEPTH / FOCUS / JITTER / BITE / DECAY, and TONE (ROOM only).
 The picture says what the effect does and draws its sound; WIDTH says "Mono changes the tone", a time effect without its
 buffer "MEMORY FULL". No hint rows. A shared slot's footer is "All tracks" with the four track colours. These controls
 belong to the project and track, never the instrument preset; shared MIX defaults fully wet.
 
-**TONE** (ECHO, ROOM and REVERB; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
+**TONE** (ROOM; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
 FULL a high cut from 2640 Hz down to 120 Hz, above it a low cut from 150 Hz up to 1280 Hz (core.h `fx_tone_hz`, fine
 steps where the ear needs them). Smooth 6 dB/octave cuts shape the wet input; the dry signal stays intact.
 
-**No boom** (Kerem, 2026-10-15: "still some boominess" in the tails and repeats): what enters ECHO keeps a 100 Hz low
-cut, ROOM and REVERB a 150 Hz one, at FULL and under a high cut (`fx_floor_hz`; THIN starts there), and each echo
-and each reverb round trip loses its lows (a one-pole low cut in the loop: ECHO ~110 Hz, REVERB ~55 Hz; ~110 Hz
-silenced REVERB's deep tail; ROOM's short combs need only the floor), so no bass note rings out of the tail. Measured
-on sines (1/24 octave, against the 320 Hz–1 kHz band): the worst low ring of a big REVERB went from +12.9 dB to +5.8,
-a big ROOM's from +9.6 to +6.4 (both now under their loudest mid one), 40–120 Hz now 3–12 dB under the mids (it was up
-to 3.7 dB over). `tests/fx_test.c` boom_test holds it, and its opposite (Kerem): never harsh (1–2.5 kHz no louder
-than the mids on average, no high note 3 dB over the loudest mid one) nor thin (the bass within 15 dB of the mids).
+ROOM keeps a 150 Hz low cut at FULL and under a high cut, so its short comb
+reflections do not accumulate bass. TONE shapes only the wet input.
 
 Under the picture a strip on a log axis (20 Hz–2.6 kHz) lights, in TONE's colour, the band that reaches the effect
 (from the effect's own low cut), the cut TONE sets under its edge; at FULL dimmed. Each track and shared slot keeps its TONE in projects
@@ -273,66 +267,47 @@ records load FULL.
 Screens for every effect, the racks (picker, list, SPLIT), SHARED's sheet and TONE's two sides are rendered and linted
 in every palette by `tests/ui_render.c` (fx_*).
 
-**Settings > FX RATE** (HOME held) sets ECHO and REVERB fidelity for the whole device, including inserts and shared
-slots. KNOB 2 selects the row, KNOB 1 changes its value, OCT+ cycles: CLASSIC (the default), 22.05k, 44.1k.
-CLASSIC retains ECHO's 11.025 kHz and REVERB's 5.5125 kHz processing and original audio. At 44.1k both process
-every 44.1 kHz audio sample directly, with no downsampling or upsampling. ROOM and the other effects retain their
-existing rates. Delay lengths scale with the rate to preserve echo times and reverb size; the higher rate extends
-the wet bandwidth. TONE continues to shape the wet signal in Hz.
+Audio ECHO, REVERB and the ECHOVERB audition are retired (2026-10-19).
+Their stored IDs 6 and 8 remain reserved and import as OFF. Neither is shown
+in the effect lists. The DSP kernels, private reverb worker, fidelity setting
+and their buffers are removed. ROOM and CHORUS retain their 2 KiB buffers and
+release them on bypass; filter effects allocate no audio delay memory.
 
-The setting is saved with device preferences, independent of projects and sounds; old settings load CLASSIC.
-Changes fade each affected slot to dry, release its old buffer, then fade the new effect in with an empty tail.
-CLASSIC uses 8 KiB per ECHO and 4 KiB per REVERB; 22.05k uses 16 KiB per slot and 44.1k uses 32 KiB. Higher rates
-also cost more processing time. If a buffer cannot fit, the existing MEMORY FULL display applies and the slot
-passes dry audio; lowering FX RATE retries allocation. Both fonts and all values have render scenes (menu_fx_*).
+### MIDI track inserts (2026-10-19)
 
-## MIDI punch-in (2026-10-19)
+The three track insert slots also offer **MIDIVerb** and **MIDIDelay**. Neither
+appears in the shared rack. They process internal notes before audio rendering;
+the normal audio inserts still process the resulting sound. Instrument presets,
+stored notes, captured performances and USB MIDI output retain their original data.
+These insert settings save with projects and templates, like the audio inserts.
 
-A single **FX** tap opens the audio rack as before. Hold FX to open **PUNCH**;
-double-tap within 300 ms to keep **PUNCH LOCK** open. Press FX again or OCT− to
-close. Holding a note key applies its effect; releasing it cancels new repeats.
-Releasing an unlatched FX button closes immediately, even with keys still down.
-Those keys remain silent until released. Notes held before FX retain their
-original ownership. PLAY and REC keep working. Menus, dialogs and pickers cannot
-start punch-ins. Status lives in the shared header, retaining transport and REC.
+- **MIDIVerb:** KNOB 1 REL controls the track's envelope release (zero bypasses).
+  The rack's amount knob edits the same release. The other knobs are blank.
+  Prophet's amp/filter release, FM6's operator release rates, CZ-1's amplitude
+  release and SID's release follow it without rewriting their instrument patches.
+  The response follows each engine's envelope law; a one-shot sound's own decay
+  still limits its tail. Multiple MIDIVerb slots use the longest release.
+- **MIDIDelay:** MIX scales delayed-note velocity relative to the original;
+  TIME selects a tempo division (1/32 through 4 bars, including triplets); DECAY
+  sets the velocity lost per repeat, including the first. KNOB 4 is blank. New selections start at
+  1/8 and 50% decay. Echoes use gates of half the delay time and continue after
+  the source note releases. Repeats stop at zero velocity or 32 hits; even zero
+  decay loses at least one velocity step per hit. Multiple delay slots run in
+  parallel from the source; echoes do not recursively feed another note delay.
 
-The effects operate on internal engine notes from patterns, recorded playback,
-ARP and live input. They do not modify the stored beat, live recording data,
-sound parameters or USB MIDI output. Transposed note-offs retain their original
-mapping across key releases and target changes. Stop, panic and sound changes
-cancel pending generated notes. Started notes retain their proper releases.
+Echo timing follows the song tempo (the measured tempo for an external master),
+while release deadlines keep running in sample time when the external clock
+stops. Held source notes keep ownership when an echo shares their pitch. A full
+fixed queue drops extra repeats without starting an unreleaseable note. Stop,
+panic, sound changes or editing a delay's controls cancel its track's queued
+echoes.
+No audio delay buffer is allocated for either MIDI insert.
 
-KNOB 1 selects T1..T4 (tracks in use) or ALL; each opening starts on the selected
-track. KNOB 2 sets the note echo's repeat count (1..8), KNOB 3 the generated-note
-gate (10..100%), KNOB 4 CHANCE (0..100%; zero bypasses). SELECT browses the map;
-pressing a key scrolls to its assignment and highlights all held effects. Key
-LEDs blink when available and stay lit while held. Controls are performance
-state, independent of project/preset storage.
+## FX button (2026-10-19)
 
-| Key | Effect | Key | Effect | Key | Effect |
-|---|---|---|---|---|---|
-| F3 | Roll 1/4 | D4 | Triple | B4 | Pitch scatter |
-| F#3 | Roll 1/8T | D#4 | Double | C5 | Accent |
-| G3 | Roll 1/8 | E4 | Echo 1/4 | C#5 | Velocity dice |
-| G#3 | Roll 1/16T | F4 | Echo 1/8 | D5 | Soft |
-| A3 | Roll 1/16 | F#4 | Echo 1/16 | D#5 | Short gate |
-| A#3 | Roll 1/32 | G4 | Octave down | E5 | Humanize |
-| B3 | Roll 1/32T | G#4 | Fifth down | F5 | Drop half |
-| C4 | Roll 1/64 | A4 | Octave up | F#5 | Drop 3/4 |
-| C#4 | Flam | A#4 | Fifth up | G5 | Drop all |
-
-The canonical map is `PUNCH_NAME` in `firmware/src/midi_punch.c`, indexed by
-chromatic keys F3..G5. Rolls freeze the most recent hit/chord on each target;
-with no previous note, they capture the next onset/chord. The fastest held roll
-wins. Pitch and velocity colours can be combined with rolls. Echo repeats decay
-by 25% per hit; flam adds a hit after 20 ms, double/triple after 1/32 intervals.
-Short gate closes the new note after 1/64; humanize delays new onsets by 0..20 ms
-and an early note-off cancels an unstarted note. Dropouts suppress new onsets;
-they leave already held notes alone. Pitch scatter chooses −2..+2 semitones;
-out-of-range transpositions stay silent. Note deadlines run in real sample time,
-including while an external clock is stopped, with fixed queue admission and
-no audio-interrupt allocation. Render scenes cover held/locked/all/end/recording
-in both fonts and all palettes.
+FX opens the track's rack. There is no held or double-tap punch FX layer, no
+punch key ownership, and no punch status, history, mappings or generated-note
+queue. Holding FX keeps note keys playable. GLO and SCL retain their layers.
 
 ## Large type (2026-10-14)
 

@@ -49,7 +49,7 @@ static int8_t *octave_control(void)
  * they are Esc / Enter (docs/design/README.md, Navigation) */
 static int oct_nav(void)
 {
-    return ui.ly == LAYER_FX || designer_on() || !ui.home || ui.menu || ui.confirm || name_on() || new_on() || layer_set_open() || pop.on || smap.on;
+    return designer_on() || !ui.home || ui.menu || ui.confirm || name_on() || new_on() || layer_set_open() || pop.on || smap.on;
 }
 static int oct_enter_ok(void)                           /* OCT+ would do something here */
 {
@@ -63,7 +63,6 @@ static uint32_t oct_leds(void)
 {
     if (designer_on() && !name_on() && !ui.confirm) return 3u;
     uint32_t blink = ((fm1_ms / 250u) & 1u) == 0u;
-    if (ui.ly == LAYER_FX) return 1u;
     if ((name_on() || new_on()) && !ui.confirm && !ui.menu)   /* NAME, NEW SONG: OCT- cancels, OCT+ (blinking) goes on */
         return 1u | (blink ? 2u : 0u);
     if (layer_set_open())                               /* a SET layer: OCT- puts back (UNDO), OCT+ nothing */
@@ -1110,6 +1109,11 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (!d || !vp || d->max == d->min)
         return;
     v = enum_step(d, *vp, clamp(*vp + accel(EN_K1 + slot, steps, desc_range(d)), d->min, d->max));
+    if (pg->scope == SC_TRACK && pg->graph == GR_FXRACK && slot == 0u && *vp != v && fx_is_midi(v)) {
+        /* Note effects have their own useful starting controls. */
+        if (!vp[1]) vp[1] = 64;
+        if (v == FX_MIDIDELAY) { vp[2] = 1; vp[3] = 64; }
+    }
     *vp = (int16_t)v;
     if(pg->scope==SC_P5){
         uint8_t old[MO_NATIVE_N];uint32_t f=motion_guard();
@@ -1637,7 +1641,6 @@ static void layer_show(void);
 static void layer_tap(uint32_t l);
 static void layer_keys(uint32_t keys);
 static void layer_knob(uint32_t k, int32_t s);
-static void layer_punch_select(int32_t s);
 static int layer_play(void);
 static int layer_set_open(void);
 static uint32_t layer_oct(uint32_t pressed, uint32_t oct);
@@ -2043,7 +2046,7 @@ static void ui_input(void)
     if (seq_long) seq = BT_HOLD;
     uint32_t save = btn_hold(&ui.save_t0, B_SAVE, now, !ui.menu && !ui.confirm);
     uint32_t edit = btn_hold(&ui.edit_t0, B_EDIT, now, !ui.menu && !ui.confirm && !name_on() && !new_on() && !ui.ly);
-    uint32_t octup = btn_hold(&ui.oct_t0, B_OCTUP, now, ui.ly != LAYER_FX && page_sheet() != 0u);   /* held: the page's sheet */
+    uint32_t octup = btn_hold(&ui.oct_t0, B_OCTUP, now, page_sheet() != 0u);   /* held: the page's sheet */
     uint32_t oct;
     if (octup == BT_HOLD) {
         oct_eat |= 2u;                                  /* (its release is no OCT+) */
@@ -2058,8 +2061,8 @@ static void ui_input(void)
         if(bulk_context()){if(bulk.on&&!slot_kind())notes_bulk_sheet_open();else if(!bulk.on)page_sheet_open();}ui.bulk_hold=0;
     }
     oct = oct_taps(pressed, oct_nav());
-    uint32_t lay, knob_layer, glo_select_layer, fx_select_layer, combo = 0, lytap, lkeys;
-    int32_t s, ks[4] = {0, 0, 0, 0}, glo_sel = 0, fx_sel = 0;
+    uint32_t lay, knob_layer, glo_select_layer, combo = 0, lytap, lkeys;
+    int32_t s, ks[4] = {0, 0, 0, 0}, glo_sel = 0;
     seq_erase_update(pressed);
     if (ui.erase_gesture || ui.ly || ui.menu || ui.confirm || name_on() || new_on()) {
         if (ui.edit_t0) ui.edit_t0 |= 2u;
@@ -2093,8 +2096,6 @@ static void ui_input(void)
      * detent after a take, which must wait for the next frame rather than edit the underlying page. */
     knob_layer = ui.ly && layer_allowed();
     glo_select_layer = knob_layer && ui.ly == LAYER_GLO;
-    fx_select_layer = knob_layer && ui.ly == LAYER_FX;
-    if (fx_select_layer) fx_sel = panel_enc(EN_SELECT);
     if (glo_select_layer)
         glo_sel = panel_enc(EN_SELECT);               /* GLO owns SELECT through its release frame too */
     if (knob_layer)
@@ -2112,7 +2113,7 @@ static void ui_input(void)
     if (knob_layer)
         for (k = 0; k < 4u; k++)
             if (ks[k]) combo = 1;
-    if (glo_sel || fx_sel)                              /* layer SELECT, including a turn on release: no tap */
+    if (glo_sel)                              /* layer SELECT, including a turn on release: no tap */
         combo = 1;
     if (lay) {                                          /* a layer's button held: keys, knobs and buttons are combos */
         combo |= (pressed & ~ly_bit(ui.ly)) != 0u;
@@ -2138,7 +2139,6 @@ static void ui_input(void)
         }
     if (glo_sel)
         select_turn(glo_select(), glo_sel);
-    if (fx_sel && lay) layer_punch_select(fx_sel);
     song.grid = (uint8_t)keys_mode();                 /* (the menu, a dialog: the keys play again; NAME: silent) */
     if (!step_page() || drum_track(TSEL) || ui.menu || ui.confirm || name_on() || lay || live_rec_sel() || chain_busy())
         seq_midi_events(0);                         /* discard events during modal/layer input too */
@@ -2323,13 +2323,11 @@ static void ui_input(void)
         case B_SAVE:
         case B_GLO:
         case B_SCL:
-        case B_FX:
         case B_EDIT:
         case B_HOME:
             break;
         case B_OCTDN:
         case B_OCTUP: {
-            if (ui.ly == LAYER_FX) break;
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]), bit = b == B_OCTUP ? 2u : 1u;
             if (edit_oct & (1u << id))
                 break;
@@ -2471,7 +2469,7 @@ static void ui_input(void)
         step_edit_combo();
         track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, (int32_t)trk_n() - 1));
     }
-    if (!glo_select_layer && !fx_select_layer && (s = panel_enc(EN_SELECT)) != 0) { /* SELECT: pages; with SEQ / a step key / ENV / SCL: below */
+    if (!glo_select_layer && (s = panel_enc(EN_SELECT)) != 0) { /* SELECT: pages; with SEQ / a step key / ENV / SCL: below */
         step_edit_combo();
         if(bulk_jog(s)) {
         } else if (pattern_keys_on()) {

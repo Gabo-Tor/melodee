@@ -10,12 +10,8 @@ static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "
 static const char *const N_RECQ[] = {"OFF", "1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
-#if MELODEE_ECHOVERB_TEST
-#define FX_REVERB_NAME "ECHOVERB"
-#else
-#define FX_REVERB_NAME "REVERB"
-#endif
-static const char *const N_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "ECHO", "ROOM", FX_REVERB_NAME, "CHORUS"};
+static const char *const N_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "", "CHORUS", "MIDIVerb", "MIDIDelay"};
+static const char *const N_AUDIO_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "", "CHORUS"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
 static const char *const N_VPOINTS[] = {"AUTO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
                                         "14", "15"};
@@ -56,7 +52,6 @@ static int16_t settings_vpoints[VOICE_KINDS];
 static int16_t settings_safety;
 /* Device recording preferences: defaults preserve existing behavior. */
 #include "recording_preferences.h"
-#include "fx_preferences.h"
 static int16_t boot_cell;
 /* modulation matrix (mod.c): sources, destinations (E1..E8 = P_E0..P_E7: shown with the engine's labels) */
 static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW"};
@@ -263,15 +258,15 @@ static const param_desc_t GP[G_COUNT] = {
     [G_RESERVED24] = PD("", F_INT, 0, 127, 0),
     [G_RESERVED25] = PD("", F_INT, 0, 127, 0),
     [G_RESERVED26] = PD("", F_INT, 0, 127, 0),
-    [G_MFXTYPE] = PE("TYPE", N_FX, 0),
+    [G_MFXTYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFXMIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFXRATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFXCHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [G_MFX2TYPE] = PE("TYPE", N_FX, 0),
+    [G_MFX2TYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFX2MIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFX2RATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFX2CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [G_MFX3TYPE] = PE("TYPE", N_FX, 0),
+    [G_MFX3TYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFX3MIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFX3RATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFX3CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
@@ -288,11 +283,8 @@ static const param_desc_t *global_desc(uint32_t id)
 {
     if(param_master_fx(id) && (id-G_MFXTYPE)%FX_PARAMS>=2u){
         static param_desc_t d;static const char *const character[]={"CHAR","DEPTH","DEPTH","FOCUS","JITTER","BITE","REPEAT","DECAY","DEPTH","DEPTH"};
-        uint32_t base=G_MFXTYPE+(id-G_MFXTYPE)/FX_PARAMS*FX_PARAMS,type=(uint32_t)clamp(song.g[base],0,NELEM(N_FX)-1);d=GP[id];
+        uint32_t base=G_MFXTYPE+(id-G_MFXTYPE)/FX_PARAMS*FX_PARAMS,type=(uint32_t)clamp(song.g[base],0,NELEM(N_AUDIO_FX)-1);d=GP[id];
         if(id-base==3u)d.label=character[type];else if(type>=6u && type<=8u){d.label=type==6u?"TIME":"SIZE";d.fmt=F_PCT;}
-#if MELODEE_ECHOVERB_TEST
-        if(type==8u)d.label=id-base==3u?"DIFFUSE":"TIME";
-#endif
         return &d;
     }
     return &GP[id];
@@ -300,6 +292,17 @@ static const param_desc_t *global_desc(uint32_t id)
 static uint32_t scale_count(const track_t *t);          /* seq.c */
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
+    if (id >= P_FXTYPE && id <= P_FX3CHAR) {
+        uint32_t base = P_FXTYPE + (id - P_FXTYPE) / FX_PARAMS * FX_PARAMS, col = id - base;
+        if (fx_is_midi(t->p[base]) && col) {
+            static param_desc_t d;
+            d = TP[id];
+            if (t->p[base] == FX_MIDIVERB) { d.label = "REL"; d.fmt = F_TIME; }
+            else if (col == 2u) { d.label = "TIME"; d.fmt = F_ENUM; d.names = N_DIV; d.max = NELEM(N_DIV) - 1u; }
+            else if (col == 3u) { d.label = "DECAY"; d.fmt = F_PCT; }
+            return &d;
+        }
+    }
     if (param_fx(id) && !param_fx_tone(id) && ((id-P_FXTYPE)%FX_PARAMS)>=2u) {
         static param_desc_t fx_desc;
         static const char *const character[] = {"CHAR", "DEPTH", "DEPTH", "FOCUS", "JITTER", "BITE", "REPEAT", "DECAY", "DEPTH", "DEPTH"};
@@ -307,9 +310,6 @@ static const param_desc_t *track_desc(const track_t *t, uint32_t id)
         fx_desc=TP[id];uint32_t type=(uint32_t)clamp(t->p[base],0,NELEM(N_FX)-1);
         if(id-base==3u)fx_desc.label=character[type];
         else if(type>=6u && type<=8u){fx_desc.label=type==6u?"TIME":"SIZE";fx_desc.fmt=F_PCT;}
-#if MELODEE_ECHOVERB_TEST
-        if(type==8u)fx_desc.label=id-base==3u?"DIFFUSE":"TIME";
-#endif
         return &fx_desc;
     }
     if (t->eng_req == 2u && id >= P_FM1_ATK && id <= P_FM4_LEVEL)
@@ -806,7 +806,11 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         *valp = &drumch_cell;
         return global_desc(id);
     }
-    if ((pg->scope == SC_GLOBAL && id >= G_MFXTONE && id <= G_MFX3TONE &&    /* TONE: ECHO, ROOM and REVERB only */
+    if (pg->scope == SC_TRACK && id >= P_FXMIX && id <= P_FX3CHAR) {
+        uint32_t base = P_FXTYPE + (id - P_FXTYPE) / FX_PARAMS * FX_PARAMS;
+        if (TSEL->p[base] == FX_MIDIVERB && id - base >= 2u) { *valp = 0; return 0; }
+    }
+    if ((pg->scope == SC_GLOBAL && id >= G_MFXTONE && id <= G_MFX3TONE &&    /* TONE: ROOM only */
          !fx_has_tone(song.g[G_MFXTYPE + (id - G_MFXTONE) * FX_PARAMS])) ||
         (pg->scope == SC_TRACK && param_fx_tone(id) && !fx_has_tone(TSEL->p[P_FXTYPE + (id - P_FXTONE) * FX_PARAMS]))) {
         *valp = 0;

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "performance_options.h"
 /* Voice allocation, envelopes, LFO and per-track rendering.
  * Runs in the audio ISR.
  *
@@ -541,7 +542,7 @@ static void trk_note_on_work(track_t *t, uint32_t note, uint32_t vel)
     }
 }
 
-static void trk_note_on_raw(track_t *t,uint32_t note,uint32_t vel)
+static void trk_note_on_engine(track_t *t,uint32_t note,uint32_t vel)
 {
 #if MELODEE_ADMISSION
     const track_t *previous=voice_admitting;uint8_t previous_parts=voice_admitting_p5parts;
@@ -554,7 +555,7 @@ static void trk_note_on_raw(track_t *t,uint32_t note,uint32_t vel)
 #endif
 }
 
-static void trk_note_off_raw(track_t *t, uint32_t note)
+static void trk_note_off_engine(track_t *t, uint32_t note)
 {
     uint32_t i, k = 0, mode = trk_vmode(t), chord = trk_chord(t), held = 0;
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */
@@ -590,11 +591,17 @@ static void trk_note_off_raw(track_t *t, uint32_t note)
         }
 }
 
-#include "midi_punch.c"
+#include "midi_insert.c"
+/* All ordinary notes go through the persistent per-track MIDI inserts. */
+static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
+{ if (vel) trk_note_on_raw(t, note, vel); else trk_note_off_raw(t, note); }
+static void trk_note_off(track_t *t, uint32_t note)
+{ trk_note_off_raw(t, note); }
 
 static void trk_all_off(track_t *t)
 {
-    punch_forget((uint32_t)(t - trk));
+    midi_insert_cancel((uint32_t)(t - trk));
+    memset(midi_insert.held[t-trk], 0, sizeof midi_insert.held[0]);
     uint32_t i;
     for (i = 0; i < NVOICE; i++) {
         t->v[i].gate = 0;
@@ -667,7 +674,7 @@ static int32_t env_tick(track_t *t, voice_t *v)
         v->env += mulq16(sus - v->env, ENV_EXP[p[P_DEC] & 127]);
         break;
     case 3:
-        v->env -= mulq16(v->env, ENV_EXP[p[P_REL] & 127]);
+        v->env -= mulq16(v->env, ENV_EXP[midi_verb[t-trk] ? midi_verb[t-trk] : p[P_REL] & 127]);
         if (v->env < (1 << 12)) {
             v->env = 0;
             v->stage = 0;
@@ -708,9 +715,6 @@ static __attribute__((noinline)) void spread_sum(int32_t *out)
 /* render one block of a part into out (cleared here); returns the voices rendered */
 /* Channel bend is live performance state, outside projects/presets. Q8 semitones. */
 static int32_t midi_bend_q8[NTRK], midi_bend_target[NTRK];
-#ifndef MELODEE_CONTROL_FAST
-#define MELODEE_CONTROL_FAST 0
-#endif
 static __attribute__((noinline)) void p5_update_bend(track_t *t)
 {
 #if MELODEE_CONTROL_FAST

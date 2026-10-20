@@ -43,19 +43,14 @@ static int up_favorite_set(uint32_t k,int on){if(k>=64u)return 0;uint32_t *word=
 int main(void)
 {
     persist_t original = {0}, p;
-    {   /* Tagged fidelity survives settings saves without changing the PER5 layout. */
+    {   /* Retired fidelity bytes remain reserved in PER5 and are cleared on save. */
         persist_t q={0};q.magic=PERSIST_MAGIC;q.panel=PANEL_DEFAULT;
-        for(uint32_t quality=0;quality<3u;quality++){
-            settings_fx_quality=quality;settings_export(&q);settings_fx_quality=99;
-            assert(settings_import(&q,sizeof q) && settings_fx_quality==quality && sizeof q==604u);
-        }
         uint8_t *f=q.favorites.factory[FX_PREF_ROW]+FX_PREF_BYTE;
-        for(uint32_t byte=0;byte<256u;byte++){
-            f[3]=byte;assert(settings_import(&q,sizeof q) && settings_fx_quality==(byte<=2u?byte:0u));
-        }
-        f[3]=2;f[2]=2;assert(settings_import(&q,sizeof q) && !settings_fx_quality);
-        f[2]=1;f[0]=0;assert(settings_import(&q,sizeof q) && !settings_fx_quality);
+        f[0]='F';f[1]='Q';f[2]=1;f[3]=2;
+        assert(settings_import(&q,sizeof q));settings_export(&q);
+        assert(sizeof q==604u && !f[0] && !f[1] && !f[2] && !f[3]);
     }
+
     {   /* Device workload budget shares tagged high USB bits, never its low flags. */
         persist_t q={0};q.magic=PERSIST_MAGIC;q.panel=PANEL_DEFAULT;
         for(uint32_t usb=0;usb<4u;usb++)for(int16_t points=8;points<=32;points++){

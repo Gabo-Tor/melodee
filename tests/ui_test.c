@@ -125,7 +125,7 @@ static int check(const char *what, int ok)
 static void ui_power_on(void)
 {
     uint32_t i;
-    punch_init();
+    midi_insert_init();
     fx_clear_all();
     for(uint32_t k=0;k<FX_STATE_COUNT;k++)resource_release(RES_FX0+k);
     fx_bus_result=fx_bus_pending=0;fx_bus_mix=fx_bus_target=0;
@@ -2979,10 +2979,10 @@ static int test_layer(void)
     bad += check("HOME (menu) and SEQ (PATTERNS) holds of 0.7 s", ok);
 
     ui_power_on();btn_down(B_FX);frames(800);
-    ok=ui.home && ui.layer==LAYER_FX && (kb_mask & (1u<<panel.btn[B_FX]));
-    key_down(white(0));frame();ok &= !gates() && kb_layer;
+    ok=!ui.layer && !(kb_mask & (1u<<panel.btn[B_FX]));
+    key_down(white(0));frame();ok &= gates() && !kb_layer;
     key_up(white(0));btn_up(B_FX);frame();
-    bad += check("FX held opens punch-in with silent keys; release returns to the page",ok && ui.home && !ui.layer && !punch_keys);
+    bad += check("FX held keeps note keys playable and opens no performance layer",ok && !ui.layer);
     return bad;
 }
 
@@ -4318,10 +4318,10 @@ static int test_bughunt_ui(void)
         }
         ui_power_on();
         btn_down(B_FX); frames(500);
-        ok &= ui.layer == LAYER_FX && ui.home && oct_leds() == 1u;
+        ok &= !ui.layer && !ui.ly;
         btn_up(B_FX); frame();
     }
-    bad += check("SET layers: OCT- UNDO, OCT+ dark; after: octave; FX punch: OCT- BACK", ok);
+    bad += check("SET layers: OCT- UNDO, OCT+ dark; after: octave; FX has no layer", ok);
     /* 9: no "HOLD [EDIT] QUICK" over NAME (EDIT tapped on USER / PROJECT renames) */
     ui_power_on_general();
     up_ui(2, 0);

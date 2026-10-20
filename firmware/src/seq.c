@@ -785,10 +785,7 @@ static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
     ch = cur ^ kb_prev;                           /* keys also sound while entering steps */
-    if (!ch) {
-        punch_keyboard(punch_claimed, fm1_in.buttons);
-        return;
-    }
+    if (!ch) return;
     for (k = 0; k < 27u; k++) {
         if (!((ch >> k) & 1u))
             continue;
@@ -798,7 +795,6 @@ static void keyboard_block(void)
             if ((fm1_in.buttons & kb_mask) || kb_lock) {       /* a layer's button held: the key is the layer's (ui_layer.c), */
                 kb_note[k] = KB_SILENT;           /* a quick-layer key */
                 kb_layer |= 1u << k;
-                if ((fm1_in.buttons & punch_panel_mask) || punch_panel_lock) punch_claimed |= 1u << k;
                 continue;
             }
             if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
@@ -816,7 +812,6 @@ static void keyboard_block(void)
         } else {
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
-                punch_claimed &= ~(1u << k);
                 continue;
             }
             if (kb_note[k] == KB_SILENT)
@@ -825,7 +820,6 @@ static void keyboard_block(void)
         }
     }
     kb_prev = cur;
-    punch_keyboard(punch_claimed, fm1_in.buttons);
 }
 
 #include "click.c"
@@ -991,7 +985,7 @@ static void recording_quantize(track_t *t)
 
 static void seq_stop(void)
 {
-    punch_stop();
+    for (uint32_t t = 0; t < NTRK; t++) midi_insert_cancel(t);
     kb_strum_pending = midi_strum_pending = 0; /* STOP cancels the unplayed part of live sweeps. */
     cin_left=0; click_req=0; clk.env=0; audition_request=0; if(audition_active)audition_stop();
     uint32_t i;
@@ -1331,7 +1325,7 @@ static void events_block(uint32_t n)
     }
     audition_tick(n);
     keyboard_block();
-    punch_tick(n, beat_samples());
+    midi_insert_tick(n, beat_samples());
     uint32_t midi_dispatch_left=64u;
     while (mi_r != mi_w && midi_dispatch_left) {       /* bounded USB-MIDI/TRS burst, order retained */
         uint32_t at = mi_r % MQ, pkt = midi_in_q[at], status = (pkt >> 8) & 0xFFu;

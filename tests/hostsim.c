@@ -32,6 +32,11 @@
 __attribute__((constructor)) static void host_dsp_tables(void) { dsp_tables_init(); }
 #define __attribute__(x)
 static struct { volatile uint32_t notes, buttons; } fm1_in;
+/* Serial host fixtures retain their established admission policy. Dedicated
+ * resident/dual-core tests select the target policy explicitly. */
+#ifndef MELODEE_RAM_AUDIO
+#define MELODEE_RAM_AUDIO 0
+#endif
 #include "../firmware/src/core.h"
 #include "../firmware/src/engines.c"
 /* the packed factory banks, unpacked for comparisons (four slots each, so a few can be held at once) */
@@ -97,7 +102,7 @@ static uint64_t now_ns(void)
 
 static void host_tracks_init(void)                /* as melodee_init: defaults, empty patterns */
 {
-    punch_init();
+    midi_insert_init();
     cz_init();
     pattern_init();
     uint32_t i, k;

@@ -377,13 +377,6 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     case 98: {
 #if MELODEE_AUDIO_PROFILE
 #if MELODEE_AUDIO_BENCH
-#if MELODEE_DUAL_CORE && MELODEE_BATCH_AUDIO && !MELODEE_LEGACY_EXTRAS
-        if(na && a[0]==7u){
-            if(na>2u || (na==2u && a[1]>1u)){ed_b(1);break;}
-            if(na==2u){if(!AUDIO_LAB_GUARDED()){ed_b(3);break;}fx_reverb_parallel_enabled=a[1];}
-            ed_b(0);ed_b(7);ed_b(fx_reverb_parallel_enabled);break;
-        }
-#endif
         /* Guarded, RAM-only scheduler calibration. One group's split is
          * fixed at publication; the next group sees a new allowance. */
         if(na && a[0]==5u){
@@ -476,7 +469,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
     case 97: {
         uint32_t rc=0;
-        if((na==6u || (na==7u && a[6]<=1u)) && a[0]<=15u && a[1]<FX_COUNT && a[2]<FX_COUNT && a[3]<FX_COUNT){
+        if((na==6u || (na==7u && a[6]<=1u)) && a[0]<=15u && a[1]<FX_AUDIO_COUNT && a[2]<FX_AUDIO_COUNT && a[3]<FX_AUDIO_COUNT){
             fx_profile_request=a[0]?((uint32_t)(na==7u?a[6]:0u)<<30u)|((uint32_t)a[0]<<26u)|((uint32_t)a[5]<<19u)|((uint32_t)a[4]<<12u)|((uint32_t)a[3]<<8u)|((uint32_t)a[2]<<4u)|a[1]:0;
         }else if(na)rc=1;
         uint32_t values[14];fm1_irq_off();values[0]=fx_profile_control;values[13]=fx_hw_status;

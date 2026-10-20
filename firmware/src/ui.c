@@ -219,7 +219,7 @@ static uint32_t drum_hit_selected(void);
 static const page_t *cur_page(void) { return page_over ? page_over : &PAGES[ui.page]; }
 
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
-enum { LAYER_NONE, LAYER_RESERVED, LAYER_GLO, LAYER_SCL, LAYER_FX, LAYER_N };
+enum { LAYER_NONE, LAYER_RESERVED, LAYER_GLO, LAYER_SCL, LAYER_N };
 static void draw_layer(void);
 static const char *layer_head(void);
 static uint32_t layer_leds(void);

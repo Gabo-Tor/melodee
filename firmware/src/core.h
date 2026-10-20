@@ -7,6 +7,7 @@
  * engine (synthesized 808 on the General MIDI map) on any part.
  * Sections: sizes, parameters, voices and engines, tracks and the song, system. */
 #include <stdint.h>
+#include "performance_options.h"
 #include "tuning.h"
 #include "audio_profile.h"
 #include "wire_bits.h"
@@ -15,9 +16,6 @@
 #define NVOICE 16                /* voice slots per part (FM6 plays Dexed's 16) */
 #define NPOLY 8                  /* the voices of an engine without its own cap (its per-voice state: engines.c eng_state) */
 #define NPART 4                  /* synth parts: tracks 1..4 */
-#ifndef MELODEE_RAM_AUDIO
-#define MELODEE_RAM_AUDIO 0       /* resident audio profile: full audio graph executes in SRAM */
-#endif
 #ifndef VBUDGET
 #define VBUDGET (MELODEE_RAM_AUDIO ? 18u : 16u) /* shared weighted voices; RAM profile uses 18 with CPU1 online
                                                  * at 360 MHz (voice.c voice_budget: scaled with a kept 320) */
@@ -138,11 +136,16 @@ enum {                          /* per-track parameters */
 };
 #define FX_SLOTS 3u
 #define FX_PARAMS 4u
+/* Append-only IDs: shared descriptors stop at FX_AUDIO_COUNT. */
+enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_AUDIO_COUNT, FX_MIDIVERB = FX_AUDIO_COUNT, FX_MIDIDELAY, FX_COUNT };
+/* Slots 6 and 8 are retired audio effects; never reuse their stored IDs. */
+static int fx_retired(int32_t type) { return type == FX_ECHO || type == FX_REVERB; }
+static int fx_is_midi(int32_t type) { return type == FX_MIDIVERB || type == FX_MIDIDELAY; }
 #define FX_CHAIN_COUNT (NPART+1u)
 #define FX_STATE_COUNT (FX_CHAIN_COUNT*FX_SLOTS)
 #define FX_TONE_MAX 63
 static int param_fx_tone(uint32_t id) { return id>=P_FXTONE && id<=P_FX3TONE; }
-static int fx_has_tone(int32_t type) { return type>=6 && type<=8; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
+static int fx_has_tone(int32_t type) { return type==FX_ROOM; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
 static int param_fx(uint32_t id) { return (id>=P_FXTYPE && id<=P_FX3CHAR) || param_fx_tone(id); }
 /* TONE -63..63 -> the cut it sets (Hz), 0 = FULL (none but the effect's own floor, fx_floor_hz): below 0 a high cut,
  * 2640 Hz at -1 down to 120 Hz at -63; above 0 a low cut, 150 Hz at 1 up to 1280 Hz at 63 (squared: fine steps where
@@ -157,10 +160,7 @@ static int32_t fx_tone_hz(int32_t v)
 #define FX_FLOOR_ECHO 100
 #define FX_FLOOR_SPACE 150
 static int32_t fx_floor_hz(int32_t type) {
-#if MELODEE_ECHOVERB_TEST
-    if(type==8)return 0; /* the audition's feedback loop supplies its own low cut */
-#endif
-    return type == 6 ? FX_FLOOR_ECHO : FX_FLOOR_SPACE;
+    (void)type; return FX_FLOOR_SPACE;
 }
 static int32_t fx_low_cut_hz(int32_t type, int32_t v)   /* an ECHO / ROOM / REVERB slot's low cut at TONE v */
 {
@@ -218,6 +218,8 @@ static void params_by_count(int16_t *out, const int16_t *in, uint32_t np, const 
         out[i] = i < nc ? in[i] : def[i];
     for (i = 0; i < 8u; i++)
         out[P_E0 + i] = in[nc + i];
+    for (i = 0; i < FX_SLOTS; i++)
+        if (fx_retired(out[P_FXTYPE + i * FX_PARAMS])) out[P_FXTYPE + i * FX_PARAMS] = FX_OFF;
 }
 
 /* engine indices the stores name (engines.c ENGINES[]: append-only) */
@@ -492,6 +494,8 @@ typedef struct {
 
 static track_t trk[NTRK];        /* the instrument: four parts */
 static song_t song;
+/* Audio-owner snapshot of the insert release override; zero keeps the sound's envelope. */
+static uint8_t midi_verb[NTRK];
 #define TSEL (&trk[song.sel])    /* the selected track */
 
 static int32_t input_octave(const track_t *t)

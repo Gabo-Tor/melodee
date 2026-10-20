@@ -160,7 +160,7 @@
           <li>Named values often open a picker. Hold <kbd>HOME</kbd> and set <strong>PICKER POPUPS</strong> to <strong>OFF</strong> to edit those names on the knob instead. The choice is remembered. Sheets, and lists you open yourself, stay as they are. Short pages (CHORD, ENV DEST, LFO DEST, LFO 2, ARP 2) put their settings straight on the four knobs.</li>
         </ul>
         <h3>Holds and locks</h3>
-        <p>Hold <kbd>GLO</kbd> or <kbd>SCL</kbd> for a quick layer on the keys and knobs (hold time is set in the global settings menu as <strong>HOLD</strong>). Double-press the same button within about 300&nbsp;ms to lock the layer open with both hands free; press it again to close. Hold <kbd>FX</kbd> for MIDI punch-in effects on the internal sounds; tap note keys for rolls, triplets, flams, note echoes, pitch shifts, velocity changes, short gates, humanize and dropouts. Double-press <kbd>FX</kbd> to keep the page open, then press it again or <kbd>OCT−</kbd> to close. Effects last while their note keys are held. KNOB 1 selects the track or ALL, KNOB 2 the echo repeat count, KNOB 3 the generated-note gate, and KNOB 4 the chance. SELECT browses the key map. A single FX tap still opens the audio FX rack. Hold <kbd>EDIT</kbd> to undo, <kbd>SAVE</kbd> to write the project back to its slot, <kbd>HOME</kbd> for the menu, <kbd>SEQ</kbd> for the PATTERNS grid, <kbd>REC</kbd> to capture.</p>
+        <p>Hold <kbd>GLO</kbd> or <kbd>SCL</kbd> for a quick layer on the keys and knobs (hold time is set in the global settings menu as <strong>HOLD</strong>). Double-press the same button within about 300&nbsp;ms to lock the layer open with both hands free; press it again to close. Press <kbd>FX</kbd> to open the track effects rack. Its track insert slots also offer <strong>MIDIVerb</strong> (REL extends the envelope release) and <strong>MIDIDelay</strong> (MIX sets repeat velocity, TIME selects a tempo division, DECAY sets velocity loss per repeat). Both save with the project and are available only on individual tracks. Hold <kbd>EDIT</kbd> to undo, <kbd>SAVE</kbd> to write the project back to its slot, <kbd>HOME</kbd> for the menu, <kbd>SEQ</kbd> for the PATTERNS grid, <kbd>REC</kbd> to capture.</p>
         <h3>Sheets and undo</h3>
         <p>Hold <kbd>OCT+</kbd> on pages that have a sheet (Stage, sound pages, NOTES, PATTERNS, SONG, and others) to open actions such as Init sound, Copy to…, or Sound designer.</p>
         <p><strong>Undo / redo:</strong></p>
@@ -580,13 +580,11 @@
         <p>Press <kbd>FX</kbd> to open the selected track’s rack: three inserts in series, followed by a Shared row. All three inserts can run together, including repeated effect types. Effects save with the project and template. Loading a sound, changing the engine, Init sound and sound undo leave them in place.</p>
         <div class="shots">
           <figure class="shot"><img src="fx_rack.png" alt="Track effects rack" width="240" height="240"><figcaption>FX: three inserts and the Shared row.</figcaption></figure>
-          <figure class="shot"><img src="fx_echo.png" alt="Echo controls" width="240" height="240"><figcaption>ECHO: MIX, TIME, REPEAT, TONE.</figcaption></figure>
-          <figure class="shot"><img src="fx_reverb.png" alt="Reverb controls" width="240" height="240"><figcaption>REVERB: MIX, SIZE, DEPTH, TONE.</figcaption></figure>
           <figure class="shot"><img src="fx_shared.png" alt="Shared effects rack" width="240" height="240"><figcaption>SHARED: slots A–C, ROUTE and RETURN.</figcaption></figure>
           <figure class="shot"><img src="fx_tone_dark.png" alt="Effect tone filter set to dark" width="240" height="240"><figcaption>TONE: the lit band reaches the effect.</figcaption></figure>
         </div>
         <p>On the rack, <kbd>KNOB 2</kbd> picks a row, <kbd>KNOB 1</kbd> chooses its effect, and <kbd>KNOB 4</kbd> sets its amount (an insert’s MIX, or the track’s SEND on the Shared row in CHAIN mode). Empty slots show <strong>--</strong>. <kbd>OCT+</kbd> opens the selected slot, its effect picker if empty, or the SHARED rack. <kbd>SELECT</kbd> visits the racks and occupied slots; empty slot pages are skipped. Pressing <kbd>FX</kbd> from a slot returns to its rack.</p>
-        <p>On a slot’s page, <kbd>KNOB 1</kbd> is MIX, <kbd>KNOB 2</kbd> is RATE / TIME / SIZE, <kbd>KNOB 3</kbd> shapes its character, and <kbd>KNOB 4</kbd> is TONE for ECHO, ROOM and REVERB (unused for other types):</p>
+        <p>On a slot’s page, <kbd>KNOB 1</kbd> is MIX, <kbd>KNOB 2</kbd> is RATE / TIME / SIZE, <kbd>KNOB 3</kbd> shapes its character, and <kbd>KNOB 4</kbd> is TONE for ROOM (unused for other types):</p>
         <table>
           <thead><tr><th>Effect</th><th><kbd>KNOB 2</kbd></th><th><kbd>KNOB 3</kbd></th></tr></thead>
           <tbody>
@@ -595,14 +593,13 @@
             <tr><td>FORMANT</td><td>RATE</td><td>FOCUS — vowel shapes.</td></tr>
             <tr><td>TAPE</td><td>RATE</td><td>JITTER — drifting filters.</td></tr>
             <tr><td>SPIT</td><td>RATE</td><td>BITE — a resonant band that jumps and saturates.</td></tr>
-            <tr><td>ECHO</td><td>TIME</td><td>REPEAT — a short delay.</td></tr>
             <tr><td>ROOM</td><td>SIZE</td><td>DECAY — a small space.</td></tr>
-            <tr><td>REVERB</td><td>SIZE</td><td>DEPTH — diffused stereo reverb. MIX is the balance; DEPTH adds body and a longer tail.</td></tr>
             <tr><td>CHORUS</td><td>RATE</td><td>DEPTH — stereo pitch movement. Start MIX near 50%.</td></tr>
           </tbody>
         </table>
-        <p><strong>TONE</strong> goes from DARK through FULL to THIN. Below FULL it cuts highs; above FULL it cuts lows from what enters the wet effect. The dry sound stays intact. ECHO, ROOM and REVERB also keep a low cut at FULL to stop bass building up in their tails.</p>
+        <p><strong>TONE</strong> goes from DARK through FULL to THIN. Below FULL it cuts highs; above FULL it cuts lows from what enters the wet effect. The dry sound stays intact. ROOM also keeps a low cut at FULL to stop bass building up in their tails.</p>
         <p>MIX at zero, or OFF, fades that slot dry. If a time effect cannot get its buffer, the picture says <strong>MEMORY FULL</strong>; turn the slot off and on to try again. Hold <kbd>OCT+</kbd> for the sound sheet. Tap <kbd>OCT−</kbd> to return from a slot to its rack, from SHARED to FX, and from FX to Stage.</p>
+        <p>Audio Echo, Reverb, Echoverb and punch FX are removed. Old Echo/Reverb slots load as OFF. ROOM and CHORUS retain their 2 KiB buffers; bypass releases them. MIDIVerb and MIDIDelay use note events instead of audio echo buffers.</p>
         <h3>Shared return</h3>
         <p>The Shared row feeds one shared three-slot return after this track’s level and pan. In the <strong>SHARED</strong> rack, <kbd>KNOB 2</kbd> selects slots A–C or RETURN, <kbd>KNOB 1</kbd> chooses a slot’s effect, <kbd>KNOB 3</kbd> sets <strong>ROUTE</strong>, and <kbd>KNOB 4</kbd> sets the selected amount. <kbd>OCT+</kbd> opens a slot. Hold <kbd>OCT+</kbd>, or tap it on RETURN, for Routing and Clear shared FX (asks first).</p>
         <ul>

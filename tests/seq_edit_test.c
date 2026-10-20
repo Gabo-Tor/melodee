@@ -327,7 +327,7 @@ static int test_held_gestures(void)
     {
         uint32_t ly = ui.ly;
         fm1_in.buttons &= ~(1u << panel.btn[B_FX]); frame();
-        bad += check("  FX armed while recording live preserves the note", ly == LAYER_FX &&
+        bad += check("  FX armed while recording live preserves the note", !ly &&
                      step_on(&t->step[9]));
     }
     song.octave = 0; song.rec = 0; song.playing = 0;

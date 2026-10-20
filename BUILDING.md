@@ -40,7 +40,20 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 ./build.sh
 ```
 
-`MELODEE_RAM_AUDIO=1 ./build.sh` builds the resident audio performance profile.
+Plain local, nightly and release builds enable resident audio, cache RAM and all
+twelve performance optimizations by default. The shared defaults live in
+`firmware/src/performance_options.h`; the build tool uses them for compiler
+flags, SRAM placement and linking. Explicit `MELODEE_<OPTION>=0` overrides
+remain available for reference comparisons. No environment setup is needed
+to keep these optimizations in a local flash.
+The audio scheduler keeps up to 24 voice jobs in one pipeline, including final
+fade blocks and grouped native FM6 states that continue silently after a voice
+is freed. Sounding FM6 controls and inactive state updates participate in the
+same cost-based partition as sample work. Part-wide modulation caches are
+prepared before publication and remain read-only during jobs. The queue retains
+voice admission and sample addition order. MIDIVerb release rates update when
+the amount or native patch changes; stationary operator envelopes avoid an
+unnecessary indirect call without changing their timing.
 All builds retain a bit-identical dry bypass and support the bounded per-track FX inserts described in README.md.
 The optimized audio ISR, all enabled engine callbacks and their reachable helpers
 execute from ordinary SRAM; `tools/audio_ram.py` preserves existing low-SRAM DSP
@@ -57,7 +70,9 @@ The profile retains at least a 64 KiB contiguous resource arena for four engine
 states and off-record note history. Additional SRAM tails remain available.
 Factory banks and cold assets remain in flash; loaded patches and active engine
 state are in SRAM. Old effect values remain readable as inert format padding; the new FX use separate parameter IDs.
-Run the host suite with `MELODEE_RAM_AUDIO=1` when checking this target variant.
+The host suite exercises the optimized kernels by default. Serial host fixtures
+retain their reference admission policy; dedicated resident/dual-core tests
+exercise the target's admission policy.
 Both target profiles reject the retired effect processors. Host sound regressions
 validate dry output against the original engines with all effect sends off.
 `tools/usb_audio_stats.py --parts` identifies cuts on each of the four tracks.
@@ -319,13 +334,13 @@ tool has simulated USB/NOR tests, including interrupted writes; its Linux and Wi
 hardware paths still need validation. If ROM USB never appears, use
 [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) and its RP2040 setup.
 
-## Experimental cache RAM
+## Cache RAM
 
 Builds reclaim seven 4 KiB data-cache ways at `0x01F28000..0x01F2F000`
-(`MELODEE_CACHE_RAM=1`, opt-in; normal builds retain all data-cache ways; `MELODEE_CACHE_RAM=0 ./build.sh`
+(`MELODEE_CACHE_RAM=1`, enabled by default; `MELODEE_CACHE_RAM=0 ./build.sh`
 turns it off), following the AC79 SDK's flash-execution configuration. All instruction-cache ways remain available.
 The first 14 KiB are the UI's (eight undo levels); the rest join the audio allocator, whose worst case still fits
-the SRAM banks alone. Normal builds keep eight undo levels in ordinary SRAM, within the existing arena reserve.
+the SRAM banks alone. Builds with cache RAM disabled keep eight undo levels in ordinary SRAM, within the existing arena reserve.
 When both `MELODEE_RAM_AUDIO=1` and `MELODEE_CACHE_RAM=1`, only one fallback undo level is reserved in
 ordinary SRAM, freeing 11,256 B for the resident layout. A successful cache self-test still supplies eight
 undo levels. A failed/skipped self-test leaves one undo level and excludes the cache bank entirely;
@@ -395,15 +410,16 @@ CPU1 fault retirement and serial host reference tests remain supported.
 There is no async runtime or RTOS dependency. Sustained musical load and
 battery impact still need device measurements.
 
-CPU0 prepares a voice's controls and envelopes. CPU1 calculates its planned FM6
-operators or Prophet oscillator/filter samples into private buffers while CPU0
-prepares and calculates the next voice. CPU0 joins and adds both in their original
-order before the track's post processing. Part-wide Prophet wheel buffers and
-patch bytes remain read-only during a job; envelopes, allocation and shared RNG
-stay on CPU0. Prophet's per-voice sample noise state travels with its voice.
-An isolated voice stays on CPU0. Other engines, effects, MIDI, USB and the screen
-retain their existing execution paths. This is a targeted synth optimization;
-it does not double all firmware throughput.
+CPU0 prepares events, allocation, modulation and read-only part-wide caches.
+FM6 jobs advance each voice's envelopes, pitch and operator plan before rendering
+its samples. Grouped jobs also advance the inactive native states needed for
+later notes. A voice's state has one owner until join, and its parameters are
+captured before the producer restores track modulation. Prophet envelopes and
+shared RNG remain on CPU0; its oscillator/filter samples run in voice jobs.
+CPU0 joins and adds private PCM in its original order before post processing.
+This preserves the native FM6 state as well as the samples under repeated note
+stealing, release edits and changing track modulation. It does not double all
+firmware throughput.
 
 The FM6, Prophet and synthesized 808 sample loops stay resident in internal
 DSP RAM, shared by all four tracks; two FM6 tracks share code while retaining
