@@ -390,7 +390,7 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
     if ((s != 0 || ok) && ui.menu == 1 && ui.menu_sel == MI_USB_HOST) {
         /* KNOB 1 right ON, left OFF, OCT+ toggles. Not saved: the next boot is a device again (usb_host.c) */
         uh.want = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !uh.want);
-        ok = 0;
+        ui.force = 1; ok = 0;                           /* (the row is not part of the menu's signature) */
     }
 #endif
     if ((s != 0 || ok) && ui.menu == 1 && ui.menu_sel == MI_LIGHTS) {

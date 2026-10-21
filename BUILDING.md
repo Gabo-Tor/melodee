@@ -133,7 +133,8 @@ Switch it OFF to give the port back to the computer; the FM-1 never boots as a h
   clock / start / continue / stop are passed on; SysEx from the controller is ignored by design.
 - **Not supported:** MIDI out to the controller (LED feedback), low-speed devices, hubs behind hubs, hot-plugging a
   second controller while one runs (unplug and replug; a lost controller is found again by itself).
-- **Messages** (toast): HOST ON, MIDI READY, NO MIDI DEVICE, LOW SPEED, CONTROLLER LOST, DEVICE.
+- **Messages** (toast): USB MIDI READY, USB NO MIDI DEVICE, USB LOW SPEED, USB CONTROLLER LOST. On / off is the
+  header's `HOST` tag (and the menu row), not a toast.
 
 `tests/usb_host_test.c` runs the real driver against a model of the SIE and of a keyboard, a hub and a stick
 (`tests/run_tests.sh`). It cannot show that the controller behaves as the SDK's host code implies; the register

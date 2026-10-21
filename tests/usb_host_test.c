@@ -77,7 +77,7 @@ static void *ep_radr[4];
 static uint32_t USB_CON0, line_state;
 static uint8_t bus_dead;                /* nothing answers (cable pulled) */
 static uint8_t devctl_ls;               /* the device is low speed */
-static uint32_t ctl_requests;
+static uint32_t ctl_requests, rx_toggle_clears;
 static dev_t_ *pend_dev;
 static uint8_t pend_addr;
 static uint8_t rx_q[8][64];
@@ -239,6 +239,7 @@ static void mock_write(uint32_t r, uint32_t v)
         } else if (v == 0x10) {
             regs[1][20] &= (uint8_t)~1u;
         } else if (v == 0x80) {
+            rx_toggle_clears++;                         /* ClrDataTog with nothing else */
             regs[1][20] = 0;
         } else {
             regs[1][20] = (uint8_t)v;
@@ -423,8 +424,10 @@ static void test_keyboard(int via_hub)
     /* the cable goes: errors, then a fault the main loop recovers from */
     bus_dead = 1;
     line_state = 0;
+    rx_toggle_clears = 0;
     poll_n(40);
     assert(!uh.run && uh.fault);
+    assert(rx_toggle_clears == 0);                      /* errors never reset the data toggle */
     fm1_ms += 20;
     uh_task(fm1_ms);
     assert(!uh.fault && !uh.run && uh.msg == UH_MSG_LOST);
@@ -479,6 +482,11 @@ static void test_no_midi(void)
     host_on();
     assert(!enumerate() && uh.msg == UH_MSG_LOW);
     uh.msg = 0;
+    for (int k = 0; k < 600; k++) {                     /* 12 s with the device still attached: said once */
+        fm1_ms += 20;
+        uh_task(fm1_ms);
+    }
+    assert(uh.msg == 0 && !uh.run);
     uh.want = 0;
     uh_task(fm1_ms);
     uh.msg = 0;

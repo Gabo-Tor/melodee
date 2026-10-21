@@ -247,7 +247,9 @@ static void uh_connect(uint32_t now)
 {
     uh_midi_t m;
     if (sie_rd(S_DEVCTL) & 0x20u) {                     /* low speed (FSDev is bit 6, LSDev bit 5) */
-        uh.msg = UH_MSG_LOW;
+        if (!uh.tried)
+            uh.msg = UH_MSG_LOW;                        /* said once per attach, as NO MIDI is */
+        uh.tried = 1;
         uh.retry_ms = now + 3000u;
         return;
     }
@@ -339,13 +341,13 @@ static void uh_poll(void)
         return;
     }
     if (csr & 0x0Cu) {                                  /* Error / DataError: no usable answer */
-        sie_wr(S_RXCSR1, 0x80u);                        /* clear the flags and the data toggle */
         if (++uh.errors >= UH_MAX_ERRORS) {
             uh.run = 0;
             uh.fault = 1;
             return;
         }
-        sie_wr(S_RXCSR1, 0x20u);
+        sie_wr(S_RXCSR1, 0x20u);                        /* the flags clear (written 0) and the request goes again; the
+                                                         * data toggle stays: it is reset when the endpoint starts only */
         return;
     }
     if (csr & 0x01u) {                                  /* a packet is in uh_rx */
