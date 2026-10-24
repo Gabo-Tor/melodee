@@ -1,15 +1,24 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: GPL-3.0-only
+<!-- SPDX-License-Identifier: GPL-3.0-only AND MPL-2.0
      Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-     Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments -->
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+     Portions Copyright (C) 2026 Charles Vestal
+     Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+     Melodee's web installer: connect, choose, install, with the install itself in a screen of its own that asks the
+     player to stay. After fm1-base's web/installer.html (its m-bootloader option, stock firmware and crash report).
+     The firmware and m-bootloader come from bundled metadata (web/make_site.py); ?demo runs the
+     same page against a simulated FM-1 (fakefm1.js). Logic: installer.js; transfer: transfer.js. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Install Melodee</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4'/%3E%3C/svg%3E">
 <style>/* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Charles Vestal
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Ported from keremimo/saadet web/install/index.html at f358c01. */
+ * Saadet installer at f358c01, unchanged styles. */
 
   :root {
     --paper: #f6f5f1; --card: #fff; --ink: #121212; --dim: #63625d; --faint: #8f8e88; --line: #e2e0d9; --chip: #eeede7;
@@ -196,107 +205,226 @@
     .row .btn { flex: 1; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
-
-  select { font: inherit; max-width: 100%; padding: 8px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
-  main > section:not(.hero) { margin-top: 24px; }
-  main > details { margin-top: 16px; }
-  .small { font-size: 13px; color: var(--dim); }
-  #status { min-height: 1.6em; }
-  #log { max-height: 200px; overflow-y: auto; }
-  #bar { width: 100%; accent-color: var(--ink); }
-  #run .run-main { padding-top: 48px; }
 </style>
-</head><body>
-<header class="site"><a class="brand" href="../editor/">Melodee</a><nav>
-<a href="../editor/">Editor</a><a href="../installer/" aria-current="page">Install</a><a href="../manual/">Manual</a>
-<button type="button" class="lang" id="lang"></button></nav></header>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tab" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18M8.5 4.5V9"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2.5v4.5M15 2.5v4.5M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7zM12 16v5.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+  <symbol id="i-fm1" viewBox="0 0 24 24"><rect x="1.5" y="6" width="21" height="12" rx="2"/><path d="M4.5 9h5v2.5h-5zM13 9.5h.01M16 9.5h.01M19 9.5h.01M5 14v4M8.5 14v4M12 14v4M15.5 14v4M19 14v4"/></symbol>
+</svg>
+
+<div class="demo" id="demo" hidden><span data-t="demo">Demo: a simulated FM-1. Nothing is written.</span> <a href="./" data-t="demoleave">Leave the demo</a></div>
+
+<header class="site">
+  <a class="brand" href="../editor/">Melodee</a>
+  <nav>
+    <a href="../editor/" data-t="navEditor">Editor</a>
+    <a href="./" aria-current="page" data-t="navInstall">Install</a>
+    <a href="../manual/" data-t="navManual">Manual</a>
+    <button type="button" class="lang" id="lang" lang="ja">日本語</button>
+  </nav>
+</header>
+
 <main>
-<section class="hero"><p class="kicker" data-t="kicker"></p>
-<h1><span data-t="installTitle"></span> <span class="v" id="hver"></span></h1>
-<p class="lede" data-t="intro"></p><ul class="facts"><li>Chrome / Edge</li><li>USB MIDI</li><li data-t="factTime"></li></ul></section>
-<div class="banner" id="resumebanner" hidden role="status"><p id="resumetext"></p></div>
-<ol class="steps">
-<li class="step" data-state="active"><div><h2 data-t="connectTitle"></h2><p data-t="direct"></p>
-<p data-t="connectHelp"></p><button type="button" class="btn" id="find" data-t="find"></button>
-<div class="device" id="device" hidden><div class="what"><b>FM-1</b><span id="devwhat"></span></div></div>
-<p id="connmsg" role="status"></p></div></li>
-<li class="step"><div><h2 data-t="chooseTitle"></h2>
-  <p><label><span data-t="releaseTitle"></span><br><select id="release"></select></label></p>
-  <p><label><input type="radio" name="build" id="build-dual" checked> <span data-t="dual"></span></label></p>
+  <section class="hero">
+    <p class="kicker" data-t="kicker">Firmware for the M-VAVE FM-1</p>
+    <h1><span data-t="title">Install Melodee</span> <span class="v" id="hver"></span></h1>
+    <p class="lede" data-t="lede">Synths, sequencing and effects for the FM-1, installed over USB from this page.</p>
+    <ul class="facts">
+      <li data-t="factBrowser">Chrome or Edge</li>
+      <li data-t="factCable">A USB data cable</li>
+      <li data-t="factTime">About 3 minutes</li>
+    </ul>
+  </section>
+
+  <div class="banner" id="resumebanner" hidden>
+    <svg class="i"><use href="#i-pause"/></svg>
+    <p><b data-t="resumeBannerH">An installation didn't finish.</b> <span id="resumetext" data-t="resumeBanner">Your FM-1 is waiting in update mode. Connect it and press Find FM-1 to finish.</span></p>
+  </div>
+  <div class="banner" id="pagefail" hidden role="alert">
+    <svg class="i"><use href="#i-alert"/></svg>
+    <p id="pagefailtext"></p>
+  </div>
+
+  <ol class="steps">
+    <li class="step" id="st-connect" data-state="active">
+      <div>
+        <h2 data-t="s1h">Connect the FM-1</h2>
+        <p data-t="s1p">Plug it straight into this computer, without a hub, and switch it on. Close other music apps and editor tabs. When the browser asks to use MIDI devices, choose Allow.</p>
+        <div class="device" id="device" hidden>
+          <svg class="i"><use href="#i-fm1"/></svg>
+          <div class="what"><b>FM-1</b><span id="devwhat"></span></div>
+          <span class="chip" id="devchip"></span>
+        </div>
+        <p class="msg" id="connmsg" role="alert"></p>
+        <button type="button" class="btn" id="find"><span data-t="find">Find FM-1</span></button>
+      </div>
+    </li>
+
+    <li class="step" id="st-options" data-state="todo" hidden>
+      <div>
+        <h2><span data-t="s2h">Recovery bootloader</span> <span class="tag" data-t="optional">Optional</span></h2>
+        <label class="option" for="mboot">
+          <input type="checkbox" id="mboot">
+          <span><b data-t="mboot">Also install m-bootloader</b>
+            <span data-t="mbootwhy">A recovery menu (hold PLAY while switching on) and USB download mode (hold REC) that work even when a firmware won't start. It replaces M-VAVE's bootloader and stays through firmware updates.</span></span>
+        </label>
+        <p class="note caution"><svg class="i"><use href="#i-alert"/></svg><span data-t="mbootrisk">It writes the FM-1's boot area, the one step where a power cut can need hardware recovery. Leave it off if you're unsure: you can add it later from this page.</span></p>
+        <p class="small"><span data-t="mbootby">By Julius Vitkauskas, MIT licence.</span>
+          <a href="https://github.com/jvitkauskas/m-bootloader" target="_blank" rel="noopener">github.com/jvitkauskas/m-bootloader<span class="sr" data-t="newtab"> (opens in a new tab)</span></a></p>
+      </div>
+    </li>
+
+    <li class="step" id="st-install" data-state="todo">
+      <div>
+        <h2 data-t="s3h">Install</h2>
+
+  <p><label><span data-release-t="releaseTitle"></span><br><select id="release"></select></label></p>
+  <p><label><input type="radio" name="build" id="build-dual" checked> <span data-release-t="dual"></span></label></p>
   <details id="advanced-installs" hidden>
-    <summary data-t="advancedTitle"></summary>
+    <summary data-release-t="advancedTitle"></summary>
     <section id="rc-options" hidden>
-      <p><strong data-t="rcTitle"></strong> · <span id="rc-version"></span></p>
-      <p><label><input type="radio" name="build" id="build-rc-dual"> <span data-t="rc-dual"></span></label></p>
-      <p class="small" data-t="rcWhy"></p>
+      <p><strong data-release-t="rcTitle"></strong> · <span id="rc-version"></span></p>
+      <p><label><input type="radio" name="build" id="build-rc-dual"> <span data-release-t="rc-dual"></span></label></p>
+      <p class="small" data-release-t="rcWhy"></p>
     </section>
     <section id="nightly-options" hidden>
-      <p><strong data-t="nightlyTitle"></strong></p>
-      <p><label><input type="radio" name="build" id="build-nightly-dual"> <span data-t="nightly-dual"></span></label></p>
-      <p class="small" data-t="nightlyWhy"></p>
+      <p><strong data-release-t="nightlyTitle"></strong></p>
+      <p><label><input type="radio" name="build" id="build-nightly-dual"> <span data-release-t="nightly-dual"></span></label></p>
+      <p class="small" data-release-t="nightlyWhy"></p>
       <p class="small" id="nightly-info"></p>
     </section>
   </details>
-</div></li>
-<li class="step"><div><h2 data-t="installTitle"></h2><p data-t="backupFirst"></p>
-<button type="button" class="btn primary big" id="go" disabled data-t="install"></button><p id="status" role="status" aria-live="polite"></p>
-</div></li></ol>
-  <section style="margin-top:24px" aria-labelledby="transit-title">
-    <h2 id="transit-title" data-t="transitTitle"></h2>
-    <p data-t="transitWhy"></p>
-    <ol>
-      <li data-t="transitFirst"></li>
-      <li data-t="transitNext"></li>
-    </ol>
-    <p><button class="btn" id="transit-go" data-t="transitGo"></button></p>
-    <p class="small" data-t="stockBackup"></p>
-    <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
-    <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
-    <p class="small" data-t="transitSafety"></p>
-    <p class="small"><a href="https://quixotic7.github.io/TransitFM1/" target="_blank" rel="noopener" style="color:inherit" data-t="transitAbout"></a>
-      · <a href="https://github.com/Quixotic7/TransitFM1" target="_blank" rel="noopener" style="color:inherit" data-t="transitSource"></a></p>
-  </section>
-  <details style="margin-top:24px">
-    <summary data-t="stockTitle"></summary>
-    <p class="small" data-t="back"></p>
-    <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
-    <p><label><span data-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-    <p><button class="btn" id="stock-go" disabled data-t="stockGo"></button></p>
-    <p class="small" data-t="stockBackup"></p>
-    <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
-    <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
-    <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-t="stockHelp"></a></p>
-  </details>
 
-<section class="more"><details><summary data-t="recoveryLink"></summary><div class="in"><p data-t="brick"></p>
-<a href="https://github.com/keremimo/melodee/blob/nightly/docs/RECOVERY.md" target="_blank" rel="noopener" data-t="recoveryLink"></a></div></details></section>
-</main><footer>  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
+        <p id="plantext" data-t="s3p">Back up your sounds first: Settings, then Backup, in the editor.</p>
+        <button type="button" class="btn primary big" id="go" disabled></button>
+        <p class="small" id="gohint" data-t="gohint">Find your FM-1 first.</p>
+      </div>
+    </li>
+  </ol>
+<p id="status" role="status" aria-live="polite"></p>
+
+  <section class="more">
+    <details id="d-resume">
+      <summary data-t="mResumeH">If an installation stopped</summary>
+      <div class="in">
+        <p data-t="mResume1">Nothing is lost. Until an installation finishes, the FM-1 starts in update mode: its screen shows UPDATING, or stays dark. That holds even after switching it off.</p>
+        <p data-t="mResume2">Connect it, open this page and press Find FM-1. The page offers to resume, and continues from the start of the write.</p>
+      </div>
+    </details>
+<details id="d-transit"><summary data-leave-t="transitTitle">TransitFM1</summary><div class="in">
+
+    <p data-leave-t="transitWhy"></p>
+    <ol>
+      <li data-leave-t="transitFirst"></li>
+      <li data-leave-t="transitNext"></li>
+    </ol>
+    <p><button class="btn" id="transit-go" data-leave-t="transitGo"></button></p>
+    <p class="small" data-leave-t="stockBackup"></p>
+    <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-leave-t="stockSkipBackup"></span></label></p>
+    <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-leave-t="stockRecovery"></span></label></p>
+    <p class="small" data-leave-t="transitSafety"></p>
+    <p class="small"><a href="https://quixotic7.github.io/TransitFM1/" target="_blank" rel="noopener" style="color:inherit" data-leave-t="transitAbout"></a>
+      · <a href="https://github.com/Quixotic7/TransitFM1" target="_blank" rel="noopener" style="color:inherit" data-leave-t="transitSource"></a></p>
+  </div></details>
+<details id="d-stock">
+    <summary data-leave-t="stockTitle"></summary><div class="in">
+    <p class="small" data-leave-t="back"></p>
+    <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
+    <p><label><span data-leave-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
+    <p><button class="btn" id="stock-go" disabled data-leave-t="stockGo"></button></p>
+    <p class="small" data-leave-t="stockBackup"></p>
+    <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-leave-t="stockSkipBackup"></span></label></p>
+    <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-leave-t="stockRecovery"></span></label></p>
+    <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-leave-t="stockHelp"></a></p>
+  </div></details>
+
+
+    <details id="d-report">
+      <summary data-t="mReportH">Report a problem</summary>
+      <div class="in">
+        <p data-t="mReport1">If the FM-1 crashed, don't switch it off: the crash record survives a restart, not a power cycle. Connect it and read the record, then send it with what you were doing.</p>
+        <p><button type="button" class="btn" id="reportgo" data-t="mReportGo">Read the crash report</button>
+          <button type="button" class="btn ghost" id="reportcopy" hidden data-t="mReportCopy">Copy</button></p>
+        <p id="reportstatus" role="status"></p>
+        <label class="sr" for="report" data-t="mReportLabel">Crash report</label>
+        <textarea id="report" readonly hidden rows="12"></textarea>
+      </div>
+    </details>
+    <details id="d-brick">
+      <summary data-t="mBrickH">If the FM-1 won't start</summary>
+      <div class="in">
+        <p data-t="mBrick1">With m-bootloader: switch off, hold PLAY and switch on for its recovery menu, or hold REC for USB download mode.</p>
+        <p><span data-t="mBrick2">Without it, the FM-1's USB recovery route can put a firmware back from a computer:</span>
+          <a href="https://github.com/hugelton/felucca-bsp/tree/main/tools" target="_blank" rel="noopener" data-t="mBrickLink">felucca-bsp recovery tools</a></p>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer>  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
     by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms and Fukiai icons (MIT).<br>
     Font: Inter Tight (The Inter Project Authors, SIL OFL 1.1). Samples: Versilian Studios VSCO-2 Community Edition and VCSL (CC0 1.0).<br>
     FM6 engine: msfa from Dexed (Google Inc., Pascal Gauthier, Apache-2.0). The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners.<br>
-    <span data-t="license"></span> <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
-</footer>
-<dialog id="preflight" aria-labelledby="pfh"><form method="dialog">
-<h2 id="pfh" data-t="beforeStart"></h2><ul class="rules">
-<li><span class="ri">1</span><div><b data-t="stayHere"></b><span data-t="stayWhy"></span></div></li>
-<li><span class="ri">2</span><div><b data-t="keepPower"></b><span data-t="keepWhy"></span></div></li>
-<li><span class="ri">3</span><div><b data-t="factTime"></b><span data-t="screenNormal"></span></div></li></ul>
-<label class="check" id="pfcheck"><input type="checkbox" id="pfok"><span data-t="backupAck"></span></label>
-<div class="row"><button type="submit" class="btn ghost" value="cancel" data-t="cancel"></button>
-<button type="submit" class="btn primary" value="go" id="pfgo" disabled data-t="startInstall"></button></div>
-</form></dialog>
+    GPL-3.0-only. Without warranty. <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
+<p>m-bootloader by Julius Vitkauskas (MIT).</p></footer>
+
+<dialog id="preflight" aria-labelledby="pfh">
+  <form method="dialog">
+    <h2 id="pfh" data-t="pfh">Before you start</h2>
+    <ul class="rules">
+      <li><span class="ri"><svg class="i"><use href="#i-tab"/></svg></span>
+        <div><b data-t="pf1h">Keep this tab open and in front</b><span data-t="pf1">Don't switch tabs, minimise the window or close it until the page says Done.</span></div></li>
+      <li><span class="ri"><svg class="i"><use href="#i-plug"/></svg></span>
+        <div><b data-t="pf2h">Leave the FM-1 connected and on</b><span data-t="pf2">Don't unplug the cable or switch the FM-1 off. Plug a laptop into power.</span></div></li>
+      <li><span class="ri"><svg class="i"><use href="#i-clock"/></svg></span>
+        <div><b data-t="pf3h">It takes about 3 minutes</b><span data-t="pf3">The FM-1's screen shows UPDATING, or stays dark. Both are normal.</span></div></li>
+    </ul>
+    <p class="note caution" id="pfboot"><svg class="i"><use href="#i-alert"/></svg><span data-t="pfboot">m-bootloader is written last, after one more restart. Keep the power on until the page says Done.</span></p>
+    <label class="check" id="pfcheck"><input type="checkbox" id="pfok"><span data-t="pfok">I've backed up my sounds, or have nothing to keep.</span></label>
+    <div class="row">
+      <button type="submit" value="cancel" class="btn ghost" data-t="cancel">Cancel</button>
+      <button type="submit" value="go" class="btn primary" id="pfgo" disabled data-t="start">Start installation</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="run" aria-labelledby="runtitle" data-state="running">
-<div class="run-warn" role="note" data-t="runWarning"></div><div class="run-main">
-<div class="live"><p class="run-kicker" id="runtitle"></p><div class="pct" aria-hidden="true"><span id="pct">0</span><span class="pc">%</span></div>
-<div class="bar" id="bar" role="progressbar" aria-labelledby="runtitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="barfill"></i></div>
-<p class="runstep" id="runstep" role="status"></p><p class="eta" id="eta"></p>
-<ol class="phases" id="phases"><li data-ph="prepare" data-t="prepare"></li><li data-ph="write" data-t="write"></li><li data-ph="restart" data-t="reboot"></li></ol>
-<p class="stall" id="stall" hidden data-t="stall"></p><div class="backnote" id="backnote" hidden role="alert"><span id="backtext"></span></div></div>
-<div class="end" id="end" hidden><h2 id="endtitle"></h2><p id="endtext"></p><p id="endtips"></p></div>
-<div class="row"><button type="button" class="btn primary" id="run-resume" hidden data-t="resumeInstall"></button>
-<button type="button" class="btn" id="run-close" hidden data-t="close"></button></div>
-<details class="log"><summary data-t="details"></summary><pre id="log"></pre></details></div></dialog>
+  <div class="run-warn" role="note"><svg class="i"><use href="#i-alert"/></svg><span data-t="runwarn">Keep this tab open and in front. Don't unplug the FM-1.</span></div>
+  <div class="run-main">
+    <div class="live">
+      <p class="run-kicker" id="runtitle"></p>
+      <div class="pct" aria-hidden="true"><span id="pct">0</span><span class="pc">%</span></div>
+      <div class="bar" id="bar" role="progressbar" aria-labelledby="runtitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="barfill"></i></div>
+      <p class="runstep" id="runstep" role="status"></p>
+      <p class="eta" id="eta"></p>
+      <ol class="phases" id="phases">
+        <li data-ph="prepare" data-t="phPrepare">Prepare</li>
+        <li data-ph="write" data-t="phWrite">Write</li>
+        <li data-ph="restart" data-t="phRestart">Restart</li>
+        <li data-ph="boot" data-t="phBoot">m-bootloader</li>
+      </ol>
+      <p class="stall" id="stall" hidden data-t="stall">Waiting for the FM-1… keep the cable connected.</p>
+      <div class="backnote" id="backnote" hidden role="alert"><svg class="i"><use href="#i-info"/></svg><span id="backtext"></span></div>
+    </div>
+    <div class="end" id="end" hidden>
+      <div class="end-icon"><svg class="i"><use id="endicon" href="#i-check"/></svg></div>
+      <h2 id="endtitle"></h2>
+      <p id="endtext"></p>
+      <ul id="endtips"></ul>
+      <div class="row" id="endactions"></div><div class="row" id="legacy-actions" hidden><button type="button" class="btn" id="run-resume" hidden>Resume installation</button><button type="button" class="btn" id="run-close" hidden>Close</button></div>
+    </div>
+    <details class="log"><summary data-t="details">Details</summary><pre id="log"></pre></details>
+  </div>
+</dialog>
+
 <script type="module">
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
@@ -1045,7 +1173,7 @@ class BackupConnection {
   }
 }
 
-const {progressModel, remaining, afterFailure} = (() => {
+const {progressModel, remaining, afterFailure, describeDevice, planFor} = (() => {
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Charles Vestal
@@ -1097,13 +1225,47 @@ function remaining(done, total, ms) {
 // what a failure leaves: "safe" (nothing written), "paused" (in update mode: resume), "restart" (written; the FM-1
 // did not come back as expected), "partial" (the firmware installed, m-bootloader not)
 function afterFailure(code, phase) {
-  if (phase === "boot") return code === "noreturn" ? "restart" : "partial";
+  if (phase === "boot") return code === "noreturn" || code === "mismatch" ? "restart" : "partial";
   if (phase === "done") return "restart";
   if (phase === "staged") return code === "noreturn" || code === "mismatch" ? "restart" : "paused";
   return "safe";
 }
 
-return {progressModel, remaining, afterFailure};
+// "FM-1_9010200" -> "1.2", "FM-1_9010203" -> "1.2.3" (fm1-base tools/build.py: the prefix, then XXYYZZ)
+function releaseVersion(product, prefix = "FM-1_9") {
+  if (!product.startsWith(prefix)) return null;
+  const m = /^(\d)(\d{1,2})(\d)$/.exec(product.slice(prefix.length));
+  return m ? `${+m[1]}.${+m[2]}.${+m[3]}` : null;
+}
+
+// a connected FM-1, from its identity: { kind, version }
+//   loader   in update mode: an install waits to be finished
+//   this     the version this page installs
+//   melodee   another Melodee release; dev: a development build (FM-1_900)
+//   stock    M-VAVE's own firmware (version: "V16"); open: M-VAVE's Open firmware (must go back to stock first)
+//   other    another firmware for the FM-1; model: not an FM-1
+function describeDevice(id, product) {
+  if (!id) return { kind: "none" };
+  if (/^ota-/i.test(id.model)) return { kind: "loader" };
+  if (id.open || /^FM1_(OFFICIAL_OPEN|COMMUNITY_\d+)$/.test(id.text)) return { kind: "open" };
+  if (id.model !== "FM-1") return { kind: "model", text: id.text };
+  if (id.text === "FM-1_900") return { kind: "dev" };
+  if (id.text === product) return { kind: "this", version: releaseVersion(product) };
+  const v = releaseVersion(id.text);
+  if (v) return { kind: "melodee", version: v };
+  if (/^FM-1_0\d\d$/.test(id.text) && id.text !== "FM-1_099") return { kind: "stock", version: "V" + parseInt(id.text.slice(5), 10) };
+  return { kind: "other", text: id.text };
+}
+
+// what pressing Install does for a device: { firmware, resume, boot } or null (nothing to do)
+function planFor(kind, wantBoot) {
+  if (kind === "loader") return { firmware: true, resume: true, boot: wantBoot };
+  if (kind === "this") return wantBoot ? { firmware: false, resume: false, boot: true } : { firmware: true, resume: false, boot: false };
+  if (kind === "open" || kind === "model" || kind === "none") return null;
+  return { firmware: true, resume: false, boot: wantBoot };
+}
+
+return {progressModel, remaining, afterFailure, describeDevice, planFor};
 })();
 
 const {hold, busyElsewhere} = (() => {
@@ -1275,6 +1437,33 @@ function sendLater(link, bytes, delay) {
 function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
 class SteadyUpdater extends Updater {
+  // Ported from Saadet's fm1ota.js at f358c01. This installer returns to the
+  // same app; there is no MIDI update-loader phase to resume.
+  async installBoot(image, product, onStep) {
+    const step = onStep || (() => {}), sleep = ms => new Promise(r => setTimeout(r,ms));
+    const dev = await this.find();
+    if (!dev) throw fail("notfound", "FM-1 not found");
+    if (dev.id.text !== product || dev.id.model !== "FM-1" || dev.id.open) {
+      dev.link.close();throw fail("bootrefused", "Update Melodee first before installing m-bootloader");
+    }
+    step("bootstart");
+    let served;
+    try {
+      if (!dev.link.send([0xF0,0x22,0x24,0x35,0x7F,0xF7])) throw fail("lost","USB connection lost");
+      await sleep(2000);
+      served = await this.serve(dev.link,image,0xE0000000,8000);
+    } finally { dev.link.close(); }
+    if (!served.finished) throw fail(served.lost ? "lost" : "bootrefused","Firmware refused m-bootloader; its boot area was not written");
+    step("bootwrite");await sleep(3000);
+    const back = await this.waitFor(id => !/^ota-/i.test(id.model),40000);
+    if (!back) throw fail("noreturn","The FM-1 did not return after the bootloader installer");
+    back.link.close();
+    if (back.id.text !== product) {
+      const error=fail("mismatch",`The FM-1 reports ${back.id.text}`);error.detail=back.id.text;throw error;
+    }
+    // An app restart proves that it booted; PLAY at power-on verifies the menu.
+    step("bootdone",back.id.text);return back.id.text;
+  }
   // Updater.serve's contract: answer reads until the device asks finishAddr -> { served, finished, lost }
   async serve(link, image, finishAddr, idleMs, onProgress) {
     let served = 0, bytes = 0, last = Date.now(), lastRead = -1;
@@ -1410,6 +1599,8 @@ function createInstallSession({ t }) {
       active = {key,label,image,release,onResume,pct:0,phase:'prepare',pm:progressModel(image,resume),staged:resume,lastAt:Date.now()};
       if (resume) save({key,label});
       $('run').dataset.state = 'running';$('end').hidden = true;
+      $('legacy-actions').hidden = false;$('endactions').replaceChildren();
+      document.querySelectorAll('#phases li').forEach(li => { li.hidden = li.dataset.ph === 'boot'; });
       $('backnote').hidden = $('stall').hidden = true;$('eta').textContent = '';
       $('log').textContent = '';$('runtitle').textContent = label;
       $('run-close').hidden = true;$('run-resume').hidden = true;
@@ -1426,6 +1617,7 @@ function createInstallSession({ t }) {
     if (!ok && run.phase === 'restart') state = 'restart';
     if (ok) { pct(100);save(null); }
     $('run').dataset.state = state;$('end').hidden = false;
+    $('endicon').setAttribute('href', ok ? '#i-check' : state === 'safe' ? '#i-info' : '#i-alert');
     $('endtitle').textContent = t('end_' + state);
     $('endtext').textContent = ok ? run.label + '. ' + t('installedVerified') : error?.message || t('stopped');
     $('endtips').textContent = t('tip_' + state);
@@ -1456,7 +1648,13 @@ function createInstallSession({ t }) {
 return {createInstallSession};
 })();
 
-const $ = (id) => document.getElementById(id);
+const {setupLeaving} = (() => {
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+// Existing Melodee stock/Transit backup and loader safeguards, integrated with Saadet's page.
+function setupLeaving({getLanguage,isBusy,setBusy,log}) {
+const $=id=>document.getElementById(id);
 const TEXT = {
   ja: {
     intro: "FM-1 を USB で接続してください。（Chrome か Edge で使えます）",
@@ -1583,143 +1781,25 @@ const TEXT = {
 };
 Object.assign(TEXT.en, {"kicker": "Firmware for the M-VAVE FM-1", "installTitle": "Install Melodee", "factTime": "About 3 minutes", "connectTitle": "Connect the FM-1", "connectHelp": "Switch it on, close music apps and other editor tabs, and allow MIDI access when asked.", "find": "Check connection", "chooseTitle": "Choose your version", "backupFirst": "Back up your music and sounds in the editor before updating.", "beforeStart": "Before you start", "stayHere": "Keep this tab open and in front", "stayWhy": "Stay on this page until it says Done.", "keepPower": "Keep the FM-1 connected and powered", "keepWhy": "Keep the cable connected. Plug your laptop into power.", "screenNormal": "UPDATING or a dark screen is normal during installation.", "backupAck": "I've saved a backup, or have nothing to keep.", "cancel": "Cancel", "startInstall": "Start installation", "runWarning": "Keep this tab open and in front. Don't unplug the FM-1.", "prepare": "Prepare", "stall": "Waiting for the FM-1. Keep the cable connected.", "resumeInstall": "Resume installation", "close": "Close", "details": "Details", "pendingInstall": "An installation did not finish. Select the same version and resume:", "differentPending": "Resume using the same selected build as the interrupted installation:", "busy": "Another tab is using the installer. Finish or close it there first.", "comeBack": "Come back to the installer", "installingTitle": "Installing Melodee", "etaSoon": "Less than a minute left", "etaMinutes": "minutes left", "backgroundKept": "The installation continued while you were away. Please stay here until it finishes.", "backgroundSlow": "The browser slowed this page while you were away. It is continuing; please stay here.", "end_done": "Installation complete", "end_safe": "Nothing was written", "end_paused": "Installation paused", "end_restart": "The FM-1 did not return as expected", "installedVerified": "The FM-1 restarted and reported the expected firmware.", "tip_done": "You can open the editor or unplug the FM-1.", "tip_safe": "Check the connection and other music apps, then try again.", "tip_paused": "Reconnect the FM-1 and resume the same build. The write starts again from the beginning.", "tip_restart": "Power-cycle the FM-1 and check its screen. If it stays in update mode, reconnect and resume the same build.", "badHash": "The firmware checksum does not match the published build. Reload the page."});
 Object.assign(TEXT.ja, {"kicker": "M-VAVE FM-1 用ファームウェア", "installTitle": "Melodee をインストール", "factTime": "約3分", "connectTitle": "FM-1 を接続", "connectHelp": "電源を入れ、音楽アプリや別のエディタタブを閉じてください。MIDI の許可を求められたら許可してください。", "find": "接続を確認", "chooseTitle": "バージョンを選ぶ", "backupFirst": "更新前にエディタで曲と音色をバックアップしてください。", "beforeStart": "開始前に確認", "stayHere": "このタブを開いたまま前面に保つ", "stayWhy": "完了と表示されるまで、このページから離れないでください。", "keepPower": "FM-1 の接続と電源を保つ", "keepWhy": "ケーブルを抜かず、パソコンも電源につないでください。", "screenNormal": "更新中は UPDATING 表示や画面の消灯が正常です。", "backupAck": "バックアップを保存済み、または保存するデータはありません。", "cancel": "キャンセル", "startInstall": "インストール開始", "runWarning": "このタブを前面に保ち、FM-1 を抜かないでください。", "prepare": "準備", "stall": "FM-1 の応答を待っています。接続を保ってください。", "resumeInstall": "インストールを再開", "close": "閉じる", "details": "詳細", "pendingInstall": "未完了のインストールがあります。同じバージョンを選んで再開してください：", "differentPending": "中断したインストールと同じビルドを選んで再開してください：", "busy": "別のタブでインストール中です。そのタブで完了するか閉じてください。", "comeBack": "インストーラに戻ってください", "installingTitle": "Melodee インストール中", "etaSoon": "残り1分未満", "etaMinutes": "分（残り）", "backgroundKept": "タブを離れた間も処理を続けました。完了までこのタブに留まってください。", "backgroundSlow": "タブを離れた間にブラウザが処理を遅くしました。再開しています。このタブに留まってください。", "end_done": "インストール完了", "end_safe": "書き込みは行われませんでした", "end_paused": "インストールを中断", "end_restart": "FM-1 の再起動を確認できませんでした", "installedVerified": "FM-1 の再起動と、指定したファームウェアの識別情報を確認しました。", "tip_done": "エディタを開くか、FM-1 を取り外せます。", "tip_safe": "接続と音楽アプリを確認して、もう一度お試しください。", "tip_paused": "FM-1 を再接続し、同じビルドで再開してください。書き込みは最初から始まります。", "tip_restart": "FM-1 の電源を入れ直して画面を確認してください。更新モードのままなら、再接続して同じビルドで再開してください。", "badHash": "ファームウェアのチェックサムが一致しません。ページを再読み込みしてください。"});
-let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
-const t = (k) => TEXT[lang][k];
-let lastKey = null, lastArg = "";
+
+const t=k=>TEXT[getLanguage()][k] || k;
+const session=createInstallSession({t});
+let writing=false, stock=null, stockFileEpoch=0;
 function applyLang() {
-  document.documentElement.lang = lang;
-  document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t); });
-  $("lang").textContent = t("other");
-  $("stock-go").textContent = t($("stock-skip-backup").checked ? "stockGoNoBackup" : "stockGo");
-  $("transit-go").textContent = t($("transit-skip-backup").checked ? "transitGoNoBackup" : "transitGo");
-  if ($("release").options.length) releaseOptions();
-  if (lastKey === "ready") ready();
-  else if (lastKey) $("status").textContent = t(lastKey) + lastArg;
+ document.querySelectorAll('[data-leave-t]').forEach(e=>{e.textContent=t(e.dataset.leaveT);});
+ $('stock-go').textContent=t($('stock-skip-backup').checked?'stockGoNoBackup':'stockGo');
+ $('transit-go').textContent=t($('transit-skip-backup').checked?'transitGoNoBackup':'transitGo');
 }
-$("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; applyLang(); });
-applyLang();
-$("stock-skip-backup").addEventListener("change", applyLang);
-$("transit-skip-backup").addEventListener("change", applyLang);
-const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; session.message(t(k) + arg); };
-const say = (txt) => { lastKey = null; $("status").textContent = txt; };
-const buildIds = ["dual", "rc-dual", "nightly-dual"];
-const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
-const selection = () => {     /* the release, or a channel ("nightly-dual": meta.nightly's dual-core package) */
-  const kind = build(), dash = kind.indexOf("-");
-  return dash < 0 ? {kind, channel: (meta.releases || []).find(r => r.version === $("release").value) || meta, key: kind} : {kind, channel: meta[kind.slice(0, dash)], key: kind.slice(dash + 1)};
-};
-const ready = () => { $("hver").textContent = selection().channel.version; lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
-const log = (t) => { const box = $("log"); box.textContent += t + "\n"; box.scrollTop = box.scrollHeight; };
-let image = null;
-const meta = {"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}, "nightly": {"version": "next-d918c41", "product": "FM-1_900", "branch": "nightly", "commit": "d918c41b3a48f805646241d5166b275f63a23589", "builtAt": "2026-10-24T08:30:53Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc"}, "sha256": {"dual": "10ee207efe8013516c061978db2a82a2116c27f14d212d934c463a8be6c2b810"}}, "rc": {"version": "1.4.2-rc.1", "product": "FM-1_91042", "branch": "next", "commit": "04943ed7781c08f030404233508be500fbfa3ba3", "builtAt": "2026-10-17T13:37:05.564727+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.2-rc.1.fwsc"}, "sha256": {"dual": "a99ff4e8249e60c1e812aa56cf29fd4d61bc27a7ea21d0aec6f822235683f8b4"}}, "releases": [{"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}}, {"version": "1.4.4", "product": "FM-1_91044", "pkg": {"dual": "../../firmware/melodee-1.4.4.fwsc"}, "sha256": {"dual": "d349a44dc5c29c2af2ad14b6fc76071fc9e218ad4a83dcd25948bd8479aa3607"}}, {"version": "1.4.3", "product": "FM-1_91043", "pkg": {"dual": "../../firmware/melodee-1.4.3.fwsc"}, "sha256": {"dual": "efa44743be492278e25261f012b02425f373b8f31e9e396ef5e47b240a79be80"}}, {"version": "1.4.1", "product": "FM-1_91041", "pkg": {"dual": "../../firmware/melodee-1.4.1.fwsc"}, "sha256": {"dual": "fe14e72f231fea45d3b10519846db3c733d7f175a88993a1f12853c3f5ba3c3d"}}, {"version": "1.4.0", "product": "FM-1_91040", "pkg": {"dual": "../../firmware/melodee-1.4.0.fwsc"}, "sha256": {"dual": "fc3a06a8e65b8a0a473e24229540fd43d2b666a9312cd5584264fc06f007b7f3"}}, {"version": "1.3.6", "product": "FM-1_91036", "pkg": {"dual": "../../firmware/melodee-1.3.6.fwsc"}, "sha256": {"dual": "abfb786611e1bbdf2b00952b0f65a0009682853544ab94450a5c0d6bccad8d5f"}}, {"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc"}, "sha256": {"dual": "5c49547826806445f6b72c6ad88a6bcff1a9d348dcd3794ec917363f4322e6b7"}}, {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc"}, "sha256": {"dual": "8018b967aeffcd648b9c2b9fd114108a1fe8f1884097310bc9357031c753bb1b"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc"}, "sha256": {"dual": "1cc2d5562c7c44717c4f1e468157089f5672a528d94be85e06b03bdaa75e65e5"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc"}, "sha256": {"dual": "41b51d38724d89d286c6af327c93b4bdad0dcba243b9df92b9bd1d6e150b60e1"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc"}, "sha256": {"dual": "65d1c5dcd76b40560b8495a9974f391dcbc32d07471e9391568519fd57e56680"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc"}, "sha256": {"dual": "b4f13d418c5e408e26a2af0ea7fbda2c3dfadf56f7a07624262196718a6924ad"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc"}, "sha256": {"dual": "1ba8116a44485ddc62741b13553bc01fa021bbfea4c5df22aa8c358ed23c1515"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc"}, "sha256": {"dual": "105269153b2aa1e20f633d302ba028d505462f1521a3348867e09b39bd69b5e8"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc"}, "sha256": {"dual": "6f1a6077f5620f97e4e7e821536244284b5b508dd5df94ef70b1e9a4866c0627"}}, {"version": "1.0.1", "product": "FM-1_91001", "pkg": {"dual": "../../firmware/melodee-1.0.1.fwsc"}, "sha256": {"dual": "db7e0c8f4a4e245ea7ad58f14d4d5d9387dc86eb9f3a780d61982c0544af2c18"}}, {"version": "1.0.0", "product": "FM-1_91000", "pkg": {"dual": "../../firmware/melodee-1.0.0.fwsc"}, "sha256": {"dual": "4b8421127fa9101897e4fccdf5f3004990efc4984d5753bf896f2c1c55bda65b"}}]};
-function releaseOptions() {
-  const selected = $("release").value || meta.version;
-  $("release").replaceChildren(...(meta.releases || [meta]).map(r => {
-    const option = document.createElement("option");
-    option.value = r.version;
-    option.textContent = `${r.version === meta.version ? t("latest") + " · " : ""}v${r.version}`;
-    option.selected = r.version === selected;
-    return option;
-  }));
+$('stock-skip-backup').addEventListener('change',applyLang);
+$('transit-skip-backup').addEventListener('change',applyLang);
+const sayK=(k,arg='')=>{$('status').textContent=t(k)+arg;session.message(t(k)+arg);};
+function lock(on) {
+ writing=on;
+ $('stock-go').disabled=on||!stock;
+ ['stock-file','stock-recovery','stock-skip-backup','transit-go','transit-recovery','transit-skip-backup'].forEach(id=>{$(id).disabled=on;});
 }
-releaseOptions();
-$("advanced-installs").hidden = !meta.rc && !meta.nightly;
-$("rc-options").hidden = !meta.rc;
-if (meta.rc) $("rc-version").textContent = meta.rc.version;
-$("nightly-options").hidden = !meta.nightly;
-if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
-const session = createInstallSession({t});
-const images = {};                // a build ("dual", "nightly-dual" ..) -> its package's image, each fetched once
-
-let writing = false, stock = null, stockFileEpoch = 0, buildEpoch = 0;
-const lockInstaller = (on) => {
-  writing = on; $("find").disabled = on; $("release").disabled = on; $("go").disabled = on || !image;
-  buildIds.forEach(k => { $("build-" + k).disabled = on; });
-  $("stock-go").disabled = on || !stock;
-  ["stock-file", "stock-recovery", "stock-skip-backup", "transit-go", "transit-recovery", "transit-skip-backup"].forEach(id => { $(id).disabled = on; });
-};
-window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
-
-// the chosen build's package: Install stays off until it is loaded and checked
-async function choose() {
-  if (writing) return;
-  if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
-  const {kind, channel, key} = selection(), epoch = ++buildEpoch;
-  const cacheKey = kind + ":" + (channel?.version || "") + ":" + (channel?.commit || "");
-  image = null; $("go").disabled = true;
-  try {
-    if (!images[cacheKey]) {
-      if (!channel) throw new Error(kind.startsWith("rc-") ? "Release candidate is not available yet" : "Nightly is not available yet");
-      const url = channel.pkg[key] + (channel.commit ? "?commit=" + channel.commit : ""), r = await fetch(url);
-      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-      const pkg = new Uint8Array(await r.arrayBuffer());
-      if (channel.sha256?.[key] && await sha256hex(pkg) !== channel.sha256[key]) throw new Error(t("badHash"));
-      if (productOf(pkg) !== channel.product) { if (epoch === buildEpoch) sayK("badpkg"); return; }
-      images[cacheKey] = logicalImage(pkg);
-    }
-    if (epoch !== buildEpoch) return;
-    image = images[cacheKey]; if (!writing) ready(); lockInstaller(writing);
-  } catch (e) { if (epoch === buildEpoch) sayK("loadfail", e.message); }
-}
-buildIds.forEach(k => $("build-" + k).addEventListener("change", choose));
-$("release").addEventListener("change", () => {
-  if (writing) return;
-  if (build().includes("-")) $("build-dual").checked = true;
-  choose();
-});
-choose();
-
-// an update loader that is not the package's own gets nothing: the official one would write a Melodee
-// package's head over the boot data, Melodee's would write only V15's application (docs/RECOVERY.md)
-const refuseLoader = (id) => id === STOCK_LOADER ? sayK("loaderStock") : id === MELODEE_LOADER ? sayK("loaderMelodee") : sayK("loaderUnknown", id);
-
-let finding = false, connectedIdentity = null;
-$("find").addEventListener("click", async () => {
-  if (writing || finding) return;
-  finding = true;lockInstaller(true);
-  try {
-    if (!navigator.requestMIDIAccess) throw new Error(t("nomidi"));
-    const found = await session.probe(async () => {
-      const access = await navigator.requestMIDIAccess({sysex:true});
-      return await new SteadyUpdater(access).find();
-    });
-    if (!found) throw new Error(t("notfound"));
-    found.link.close();connectedIdentity = found.id;$("go").textContent = t(/^ota-/.test(found.id.model) ? "resumeInstall" : "install");$("devwhat").textContent = found.id.text;$("device").hidden = false;$("connmsg").textContent = "";
-  } catch (e) { connectedIdentity = null;$("device").hidden = true;$("connmsg").textContent = e.message; }
-  finally { finding = false;lockInstaller(false); }
-});
-
-$("go").addEventListener("click", async () => {
-  if (writing || finding || !image) return;
-  const {kind,channel} = selection(), chosen = image, product = channel.product;
-  const key = [kind,channel.version,channel.commit || "",product,channel.sha256?.dual || ""].join(":");
-  lockInstaller(true);
-  let complete = false, failure = null;
-  try {
-    if (!await session.begin({key,label:`Melodee ${channel.version}`,image:chosen,resume:/^ota-/.test(connectedIdentity?.model || ""),backup:!/^ota-/.test(connectedIdentity?.model || ""),onResume:() => $("go").click()})) return;
-    let midi;
-    try { midi = await navigator.requestMIDIAccess({sysex:true}); }
-    catch (e) { sayK("denied");failure = new Error(t("denied"));return; }
-    const up = new SteadyUpdater(midi, log);
-    const step = (k,n,bytes) => { log(`${k} ${n ?? ""}`);session.step(k,n,bytes);if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k); };
-    const ota = await up.find(id => /^ota-/i.test(id.model));
-    if (ota) {
-      ota.link.close();
-      if (ota.id.text !== MELODEE_LOADER) { refuseLoader(ota.id.text);failure = new Error($("status").textContent);return; }
-      session.resume();
-      complete = await up.resume(chosen, step, product, MELODEE_LOADER);
-      sayK(complete ? "done" : "stopped");
-    } else {
-      await up.install(chosen, product, step, MELODEE_LOADER);complete = true;sayK("done");
-    }
-  } catch (e) {
-    if (e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || "");
-    else sayK("error",e.message);
-    failure = {code:e.code,message:$("status").textContent};log(String(e.stack || e));
-  } finally { connectedIdentity = null; try { session.finish(complete,failure); } finally { lockInstaller(false); } }
-});
-
+const lockInstaller=on=>{setBusy(on);lock(on);};
+const refuseLoader=id=>sayK(id===STOCK_LOADER?'loaderStock':id===MELODEE_LOADER?'loaderMelodee':'loaderUnknown',id);
 $("stock-file").addEventListener("change", async () => {
   if (writing) return;
   const epoch = ++stockFileEpoch, file = $("stock-file").files[0]; stock = null; lockInstaller(false);
@@ -1748,7 +1828,7 @@ function archiveInfo(a) {
   return {version,supported};
 }
 async function leaveMelodee(target) {
-  if (writing || finding || (target === "stock" && !stock)) return;
+  if (isBusy() || (target === "stock" && !stock)) return;
   if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
   let selected = stock;
   const transit = target === "transit", ownLoader = transit ? MELODEE_LOADER : STOCK_LOADER;
@@ -1802,12 +1882,1020 @@ async function leaveMelodee(target) {
     // refused, never retried another way
     if (!transit && e.code === "stopped" && e.lastRead >= selected.head.from && e.lastRead < selected.head.to) sayK("stockHead");
     else if (e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || ""); else sayK("error",e.message);
+    else if (e.code && TEXT[getLanguage()][e.code]) sayK(e.code,e.detail || ""); else sayK("error",e.message);
     failure = {code:e.code,message:$("status").textContent};
     log(String(e.stack || e));
   } finally { if (link) link.close(); try { session.finish(completed,failure || new Error($("status").textContent)); } finally { lockInstaller(false); } }
 }
 $("stock-go").addEventListener("click", () => leaveMelodee("stock"));
 $("transit-go").addEventListener("click", () => leaveMelodee("transit"));
+
+return {lock,applyLang};
+}
+
+return {setupLeaving};
+})();
+
+const {fakeAccess} = (() => {
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+//
+// A simulated FM-1 behind a Web MIDI access object, for the installer's demo (?demo) and its tests. It speaks the
+// update protocol as felucca-bsp's chip/ota.c and loader do: the identity on the handshake; on the upgrade
+// message, read requests (cmd 0x30) answered within 3 tries of 5 s, then the "success" question; a restart (the
+// port goes away, then comes back). Step 1 (the running firmware) reads a little and restarts into the update
+// loader ("ota-FM-1_015"); step 2 (the loader) reads the image twice and restarts into the new firmware. Served
+// m-bootloader's installer instead, step 1 restarts into the same firmware. The device tells the two packages
+// apart by their first bytes, as the real one reads their headers. Nothing is written anywhere.
+//
+//   fakeAccess({ images, identity, after, state, interruptAt, stride, timers }) -> { access, device }
+//     images       { firmware, boot }: the logical images the page serves (boot optional)
+//     identity     what the running firmware reports ("FM-1_016": M-VAVE's own)
+//     after        what it reports after a write (the package's identity)
+//     state        "app" (default) or "loader" (an install was interrupted: the device waits in update mode)
+//     interruptAt  0..1: step 2 loses the cable at that share of its reads, once (the device stays in update mode)
+//     stride       reads only every stride-th block of a pass (a quicker demo; 1 = all)
+//     timers       { set, clear }: the device's own clock (the tests throttle the page's, not the device's)
+
+
+const HS_QUERY = [0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7];
+const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
+const BLOCK = 512, TRY_MS = 5000, TRIES = 3;
+const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+function frame(cmd, payload) {
+  let s = 0;
+  for (let i = 0; i < payload.length; i++) s += payload[i];
+  return [0xF0, ...pack7([0x00, 0x59, cmd, payload.length & 0xFF, payload.length >> 8, 0, ...payload, ~s & 0xFF]), 0xF7];
+}
+
+function identityFrame(text) {
+  const body = new Array(27).fill(0);
+  for (let i = 0; i < text.length && i < 26; i++) body[i] = text.charCodeAt(i);
+  return frame(0x11, body);
+}
+
+function readFrame(addr, len) {
+  return frame(0x30, [0, addr & 0xFF, (addr >>> 8) & 0xFF, (addr >>> 16) & 0xFF, (addr >>> 24) & 0xFF, len & 0xFF, len >> 8, 0]);
+}
+
+// a reply to a read: its address and data, when it is one
+function parseReply(pkt) {
+  const u = unpack7(pkt.slice(1, -1));
+  if (u.length < 15 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== 0x30) return null;
+  const addr = (u[7] | (u[8] << 8) | (u[9] << 16) | (u[10] << 24)) >>> 0, len = u[11] | (u[12] << 8);
+  return { addr, data: u.slice(14, 14 + len) };
+}
+
+class Port {
+  constructor(device, name, type) {
+    this.device = device; this.name = name; this.type = type; this.id = `${type}-${name}`;
+    this.manufacturer = "Ellic Studio (simulated)"; this.connection = "closed"; this._handler = null;
+  }
+  get state() { return this.device.online ? "connected" : "disconnected"; }
+  open() { this.connection = "open"; return Promise.resolve(this); }
+  close() { this.connection = "closed"; return Promise.resolve(this); }
+  set onmidimessage(f) { this._handler = f; }
+  get onmidimessage() { return this._handler; }
+  send(data, timestamp = 0) {
+    if (!this.device.online) throw new DOMException("The port is disconnected", "InvalidStateError");
+    const bytes = Array.from(data);
+    const delay = Math.max(0, (timestamp || 0) - performance.now());
+    this.device.sends.push({ bytes, delay });
+    this.device.clock.set(() => this.device.receive(bytes), delay);
+  }
+}
+
+class Device {
+  constructor(o) {
+    this.clock = o.timers || { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) };
+    this.images = o.images || {};
+    this.identity = o.identity || "FM-1_016";
+    this.after = o.after || this.identity;
+    this.loader = o.loader || "ota-FM-1_015";
+    this.state = o.state || "app";
+    this.interruptAt = o.interruptAt || 0;
+    this.stride = Math.max(1, o.stride || 1);
+    this.online = true;
+    this.sends = [];                          // what the page sent, with the delay it asked for
+    this.log = [];                            // what the device did, in words
+    this.reply = null;                        // the pending read's resolver
+    this.busy = false;
+    this.input = new Port(this, "Saadet FM-1", "input");
+    this.output = new Port(this, "Saadet FM-1", "output");
+  }
+
+  emit(bytes) {
+    const h = this.input._handler;
+    if (h && this.online) h({ data: Uint8Array.from(bytes), timeStamp: performance.now() });
+  }
+
+  get text() { return this.state === "loader" ? this.loader : this.identity; }
+
+  receive(bytes) {
+    if (!this.online) return;
+    if (same(bytes, HS_QUERY)) { this.emit(identityFrame(this.text)); return; }
+    if (same(bytes, UPGRADE)) { if (!this.busy) this.session(); return; }
+    if (this.reply && bytes[0] === 0xF0) {
+      const r = parseReply(bytes);
+      if (r) { const f = this.reply; this.reply = null; f(r); }
+    }
+  }
+
+  // one read: 3 tries of 5 s, as ota_read; -> its data, or null (the session gives up)
+  async read(addr, len) {
+    for (let t = 0; t < TRIES; t++) {
+      if (!this.online) return null;
+      const got = await new Promise((resolve) => {
+        const tm = this.clock.set(() => { this.reply = null; resolve(null); }, TRY_MS);
+        this.reply = (r) => { this.clock.clear(tm); resolve(r.addr === addr ? r.data : null); };
+        this.emit(readFrame(addr, len));
+      });
+      if (got) return got;
+    }
+    return null;
+  }
+
+  restart(state, identity, ms = 1500) {
+    this.online = false;
+    this.state = state;
+    if (identity) this.identity = identity;
+    this.input.name = this.output.name = state === "loader" ? "FM-1" : "Saadet FM-1";
+    return new Promise((r) => this.clock.set(() => { this.online = true; r(); }, ms));
+  }
+
+  async pass(from, to, size) {
+    for (let a = from; a < to; a += BLOCK * this.stride) {
+      const n = Math.min(BLOCK, size - a);
+      if (n <= 0) break;
+      if (!(await this.read(a, n))) return false;
+      if (this.interruptAt && this.state === "loader" && a / to >= this.interruptAt) {
+        this.interruptAt = 0;
+        this.log.push("cable lost");
+        await this.restart("loader", null, 2500);   // the update record stays: back in update mode
+        return null;
+      }
+    }
+    return true;
+  }
+
+  // the package served, known by its header: { size, boot }
+  which(head) {
+    const is = (img) => img && head.every((b, i) => img[i] === b);
+    if (is(this.images.boot)) return { size: this.images.boot.length, boot: true };
+    if (is(this.images.firmware)) return { size: this.images.firmware.length, boot: false };
+    return null;
+  }
+
+  async session() {
+    this.busy = true;
+    try {
+      const head = await this.read(0, 0x40);
+      const pkg = head && this.which(head);
+      if (!pkg) { this.log.push("refused: no answer or an unknown package"); return; }
+      const { size, boot } = pkg;
+      if (this.state === "app") {
+        // step 1: the header and the loader (m-bootloader's installer: all of it), then the question
+        if (!(await this.pass(0x400, boot ? size : Math.min(size, 0x6000), size))) { this.log.push("step 1 stopped"); return; }
+        if (!(await this.finish(0xE0000000))) return;
+        this.log.push(boot ? "m-bootloader staged" : "loader staged");
+        if (boot) {
+          await this.restart("app", null, 2500);     // m-bootloader's installer writes the boot area, then the firmware
+          this.log.push("m-bootloader installed");
+        } else {
+          await this.restart("loader", null, 2000);
+        }
+      } else {
+        // step 2: the whole image checked, then the app area written (each a pass of reads)
+        const r1 = await this.pass(0, size, size);
+        if (r1 === null) return;
+        if (!r1) { this.log.push("step 2 stopped"); return; }
+        const r2 = await this.pass(Math.min(0x4000, size), size, size);
+        if (r2 === null) return;
+        if (!r2) { this.log.push("step 2 stopped"); return; }
+        if (!(await this.finish(0xF0000000))) return;
+        this.log.push(`written: ${this.after}`);
+        await this.restart("app", this.after, 2500);
+      }
+    } finally { this.busy = false; }
+  }
+
+  async finish(addr) {
+    const ok = await this.read(addr, 8);
+    if (!ok) this.log.push("no success answer");
+    return !!ok;
+  }
+}
+
+function fakeAccess(options = {}) {
+  const device = new Device(options);
+  const access = {
+    sysexEnabled: true,
+    inputs: new Map([[device.input.id, device.input]]),
+    outputs: new Map([[device.output.id, device.output]]),
+    onstatechange: null,
+    addEventListener() {}, removeEventListener() {},
+  };
+  return { access, device };
+}
+
+return {fakeAccess};
+})();
+
+const meta = {"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}, "nightly": {"version": "next-c123c66", "product": "FM-1_900", "branch": "nightly", "commit": "c123c66d27c255dfd366122a498c32157d2e5b39", "builtAt": "2026-10-24T09:05:56Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc"}, "sha256": {"dual": "5c73249b16cf26c06568ce586019a3fc3455c010a6cd28a99c4d62fe2132fd5f"}}, "rc": {"version": "1.4.2-rc.1", "product": "FM-1_91042", "branch": "next", "commit": "04943ed7781c08f030404233508be500fbfa3ba3", "builtAt": "2026-10-17T13:37:05.564727+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.2-rc.1.fwsc"}, "sha256": {"dual": "a99ff4e8249e60c1e812aa56cf29fd4d61bc27a7ea21d0aec6f822235683f8b4"}}, "releases": [{"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}}, {"version": "1.4.4", "product": "FM-1_91044", "pkg": {"dual": "../../firmware/melodee-1.4.4.fwsc"}, "sha256": {"dual": "d349a44dc5c29c2af2ad14b6fc76071fc9e218ad4a83dcd25948bd8479aa3607"}}, {"version": "1.4.3", "product": "FM-1_91043", "pkg": {"dual": "../../firmware/melodee-1.4.3.fwsc"}, "sha256": {"dual": "efa44743be492278e25261f012b02425f373b8f31e9e396ef5e47b240a79be80"}}, {"version": "1.4.1", "product": "FM-1_91041", "pkg": {"dual": "../../firmware/melodee-1.4.1.fwsc"}, "sha256": {"dual": "fe14e72f231fea45d3b10519846db3c733d7f175a88993a1f12853c3f5ba3c3d"}}, {"version": "1.4.0", "product": "FM-1_91040", "pkg": {"dual": "../../firmware/melodee-1.4.0.fwsc"}, "sha256": {"dual": "fc3a06a8e65b8a0a473e24229540fd43d2b666a9312cd5584264fc06f007b7f3"}}, {"version": "1.3.6", "product": "FM-1_91036", "pkg": {"dual": "../../firmware/melodee-1.3.6.fwsc"}, "sha256": {"dual": "abfb786611e1bbdf2b00952b0f65a0009682853544ab94450a5c0d6bccad8d5f"}}, {"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc"}, "sha256": {"dual": "5c49547826806445f6b72c6ad88a6bcff1a9d348dcd3794ec917363f4322e6b7"}}, {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc"}, "sha256": {"dual": "8018b967aeffcd648b9c2b9fd114108a1fe8f1884097310bc9357031c753bb1b"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc"}, "sha256": {"dual": "1cc2d5562c7c44717c4f1e468157089f5672a528d94be85e06b03bdaa75e65e5"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc"}, "sha256": {"dual": "41b51d38724d89d286c6af327c93b4bdad0dcba243b9df92b9bd1d6e150b60e1"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc"}, "sha256": {"dual": "65d1c5dcd76b40560b8495a9974f391dcbc32d07471e9391568519fd57e56680"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc"}, "sha256": {"dual": "b4f13d418c5e408e26a2af0ea7fbda2c3dfadf56f7a07624262196718a6924ad"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc"}, "sha256": {"dual": "1ba8116a44485ddc62741b13553bc01fa021bbfea4c5df22aa8c358ed23c1515"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc"}, "sha256": {"dual": "105269153b2aa1e20f633d302ba028d505462f1521a3348867e09b39bd69b5e8"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc"}, "sha256": {"dual": "6f1a6077f5620f97e4e7e821536244284b5b508dd5df94ef70b1e9a4866c0627"}}, {"version": "1.0.1", "product": "FM-1_91001", "pkg": {"dual": "../../firmware/melodee-1.0.1.fwsc"}, "sha256": {"dual": "db7e0c8f4a4e245ea7ad58f14d4d5d9387dc86eb9f3a780d61982c0544af2c18"}}, {"version": "1.0.0", "product": "FM-1_91000", "pkg": {"dual": "../../firmware/melodee-1.0.0.fwsc"}, "sha256": {"dual": "4b8421127fa9101897e4fccdf5f3004990efc4984d5753bf896f2c1c55bda65b"}}], "boot": {"version": "1.2", "pkg": "../../firmware/m-bootloader-1.2.fwsc", "sha256": "0e89141f52d1f2d62198d4f69147a2c15c8360806e64d48002990a6fdab6d6dd", "license": "MIT", "source": "https://github.com/jvitkauskas/m-bootloader/releases/tag/v1.2", "commit": "22e2559906f9fc4e077f2d6aee20bf332300439e"}};
+(() => {
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// Portions Copyright (C) 2026 Charles Vestal
+// Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+//
+// The installer page (index.html): find the FM-1, show what it runs, choose m-bootloader, then install in a
+// screen of its own. Before writing: the rules (stay on the tab, keep the cable and power) and the backup. While
+// writing: keepalive.js holds the page (one install at a time, awake, asks before leaving) and the screen says so
+// again whenever the tab comes back. An install that stops after the FM-1 entered update mode can be resumed,
+// now or on a later visit (a mark in localStorage and the device itself say so). fm1-base's installer.html is the
+// origin of the m-bootloader option, the stock firmware path and the crash report.
+
+
+const IS_OTA = (id) => /^ota-/i.test(id.model);
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const DEMO = params.has("demo") ? (params.get("demo") || "stock") : null;
+const MARK = "melodee-install-pending";               // an install that has not reported Done (localStorage)
+const LANG = "melodee-lang";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const IS_STOCK = (p) => /^FM-1_0\d\d$/.test(p) && p !== "FM-1_099";
+const fail = (code, msg, detail = "") => Object.assign(new Error(msg), { code, detail });
+
+const TEXT = {
+  en: {
+    navEditor: "Editor", navInstall: "Install", navManual: "Manual", other: "日本語",
+    demo: "Demo: a simulated FM-1. Nothing is written.", demoleave: "Leave the demo",
+    kicker: "Firmware for the M-VAVE FM-1", title: "Install Melodee",
+    lede: "Synths, sequencing and effects for the FM-1, installed over USB from this page.",
+    factBrowser: "Chrome or Edge", factCable: "A USB data cable", factTime: "About 3 minutes",
+    resumeBannerH: "An installation didn't finish.",
+    resumeBanner: "Your FM-1 is waiting in update mode. Connect it and press Find FM-1 to finish.",
+    s1h: "Connect the FM-1",
+    s1p: "Plug it straight into this computer, without a hub, and switch it on. Close other music apps and editor tabs. When the browser asks to use MIDI devices, choose Allow.",
+    find: "Find FM-1", findAgain: "Look again", finding: "Looking for the FM-1…",
+    s2h: "Recovery bootloader", optional: "Optional",
+    mboot: "Also install m-bootloader {v}",
+    mbootwhy: "A recovery menu (hold PLAY while switching on) and USB download mode (hold REC) that work even when a firmware won't start. It replaces M-VAVE's bootloader and stays through firmware updates.",
+    mbootrisk: "It writes the FM-1's boot area, the one step where a power cut can need hardware recovery. Leave it off if you're unsure: you can add it later from this page.",
+    mbootby: "By Julius Vitkauskas, MIT licence.", newtab: " (opens in a new tab)",
+    s3h: "Install", s3p: "Back up your sounds first: Settings, then Backup, in the editor.",
+    gohint: "Find your FM-1 first.",
+    goInstall: "Install Melodee {v}", goUpdate: "Update to Melodee {v}", goReinstall: "Reinstall Melodee {v}",
+    goResume: "Resume installation", goBoot: "Install m-bootloader",
+    planInstall: "Melodee {v} replaces this FM-1's firmware. Back up your sounds first: Settings, then Backup, in the editor.",
+    planUpdate: "Back up your sounds before updating: Settings, then Backup, in the editor.",
+    planResume: "The FM-1 is waiting in update mode. Resuming writes Melodee {v} again from the start of the write.",
+    planThis: "Melodee {v} is already on this FM-1. Reinstalling is safe and keeps your sounds.",
+    planBoot: "Melodee {v} is already on this FM-1, so only m-bootloader is written.",
+    planOpen: "This FM-1 runs M-VAVE's Open firmware. Go back to M-VAVE's firmware first (below), then install Melodee.",
+    planModel: "This is not an FM-1 ({id}). Melodee runs only on the M-VAVE FM-1.",
+    devLoader: "In update mode: an installation is waiting to finish", devThis: "Melodee {v}", devMelodee: "Melodee {v}",
+    devDev: "FM-1 development firmware (FM-1_900)", devStock: "M-VAVE firmware {v}", devOpen: "M-VAVE Open firmware",
+    devOther: "Another firmware ({id})", devModel: "Not an FM-1 ({id})",
+    chipReady: "Ready", chipResume: "Update mode", chipCurrent: "Up to date", chipBlocked: "Can't install",
+    nomidi: "This browser can't reach USB MIDI devices. Open this page in Chrome or Edge on a computer.",
+    denied: "MIDI access was not allowed. Allow MIDI devices in the site settings (the icon in the address bar), then press Find FM-1 again.",
+    notfound: "No FM-1 answered. Check that it is on and connected with a data cable (not a charging-only one), close other apps and tabs that use MIDI, then look again.",
+    busy: "An installation is already running in another tab. Finish it there first.",
+    pending: "Select the same version and build as the interrupted installation before resuming.",
+    loadfail: "The firmware package could not be loaded: {m}", badpkg: "The firmware package is damaged. Reload the page.",
+    nopkg: "There is no firmware package beside this page. Try the demo instead:",
+    pfh: "Before you start",
+    pf1h: "Keep this tab open and in front", pf1: "Don't switch tabs, minimise the window or close it until the page says Done.",
+    pf2h: "Leave the FM-1 connected and on", pf2: "Don't unplug the cable or switch the FM-1 off. Plug a laptop into power.",
+    pf3h: "It takes about 3 minutes", pf3: "The FM-1's screen shows UPDATING, or stays dark. Both are normal.",
+    pfboot: "m-bootloader is written last, after one more restart. Keep the power on until the page says Done.",
+    pfbootonly: "Writing the boot area takes a few seconds. Keep the power on until the page says Done.",
+    pfok: "I've backed up my sounds, or have nothing to keep.", cancel: "Cancel", start: "Start installation",
+    runwarn: "Keep this tab open and in front. Don't unplug the FM-1.",
+    runInstall: "Installing Melodee {v}", runResume: "Finishing the installation", runBoot: "Installing m-bootloader",
+    runStock: "Installing M-VAVE's firmware",
+    phPrepare: "Prepare", phWrite: "Write", phRestart: "Restart", phBoot: "m-bootloader",
+    stStart: "Starting", stVerify: "Checking the package", stLoader: "Switching the FM-1 to update mode",
+    stWrite: "Writing the firmware", stReboot: "Restarting the FM-1", stBootWait: "Waiting for Melodee to start",
+    stBoot: "Writing m-bootloader. The FM-1 restarts by itself", stFind: "Finding the FM-1 in update mode",
+    etaMin: "About {n} min left", etaSec: "Less than a minute left",
+    stall: "Waiting for the FM-1… keep the cable connected.",
+    backKept: "You left this tab for {s}. The installation kept going, but please stay here until it's done.",
+    backSlow: "You left this tab for {s}, and the browser slowed the page. It continues now: please stay on this tab.",
+    titleRun: "{p}% · Installing Melodee", titleHidden: "⚠ Come back: installing, {p}%", titleDone: "Done · Melodee",
+    leave: "Installing. Leaving now can stop the installation.",
+    endDoneH: "Melodee {v} is installed", endDoneBootH: "Melodee {v} and m-bootloader are installed",
+    endDone: "The FM-1 has restarted with Melodee {v}. You can unplug it now.",
+    endBootH: "m-bootloader is installed", endBoot: "The FM-1 has restarted with Melodee {v}.",
+    endStockH: "M-VAVE's firmware is back", endStock: "The FM-1 has restarted with its original firmware.",
+    tipEditor: "Open the editor to browse sounds and make backups.",
+    tipBoot: "To check m-bootloader: switch the FM-1 off, hold PLAY and switch it on. Its recovery menu appears.",
+    endPausedH: "Installation paused",
+    endPaused: "The FM-1 is safe. It waits in update mode until the installation finishes, even if it's switched off.",
+    tipCable: "Check the cable, or plug it in again. The screen shows UPDATING, or stays dark.",
+    tipApps: "Close other music apps and editor tabs.", tipResume: "Then press Resume. The write starts again from the beginning.",
+    endSafeH: "Nothing was changed", endSafe: "The FM-1 still runs its previous firmware.",
+    endRestartH: "The FM-1 didn't come back",
+    endRestart: "The write finished, but the FM-1 didn't report back. Switch it off and on again.",
+    tipStill: "If it shows UPDATING or stays dark, it is still in update mode: press Find FM-1 and resume.",
+    tipBrick: "If it doesn't start at all, see “If the FM-1 won't start” on this page.",
+    endPartialH: "Melodee is installed, m-bootloader isn't",
+    endPartial: "Melodee {v} is installed. m-bootloader could not be written and nothing else was changed. You can try again later from this page.",
+    btnEditor: "Open the editor", btnManual: "Read the manual", btnClose: "Close", btnResume: "Resume installation",
+    btnRetry: "Try again",
+    e_notfound: "The FM-1 stopped answering before anything was written.",
+    e_model: "The connected device is not an FM-1.",
+    e_lost: "The USB connection was lost.", e_stopped: "The FM-1 stopped asking for data.",
+    e_noloader: "The FM-1 in update mode was not found.", e_noreturn: "The FM-1 did not come back after restarting.",
+    e_mismatch: "Written, but the FM-1 reports another version: {d}.", e_badreq: "The FM-1 asked for data outside the package.",
+    e_open: "This FM-1 runs M-VAVE's Open firmware. Go back to M-VAVE's firmware first.",
+    e_bootrefused: "The firmware refused m-bootloader.", e_other: "Error: {m}",
+    mResumeH: "If an installation stopped",
+    mResume1: "Nothing is lost. Until an installation finishes, the FM-1 starts in update mode: its screen shows UPDATING, or stays dark. That holds even after switching it off.",
+    mResume2: "Connect it, open this page and press Find FM-1. The page offers to resume, and continues from the start of the write.",
+    mStockH: "Go back to M-VAVE's firmware",
+    mStock1: "This writes M-VAVE's own FM-1 firmware back over the same cable. It also puts back M-VAVE's bootloader, and what Melodee saved may be lost.",
+    mStock2: "Download M-VAVE's firmware:", mStock3: "Choose the file you downloaded:",
+    mStock4: "Connect the FM-1, press Find FM-1 above, then the button below.", mStockGo: "Install M-VAVE's firmware",
+    stockok: "That is M-VAVE's FM-1 firmware ({p}).", stockbad: "That is not M-VAVE's FM-1 firmware. Choose the file from the link above.",
+    stockfind: "Find the FM-1 above first.",
+    mReportH: "Report a problem",
+    mReport1: "If the FM-1 crashed, don't switch it off: the crash record survives a restart, not a power cycle. Connect it and read the record, then send it with what you were doing.",
+    mReportGo: "Read the crash report", mReportCopy: "Copy", mReportLabel: "Crash report",
+    reportwait: "Reading…", reportnone: "No answer. Check that the FM-1 is running Melodee.",
+    reportok: "Read. Copy it and send it.", reportcopied: "Copied.",
+    mBrickH: "If the FM-1 won't start",
+    mBrick1: "With m-bootloader: switch off, hold PLAY and switch on for its recovery menu, or hold REC for USB download mode.",
+    mBrick2: "Without it, the FM-1's USB recovery route can put a firmware back from a computer:",
+    mBrickLink: "felucca-bsp recovery tools",
+    credits: "Melodee by Kerem Kilic (Ellic Studio). Built on fm1-base by Charles Vestal and felucca-bsp, from Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments. m-bootloader by Julius Vitkauskas.",
+    legal: "Firmware: MPL-2.0. Editor: GPL-3.0-only. Third-party terms apply. Without warranty. M-VAVE and FM-1 are trademarks of their respective owners.",
+    details: "Details", sec: "{n} s", min: "{n} min",
+  },
+  ja: {
+    navEditor: "エディター", navInstall: "インストール", navManual: "マニュアル", other: "English",
+    demo: "デモ：FM-1 をシミュレートしています。何も書き込まれません。", demoleave: "デモを終了",
+    kicker: "M-VAVE FM-1 用ファームウェア", title: "Melodee をインストール",
+    lede: "FM-1 用シンセサイザー、シーケンサー、エフェクト。このページから USB でインストールできます。",
+    factBrowser: "Chrome または Edge", factCable: "USB データケーブル", factTime: "約 3 分",
+    resumeBannerH: "前回のインストールが完了していません。",
+    resumeBanner: "FM-1 はアップデートモードで待機しています。接続して「FM-1 を探す」を押すと、続きから完了できます。",
+    s1h: "FM-1 を接続する",
+    s1p: "ハブを使わずにこのパソコンへ直接つなぎ、電源を入れてください。ほかの音楽アプリやエディターのタブは閉じてください。ブラウザが MIDI デバイスの使用許可を求めたら「許可」を選びます。",
+    find: "FM-1 を探す", findAgain: "もう一度探す", finding: "FM-1 を探しています…",
+    s2h: "リカバリー用ブートローダー", optional: "任意",
+    mboot: "m-bootloader {v} もインストールする",
+    mbootwhy: "ファームウェアが起動しないときでも使えるリカバリーメニュー（PLAY を押しながら電源オン）と USB ダウンロードモード（REC）を追加します。M-VAVE のブートローダーと置き換わり、ファームウェアを更新しても残ります。",
+    mbootrisk: "FM-1 のブート領域に書き込みます。この工程中に電源が切れると、ハードウェアでの復旧が必要になることがあります。迷ったらオフのままで構いません。あとからこのページで追加できます。",
+    mbootby: "Julius Vitkauskas 作、MIT ライセンス。", newtab: "（新しいタブで開きます）",
+    s3h: "インストール", s3p: "先にサウンドをバックアップしてください（エディターの「設定」→「バックアップ」）。",
+    gohint: "先に FM-1 を探してください。",
+    goInstall: "Melodee {v} をインストール", goUpdate: "Melodee {v} にアップデート", goReinstall: "Melodee {v} を再インストール",
+    goResume: "インストールを再開", goBoot: "m-bootloader をインストール",
+    planInstall: "この FM-1 のファームウェアを Melodee {v} に置き換えます。先にサウンドをバックアップしてください（エディターの「設定」→「バックアップ」）。",
+    planUpdate: "アップデート前にサウンドをバックアップしてください（エディターの「設定」→「バックアップ」）。",
+    planResume: "FM-1 はアップデートモードで待機しています。再開すると、書き込みの最初から Melodee {v} を書き込み直します。",
+    planThis: "この FM-1 には Melodee {v} がすでに入っています。再インストールしても安全で、サウンドは残ります。",
+    planBoot: "この FM-1 には Melodee {v} がすでに入っているため、m-bootloader だけを書き込みます。",
+    planOpen: "この FM-1 は M-VAVE の Open ファームウェアで動いています。先に下の手順で M-VAVE のファームウェアに戻してから、Melodee をインストールしてください。",
+    planModel: "これは FM-1 ではありません（{id}）。Melodee は M-VAVE FM-1 専用です。",
+    devLoader: "アップデートモード：インストールの完了待ち", devThis: "Melodee {v}", devMelodee: "Melodee {v}",
+    devDev: "FM-1 開発版（FM-1_900）", devStock: "M-VAVE ファームウェア {v}", devOpen: "M-VAVE Open ファームウェア",
+    devOther: "別のファームウェア（{id}）", devModel: "FM-1 ではありません（{id}）",
+    chipReady: "準備完了", chipResume: "アップデートモード", chipCurrent: "最新", chipBlocked: "インストール不可",
+    nomidi: "このブラウザは USB MIDI デバイスを使えません。パソコンの Chrome か Edge で開いてください。",
+    denied: "MIDI の使用が許可されませんでした。アドレスバーのアイコンからサイトの設定で MIDI デバイスを許可し、もう一度「FM-1 を探す」を押してください。",
+    notfound: "FM-1 が応答しません。電源が入っていて、データ通信用のケーブル（充電専用ではないもの）でつながっているか確かめ、MIDI を使うほかのアプリやタブを閉じてから、もう一度探してください。",
+    pending: "中断したインストールと同じバージョンとビルドを選んでから再開してください。",
+    busy: "別のタブでインストールが進行中です。先にそちらを完了させてください。",
+    loadfail: "ファームウェアを読み込めませんでした：{m}", badpkg: "ファームウェアのファイルが壊れています。ページを再読み込みしてください。",
+    nopkg: "このページの隣にファームウェアがありません。代わりにデモを試せます：",
+    pfh: "始める前に",
+    pf1h: "このタブを開いたまま、前面に", pf1: "「完了」と表示されるまで、タブの切り替え、ウィンドウの最小化、ページを閉じることはしないでください。",
+    pf2h: "FM-1 は接続したまま、電源も入れたまま", pf2: "ケーブルを抜いたり、FM-1 の電源を切ったりしないでください。ノートパソコンは電源につないでください。",
+    pf3h: "約 3 分かかります", pf3: "FM-1 の画面には UPDATING と表示されるか、暗いままになります。どちらも正常です。",
+    pfboot: "m-bootloader は最後に、もう一度再起動してから書き込みます。「完了」と表示されるまで電源を切らないでください。",
+    pfbootonly: "ブート領域の書き込みは数秒で終わります。「完了」と表示されるまで電源を切らないでください。",
+    pfok: "サウンドをバックアップした（または残したいものはない）", cancel: "キャンセル", start: "インストールを開始",
+    runwarn: "このタブを開いたまま前面に。FM-1 のケーブルを抜かないでください。",
+    runInstall: "Melodee {v} をインストール中", runResume: "インストールを完了しています", runBoot: "m-bootloader をインストール中",
+    runStock: "M-VAVE のファームウェアをインストール中",
+    phPrepare: "準備", phWrite: "書き込み", phRestart: "再起動", phBoot: "m-bootloader",
+    stStart: "開始しています", stVerify: "ファイルを確認しています", stLoader: "FM-1 をアップデートモードに切り替えています",
+    stWrite: "ファームウェアを書き込んでいます", stReboot: "FM-1 を再起動しています", stBootWait: "Melodee の起動を待っています",
+    stBoot: "m-bootloader を書き込んでいます。FM-1 は自動で再起動します", stFind: "アップデートモードの FM-1 を探しています",
+    etaMin: "残り約 {n} 分", etaSec: "残り 1 分未満",
+    stall: "FM-1 を待っています… ケーブルは接続したままにしてください。",
+    backKept: "このタブを {s} 離れていました。インストールは続いていましたが、完了までこのタブにいてください。",
+    backSlow: "このタブを {s} 離れていたため、ブラウザがページを遅くしていました。今は再開しています。このタブにいてください。",
+    titleRun: "{p}% · Melodee をインストール中", titleHidden: "⚠ 戻ってください：インストール中 {p}%", titleDone: "完了 · Melodee",
+    leave: "インストール中です。今ページを離れると中断することがあります。",
+    endDoneH: "Melodee {v} をインストールしました", endDoneBootH: "Melodee {v} と m-bootloader をインストールしました",
+    endDone: "FM-1 は Melodee {v} で再起動しました。ケーブルを抜いて構いません。",
+    endBootH: "m-bootloader をインストールしました", endBoot: "FM-1 は Melodee {v} で再起動しました。",
+    endStockH: "M-VAVE のファームウェアに戻しました", endStock: "FM-1 は純正ファームウェアで再起動しました。",
+    tipEditor: "エディターでサウンドの閲覧やバックアップができます。",
+    tipBoot: "m-bootloader の確認：FM-1 の電源を切り、PLAY を押しながら電源を入れると、リカバリーメニューが表示されます。",
+    endPausedH: "インストールが中断しました",
+    endPaused: "FM-1 は安全です。インストールが完了するまで、電源を切ってもアップデートモードで待機します。",
+    tipCable: "ケーブルを確かめるか、挿し直してください。画面には UPDATING と表示されるか、暗いままです。",
+    tipApps: "ほかの音楽アプリやエディターのタブを閉じてください。", tipResume: "それから「再開」を押します。書き込みを最初からやり直します。",
+    endSafeH: "何も変更されていません", endSafe: "FM-1 は以前のファームウェアのままです。",
+    endRestartH: "FM-1 が戻ってきません",
+    endRestart: "書き込みは終わりましたが、FM-1 から応答がありません。電源を入れ直してください。",
+    tipStill: "UPDATING と表示されるか暗いままなら、まだアップデートモードです。「FM-1 を探す」を押して再開してください。",
+    tipBrick: "まったく起動しない場合は、このページの「FM-1 が起動しないとき」を見てください。",
+    endPartialH: "Melodee はインストールされ、m-bootloader はされていません",
+    endPartial: "Melodee {v} はインストールされました。m-bootloader は書き込めず、ほかには何も変更されていません。あとでこのページからもう一度試せます。",
+    btnEditor: "エディターを開く", btnManual: "マニュアルを読む", btnClose: "閉じる", btnResume: "インストールを再開",
+    btnRetry: "もう一度",
+    e_notfound: "何も書き込まれる前に FM-1 が応答しなくなりました。",
+    e_model: "接続されている機器は FM-1 ではありません。",
+    e_lost: "USB の接続が切れました。", e_stopped: "FM-1 がデータを要求しなくなりました。",
+    e_noloader: "アップデートモードの FM-1 が見つかりません。", e_noreturn: "再起動のあと、FM-1 が戻ってきませんでした。",
+    e_mismatch: "書き込みましたが、FM-1 は別のバージョンを報告しています：{d}。", e_badreq: "FM-1 がファイルの範囲外を要求しました。",
+    e_open: "この FM-1 は M-VAVE の Open ファームウェアで動いています。先に M-VAVE のファームウェアに戻してください。",
+    e_bootrefused: "ファームウェアが m-bootloader を受け付けませんでした。", e_other: "エラー：{m}",
+    mResumeH: "インストールが途中で止まったら",
+    mResume1: "何も失われていません。インストールが完了するまで、FM-1 はアップデートモードで起動します（画面に UPDATING、または暗いまま）。電源を切っても同じです。",
+    mResume2: "FM-1 を接続してこのページを開き、「FM-1 を探す」を押してください。再開を案内し、書き込みの最初から続けます。",
+    mStockH: "M-VAVE のファームウェアに戻す",
+    mStock1: "M-VAVE 純正の FM-1 ファームウェアを同じケーブルで書き込みます。M-VAVE のブートローダーも元に戻り、Melodee で保存したものは消えることがあります。",
+    mStock2: "M-VAVE のファームウェアをダウンロード：", mStock3: "ダウンロードしたファイルを選ぶ：",
+    mStock4: "FM-1 を接続し、上の「FM-1 を探す」を押してから、下のボタンを押します。", mStockGo: "M-VAVE のファームウェアを書き込む",
+    stockok: "M-VAVE の FM-1 ファームウェアです（{p}）。", stockbad: "M-VAVE の FM-1 ファームウェアではありません。上のリンクのファイルを選んでください。",
+    stockfind: "先に上で FM-1 を探してください。",
+    mReportH: "不具合を報告する",
+    mReport1: "FM-1 がクラッシュしたら、電源を切らないでください。クラッシュの記録は再起動では残りますが、電源を切ると消えます。接続して記録を読み、何をしていたかと一緒に送ってください。",
+    mReportGo: "クラッシュの記録を読む", mReportCopy: "コピー", mReportLabel: "クラッシュの記録",
+    reportwait: "読み込み中…", reportnone: "応答がありません。FM-1 が Melodee を実行しているか確かめてください。",
+    reportok: "読み込みました。コピーして送ってください。", reportcopied: "コピーしました。",
+    mBrickH: "FM-1 が起動しないとき",
+    mBrick1: "m-bootloader がある場合：電源を切り、PLAY を押しながら電源を入れるとリカバリーメニュー、REC なら USB ダウンロードモードになります。",
+    mBrick2: "ない場合は、FM-1 の USB リカバリー手順でパソコンからファームウェアを書き戻せます：",
+    mBrickLink: "felucca-bsp のリカバリーツール（英語）",
+    credits: "Melodee：Kerem Kilic（Ellic Studio）。Charles Vestal の fm1-base と felucca-bsp を基盤に、Leo Kuroshita（@kurogedelic）、Hügelton Instruments の Felucca から。m-bootloader：Julius Vitkauskas。",
+    legal: "ファームウェア：MPL-2.0。エディター：GPL-3.0-only。第三者の利用条件も適用されます。無保証。M-VAVE および FM-1 は各所有者の商標です。",
+    details: "詳細", sec: "{n} 秒", min: "{n} 分",
+  },
+};
+
+let lang = (() => {
+  try { const s = localStorage.getItem(LANG); if (s === "en" || s === "ja") return s; } catch (_) { /* none kept */ }
+  return (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
+})();
+const t = (k, vars = {}) => (TEXT[lang][k] ?? TEXT.en[k] ?? k).replace(/\{(\w+)\}/g, (_, n) => vars[n] ?? "");
+
+const st = {
+  meta: null, image: null, boot: null, stock: null,  // the release, its images, a chosen stock package
+  access: null, dev: null,                            // the MIDI access; the FM-1 found: { id, kind, version, text }
+  running: false, run: null,                          // the install under way (its screen's state)
+  connErr: null, stockErr: null, demo: null,
+};
+const ver = () => (st.meta ? st.meta.version : "");
+const buildKey = () => [build(),st.meta.version,st.meta.commit || "",st.meta.product,st.meta.sha256?.dual || ""].join(":");
+const pendingInstall = () => { try { return JSON.parse(localStorage.getItem(MARK)); } catch (_) { return null; } };
+const mark = (on) => { try { if (on) localStorage.setItem(MARK,JSON.stringify({key:buildKey(),label:ver()})); else localStorage.removeItem(MARK); } catch (_) { /* not kept */ } };
+
+/* ---- language ---- */
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t, { v: st.meta?.boot?.version ?? "" }); });
+  $("lang").textContent = t("other");
+  $("lang").lang = lang === "ja" ? "en" : "ja";
+  document.querySelectorAll("[data-release-t]").forEach(e=>{e.textContent=releaseText[lang][e.dataset.releaseT] || "";});
+  leaving?.applyLang();
+  render();
+}
+$("lang").addEventListener("click", () => {
+  lang = lang === "ja" ? "en" : "ja";
+  try { localStorage.setItem(LANG, lang); } catch (_) { /* not kept */ }
+  applyLang();
+});
+
+/* ---- the release: release.json, its package and m-bootloader, each checked ---- */
+const sha256 = async (raw) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", raw))].map((b) => b.toString(16).padStart(2, "0")).join("");
+async function fetchBytes(url) {
+  const r = await fetch(url, { cache: "no-cache" });
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+}
+const buildIds = ["dual", "rc-dual", "nightly-dual"];
+const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
+const selection = () => {
+  const kind = build(), dash = kind.indexOf("-");
+  return dash < 0 ? (meta.releases || []).find(r => r.version === $("release").value) || meta : meta[kind.slice(0,dash)];
+};
+let buildEpoch = 0;
+const images = new Map();
+function releaseOptions() {
+  const selected = $("release").value || meta.version;
+  $("release").replaceChildren(...(meta.releases || [meta]).map(r => Object.assign(document.createElement("option"), {
+    value:r.version, textContent:(r.version === meta.version ? "Latest · " : "") + r.version, selected:r.version === selected
+  })));
+  $("advanced-installs").hidden = !meta.rc && !meta.nightly;
+  $("rc-options").hidden = !meta.rc;$("nightly-options").hidden = !meta.nightly;
+  if (meta.rc) $("rc-version").textContent = meta.rc.version;
+  if (meta.nightly) $("nightly-info").textContent = `${meta.nightly.commit.slice(0,7)} · ${meta.nightly.builtAt}`;
+}
+async function loadRelease() {
+  if (st.running) return;
+  const epoch = ++buildEpoch, chosen = selection();
+  if (DEMO) return demoRelease(chosen);
+  st.image = null;st.boot = null;
+  st.meta = {...chosen,boot:meta.boot};render();
+  $("pagefail").hidden = true;
+  try {
+    const key = [build(),chosen.version,chosen.commit || "",chosen.sha256?.dual || ""].join(":");
+    if (!images.has(key)) {
+      const raw = await fetchBytes(chosen.pkg.dual + (chosen.commit ? "?commit=" + chosen.commit : ""));
+      if ((chosen.sha256?.dual && await sha256(raw) !== chosen.sha256.dual) || productOf(raw) !== chosen.product) throw fail("badpkg",t("badpkg"));
+      images.set(key,logicalImage(raw));
+    }
+    if (epoch !== buildEpoch) return;
+    st.image = images.get(key);
+    if (st.dev) st.dev = {id:st.dev.id,...describeDevice(st.dev.id,st.meta.product)};
+    if (meta.boot) {
+      try {
+        const raw = await fetchBytes(meta.boot.pkg);
+        if (await sha256(raw) === meta.boot.sha256 && productOf(raw) === "FM-1_099" && epoch === buildEpoch) st.boot = {image:logicalImage(raw),version:meta.boot.version};
+      } catch (_) { /* as Saadet: a missing or damaged bootloader is never offered */ }
+    }
+    if (epoch !== buildEpoch) return;
+  } catch(e) { if(epoch === buildEpoch) pageFail(t("loadfail",{m:e.message})); }
+  if(epoch === buildEpoch) applyLang();
+}
+buildIds.forEach(k => $("build-" + k).addEventListener("change",loadRelease));
+$("release").addEventListener("change",() => {if(st.running)return;$("build-dual").checked=true;loadRelease();});
+
+/* the demo: a simulated FM-1 (fakefm1.js) and small images of its own; nothing is fetched or written */
+function demoImage(n, seed) { const b = new Uint8Array(n); for (let i = 0; i < n; i++) b[i] = (i * 131 + seed * 7 + (i >> 8)) & 0xFF; return b; }
+function demoRelease(meta) {
+  const version = meta?.version || "1.0";
+  const product = meta?.product || "FM-1_9010000";
+  st.meta = { name: "Melodee", version, product, boot: { version: meta?.boot?.version || "1.2" } };
+  st.image = demoImage(0x30000, 1);
+  st.boot = { image: demoImage(0x4800, 2), version: st.meta.boot.version };
+  $("demo").hidden = false;
+}
+async function demoAccess() {
+  if (DEMO === "none") return { inputs: new Map(), outputs: new Map(), sysexEnabled: true };
+  if (!st.demo) {
+    // fakeAccess is bundled for the exact same Saadet demo.
+    const p = st.meta.product;
+    const opts = {
+      stock: { identity: "FM-1_016" }, melodee: { identity: "FM-1_9000900" }, current: { identity: p },
+      update: { identity: "FM-1_016", state: "loader" }, interrupt: { identity: "FM-1_016", interruptAt: 0.45 },
+      open: { identity: "FM1_OFFICIAL_OPEN" },
+    }[DEMO] || { identity: "FM-1_016" };
+    st.demo = fakeAccess({ images: { firmware: st.image, boot: st.boot.image }, after: p, loader:MELODEE_LOADER, ...opts });
+  }
+  return st.demo.access;
+}
+
+function pageFail(text, demoLink = false) {
+  $("pagefail").hidden = false;
+  $("pagefailtext").textContent = text + " ";
+  if (demoLink) {
+    const a = document.createElement("a");
+    a.href = "?demo";
+    a.textContent = "?demo";
+    $("pagefailtext").append(a);
+  }
+  $("find").disabled = true;
+}
+
+/* ---- finding the FM-1 ---- */
+async function midi() {
+  if (DEMO) return demoAccess();
+  if (!navigator.requestMIDIAccess) throw fail("nomidi", "no Web MIDI");
+  try { return await navigator.requestMIDIAccess({ sysex: true }); }
+  catch (_) { throw fail("denied", "MIDI not allowed"); }
+}
+
+let finding = false;
+async function connect() {
+  if (finding || st.running) return;
+  finding = true;
+  st.connErr = null;
+  render();
+  try {
+    const release = await hold();
+    if (!release) throw fail("busy", "busy");
+    let dev;
+    try { st.access = await midi();dev = await new SteadyUpdater(st.access).find(); }
+    finally { release(); }
+    if (!dev) { st.dev = null; throw fail("notfound", "not found"); }
+    dev.link.close();
+    st.dev = { id: dev.id, ...describeDevice(dev.id, st.meta.product) };
+  } catch (e) {
+    st.dev = null;st.connErr = ["nomidi", "denied", "notfound", "busy", "pending"].includes(e.code) ? e.code : "notfound";
+  }
+  finding = false;
+  render();
+}
+$("find").addEventListener("click", connect);
+$("mboot").addEventListener("change", render);
+
+/* ---- the page's state, drawn ---- */
+function render() {
+  if (!st.meta) return;
+  $("hver").textContent = ver();
+  const dev = st.dev, plan = currentPlan();
+  /* step 1 */
+  const fb = $("find");
+  fb.replaceChildren();
+  if (finding) { const s = document.createElement("span"); s.className = "spin"; fb.append(s, t("finding")); }
+  else fb.append(t(dev || st.connErr ? "findAgain" : "find"));
+  fb.disabled = finding || st.running || !st.image;
+  fb.classList.toggle("primary", !dev);
+  $("connmsg").textContent = st.connErr ? t(st.connErr) : "";
+  $("device").hidden = !dev;
+  if (dev) {
+    const words = { loader: "devLoader", this: "devThis", melodee: "devMelodee", dev: "devDev", stock: "devStock",
+                    open: "devOpen", other: "devOther", model: "devModel" }[dev.kind];
+    $("devwhat").textContent = t(words, { v: dev.version, id: dev.text || dev.id.text });
+    const chip = dev.kind === "loader" ? ["chipResume", "warn"] : dev.kind === "this" ? ["chipCurrent", "ok"]
+      : plan ? ["chipReady", "ok"] : ["chipBlocked", "bad"];
+    $("devchip").textContent = t(chip[0]);
+    $("devchip").className = "chip " + chip[1];
+  }
+  /* step 2: only with m-bootloader's package, never for M-VAVE's firmware */
+  $("st-options").hidden = !st.boot;
+  /* step 3 */
+  const go = $("go");
+  if (!dev || !plan) {
+    go.textContent = t(dev?.kind === "loader" ? "goResume" : "goInstall", { v: ver() });
+    go.disabled = true;
+    $("gohint").hidden = !!dev;
+    $("plantext").textContent = !dev ? t("s3p") : t(dev.kind === "open" ? "planOpen" : "planModel", { id: dev.id.text });
+  } else {
+    const label = plan.resume ? "goResume" : !plan.firmware ? "goBoot" : dev.kind === "this" ? "goReinstall"
+      : ["melodee", "dev"].includes(dev.kind) ? "goUpdate" : "goInstall";
+    go.textContent = t(label, { v: ver() });
+    go.disabled = st.running || finding || !st.image;
+    $("gohint").hidden = true;
+    const words = plan.resume ? "planResume" : !plan.firmware ? "planBoot" : dev.kind === "this" ? "planThis"
+      : ["melodee", "dev"].includes(dev.kind) ? "planUpdate" : "planInstall";
+    $("plantext").textContent = t(words, { v: ver() });
+  }
+  $("st-connect").dataset.state = dev ? "done" : "active";
+  $("st-options").dataset.state = dev && plan ? "active" : "todo";
+  $("st-install").dataset.state = dev && plan ? "active" : "todo";
+  $("release").disabled = $("mboot").disabled = st.running || finding;
+  buildIds.forEach(k => { $("build-" + k).disabled = st.running || finding; });
+  leaving?.lock(st.running || finding);
+  /* an unfinished install: kept from an earlier visit, or the FM-1 itself in update mode */
+  let pending = false;
+  try { pending = !!localStorage.getItem(MARK); } catch (_) { /* unknown */ }
+  if (pending && dev && dev.kind !== "loader" && !st.running) { mark(false); pending = false; }   /* it finished after all */
+  $("resumebanner").hidden = !(pending || dev?.kind === "loader");
+}
+
+function currentPlan() {
+  if (!st.dev) return null;
+  return planFor(st.meta.product === "FM-1_900" && st.dev.kind === "this" ? "dev" : st.dev.kind, !!st.boot && $("mboot").checked);
+}
+
+/* ---- before writing: the rules, and the backup (asked every time) ---- */
+function preflight(plan) {
+  const d = $("preflight");
+  $("pfboot").hidden = !plan.boot;
+  $("pfboot").lastElementChild.textContent = t(plan.firmware ? "pfboot" : "pfbootonly");
+  const askBackup = plan.firmware && !plan.resume;   /* in update mode there is no firmware running to back up */
+  $("pfcheck").hidden = !askBackup;
+  $("pfok").checked = false;
+  $("pfgo").disabled = askBackup;
+  d.showModal();
+  (askBackup ? $("pfok") : $("pfgo")).focus();
+  /* answered by the button itself (submit), not the dialog's close event, which a browser may hold back while
+     the page is not drawn */
+  return new Promise((resolve) => {
+    const form = d.querySelector("form");
+    const done = (go) => {
+      form.removeEventListener("submit", submit);
+      d.removeEventListener("cancel", cancel);
+      d.close();
+      resolve(go);
+    };
+    const submit = (e) => { e.preventDefault(); if (e.submitter?.value !== "go" || !askBackup || $("pfok").checked) done(e.submitter?.value === "go"); };
+    const cancel = (e) => { e.preventDefault(); done(false); };
+    form.addEventListener("submit", submit);
+    d.addEventListener("cancel", cancel);
+  });
+}
+$("pfok").addEventListener("change", () => { $("pfgo").disabled = !$("pfok").checked; });
+
+/* ---- the install's screen ---- */
+const ICON = { done: "#i-check", paused: "#i-pause", safe: "#i-info", restart: "#i-alert", partial: "#i-alert" };
+const FAVICON = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='${c}'/></svg>`)}`;
+const baseTitle = document.title;
+
+function log(line) {
+  const el = $("log"), atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  el.append(line + "\n");
+  if (atEnd) el.scrollTop = el.scrollHeight;
+}
+
+function phasesFor(plan) {
+  return [plan.firmware && !plan.resume && "prepare", plan.firmware && "write", plan.firmware && "restart", plan.boot && "boot"].filter(Boolean);
+}
+
+function openRun(plan, isStock) {
+  const r = { plan, isStock, pct: 0, phase: null, writeAt: 0, lastAt: Date.now(), hiddenPct: 0, list: phasesFor(plan) };
+  st.run = r;
+  const d = $("run");
+  $("legacy-actions").hidden = true;
+  d.dataset.state = "running";
+  $("end").hidden = true;
+  $("log").textContent = "";
+  $("backnote").hidden = $("stall").hidden = true;
+  $("eta").textContent = "";
+  $("runtitle").textContent = t(isStock ? "runStock" : plan.resume ? "runResume" : plan.firmware ? "runInstall" : "runBoot", { v: ver() });
+  document.querySelectorAll("#phases li").forEach((li) => { li.hidden = !r.list.includes(li.dataset.ph); li.className = ""; });
+  setPct(0);
+  setStep(plan.resume ? "stFind" : "stStart", r.list[0]);
+  $("favicon").href = FAVICON("#d08a00");
+  if (!d.open) d.showModal();
+}
+$("run").addEventListener("cancel", (e) => { if (st.running) e.preventDefault(); });
+
+function setPct(p) {
+  const r = st.run;
+  r.pct = Math.max(r.pct, Math.min(100, Math.floor(p)));
+  $("pct").textContent = r.pct;
+  $("barfill").style.width = r.pct + "%";
+  $("bar").setAttribute("aria-valuenow", r.pct);
+  document.title = document.visibilityState === "hidden" ? t("titleHidden", { p: r.pct }) : t("titleRun", { p: r.pct });
+}
+
+function setStep(key, phase) {
+  const r = st.run;
+  $("runstep").textContent = t(key);
+  if (phase && phase !== r.phase) {
+    r.phase = phase;
+    const at = r.list.indexOf(phase);
+    document.querySelectorAll("#phases li").forEach((li) => {
+      const i = r.list.indexOf(li.dataset.ph);
+      li.className = i < 0 ? "" : i < at ? "past" : i === at ? "now" : "";
+    });
+  }
+  $("bar").classList.toggle("indet", phase === "boot" && !r.plan.firmware);
+}
+
+// fm1ota.js's steps -> the screen. The firmware fills the bar, or most of it when m-bootloader follows.
+function stepper(pm) {
+  const r = st.run, share = r.plan.boot ? (r.plan.firmware ? 0.94 : 0) : 1;
+  return (k, a, b) => {
+    log(`${k} ${a ?? ""}${b != null ? " " + b : ""}`);
+    r.lastAt = Date.now();
+    $("stall").hidden = true;
+    if (k === "start") setStep("stStart", "prepare");
+    else if (k === "verify") { setStep("stVerify", "prepare"); setPct(pm.verify(b) * share); }
+    else if (k === "loader") setStep("stLoader", "prepare");
+    else if (k === "write") {
+      if (!r.writeAt) r.writeAt = Date.now() - 1;
+      setStep("stWrite", "write");
+      setPct(pm.writing(b) * share);
+      const s = remaining(b, pm.write, Date.now() - r.writeAt);
+      $("eta").textContent = s == null ? "" : s >= 60 ? t("etaMin", { n: Math.ceil(s / 60) }) : t("etaSec");
+    } else if (k === "reboot") { $("eta").textContent = ""; setStep("stReboot", "restart"); setPct(99 * share); }
+    else if (k === "done" && r.plan.boot) setStep("stBootWait", "boot");
+    else if (k === "bootstart") { setStep("stBoot", "boot"); setPct(share ? 96 : 30); }
+    else if (k === "bootwrite") { setStep("stBoot", "boot"); setPct(share ? 98 : 70); }
+  };
+}
+
+// no progress for a while during a transfer: say what the page is waiting for (UI only)
+setInterval(() => {
+  const r = st.run;
+  if (!st.running || !r || !["prepare", "write"].includes(r.phase)) return;
+  $("stall").hidden = Date.now() - r.lastAt < 12000;
+}, 1000);
+
+function away(ms) {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? t("sec", { n: s }) : t("min", { n: Math.round(s / 60) });
+}
+const onHidden = () => {
+  const r = st.run;
+  if (!r) return;
+  r.hiddenPct = r.pct;
+  document.title = t("titleHidden", { p: r.pct });
+};
+const onVisible = (ms) => {
+  const r = st.run;
+  if (!r || !st.running) return;
+  document.title = t("titleRun", { p: r.pct });
+  if (ms < 1500) return;
+  const kept = r.pct > r.hiddenPct || r.phase === "restart" || r.phase === "boot";
+  $("backtext").textContent = t(kept ? "backKept" : "backSlow", { s: away(ms) });
+  $("backnote").hidden = false;
+};
+
+function endRun(state, err) {
+  const r = st.run, plan = r.plan, v = { v: ver() };
+  const d = $("run");
+  d.dataset.state = state;
+  $("end").hidden = false;
+  $("endicon").setAttribute("href", ICON[state]);
+  const tips = [], acts = [];
+  const button = (key, primary, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn" + (primary ? " primary" : "");
+    b.textContent = t(key);
+    b.addEventListener("click", fn);
+    acts.push(b);
+  };
+  const link = (key, href, primary) => {
+    const a = document.createElement("a");
+    a.className = "btn" + (primary ? " primary" : "");
+    a.href = href;
+    a.textContent = t(key);
+    a.style.textDecoration = "none";
+    acts.push(a);
+  };
+  const reason = err ? (err.code && TEXT.en["e_" + err.code] ? t("e_" + err.code, { d: err.detail }) : t("e_other", { m: err.message })) : "";
+  let title, text;
+  if (state === "done") {
+    if (r.isStock) { title = t("endStockH"); text = t("endStock"); }
+    else if (!plan.firmware) { title = t("endBootH"); text = t("endBoot", v); tips.push(t("tipBoot")); }
+    else {
+      title = t(plan.boot ? "endDoneBootH" : "endDoneH", v);
+      text = t("endDone", v);
+      tips.push(t("tipEditor"));
+      if (plan.boot) tips.push(t("tipBoot"));
+    }
+    if (!r.isStock) { link("btnEditor", "../editor/", true); link("btnManual", "../manual/"); }
+    button("btnClose", r.isStock, closeRun);
+    setPct(100);
+    document.title = t("titleDone");
+    $("favicon").href = FAVICON("#1f8a46");
+  } else if (state === "paused") {
+    title = t("endPausedH"); text = t("endPaused");
+    tips.push(reason, t("tipCable"), t("tipApps"), t("tipResume"));
+    st.dev = { id: { text: "ota-FM-1", model: "ota-FM-1" }, kind: "loader" };
+    button("btnResume", true, () => { closeRun(); start(); });
+    button("btnClose", false, closeRun);
+  } else if (state === "restart") {
+    title = t("endRestartH"); text = err?.code === "mismatch" ? reason : t("endRestart");
+    tips.push(t("tipStill"), t("tipBrick"));
+    st.dev = null;
+    button("btnClose", true, closeRun);
+  } else if (state === "partial") {
+    title = t("endPartialH"); text = t("endPartial", v);
+    if (reason) tips.push(reason);
+    button("btnClose", true, closeRun);
+  } else {
+    title = t("endSafeH"); text = t("endSafe");
+    if (reason) tips.unshift(reason);
+    tips.push(t("tipCable"), t("tipApps"));
+    button("btnRetry", true, () => { closeRun(); connect(); });
+    button("btnClose", false, closeRun);
+  }
+  $("endtitle").textContent = title;
+  $("endtext").textContent = text;
+  $("endtips").replaceChildren(...tips.filter(Boolean).map((x) => Object.assign(document.createElement("li"), { textContent: x })));
+  $("endactions").replaceChildren(...acts);
+  if (state !== "done") { document.title = baseTitle; $("favicon").href = FAVICON(state === "safe" ? "#777" : "#d08a00"); }
+  (acts[0] || $("endtitle")).focus();
+}
+
+function closeRun() {
+  $("run").close();
+  document.title = baseTitle;
+  render();
+}
+
+/* ---- the install ---- */
+async function resumeWrite(up, image, product, step) {
+  const ota = await up.waitFor(IS_OTA,8000);
+  if (!ota) throw fail("noloader","FM-1 in update mode not found");
+  ota.link.close();
+  if (ota.id.text !== MELODEE_LOADER) throw fail("wrongloader",`This package requires ${MELODEE_LOADER}; found ${ota.id.text}`,ota.id.text);
+  if (!await up.resume(image,step,product,MELODEE_LOADER)) throw fail("stopped","The update did not finish");
+}
+async function start(isStock = false) {
+  if (st.running || finding) return;
+  const plan = isStock ? { firmware: true, resume: st.dev?.kind === "loader", boot: false } : currentPlan();
+  if (!plan) return;
+  const pending = pendingInstall();
+  if (plan.resume && pending?.key && pending.key !== buildKey()) {
+    st.connErr = "pending";render();return;
+  }
+  st.running = true;                                  /* from the first click: a second one starts nothing */
+  render();
+  let release;
+  try {
+    release = await hold({ leaveText:t("leave"),onHidden,onVisible });
+    if (release && !await preflight(plan)) { release();release=false; }
+  } catch (e) { st.running=false;render();throw e; }
+  if (!release) {
+    st.running = false;
+    if (release === null) st.connErr = "busy";
+    render();
+    return;
+  }
+  render();
+  openRun(plan, isStock);
+  const image = isStock ? st.stock.image : st.image;
+  const product = isStock ? st.stock.product : st.meta.product;
+  const step = stepper(progressModel(image, plan.resume));
+  let phase = "start", state = "done", error = null;
+  if (plan.firmware) mark(true);
+  try {
+    if (!st.access) st.access = await midi();
+    const up = new SteadyUpdater(st.access,log);
+    if (plan.firmware) {
+      if (plan.resume) { phase = "staged"; await resumeWrite(up, image, product, step); }
+      else {
+        await up.install(image, product, (k, a, b) => { if (k === "loader") phase = "staged"; step(k, a, b); },
+                         MELODEE_LOADER);
+      }
+      phase = "done";
+      mark(false);
+    }
+    if (plan.boot) { phase = "boot"; await up.installBoot(st.boot.image, product, step); }
+  } catch (e) {
+    {
+      state = afterFailure(e?.code, phase);
+      error = e;
+      if (state === "safe") mark(false);
+      log(String(e?.stack || e));
+    }
+  }
+  st.running = false;
+  release();
+  if (state === "done") st.dev = null;               /* what it runs now is shown on the next Find */
+  endRun(state, error);
+  render();
+}
+$("go").addEventListener("click", () => start(false));
+
+/* ---- the crash report: the firmware's log readout (F0 7D 4C 47 F7 asks; a frame a line, "end" last) ---- */
+const LG = [0x7D, 0x4C, 0x47];
+$("reportgo").addEventListener("click", async () => {
+  const say = k => { $("reportstatus").textContent=t(k); };
+  if (st.running || finding) return;
+  const release=await hold();
+  if (!release) { say("busy");return; }
+  st.running=true;render();$("reportgo").disabled=true;say("reportwait");
+  const lines=[];let dev;
+  try {
+    st.access=st.access || await midi();
+    dev=await new SteadyUpdater(st.access).find(id=>!IS_OTA(id));
+    if (dev) {
+      lines.push(`${dev.id.text} (${dev.name}), ${new Date().toISOString()}`);
+      dev.link.drain();dev.link.send([0xF0,...LG,0xF7]);
+      const end=Date.now()+4000;
+      while(Date.now()<end) {
+        const p=await dev.link.read(end-Date.now());
+        if(!p) break;
+        if(p.length<5 || p[1]!==LG[0] || p[2]!==LG[1] || p[3]!==LG[2]) continue;
+        const text=String.fromCharCode(...p.slice(4,-1));
+        if(text==="end") break;
+        lines.push(text);
+      }
+    }
+    if(lines.length<2) { say("reportnone");return; }
+    $("report").value=lines.join("\n");$("report").hidden=$("reportcopy").hidden=false;say("reportok");
+  } catch(e) { say(e.code && TEXT.en[e.code] ? e.code : "reportnone"); }
+  finally {dev?.link.close();release();st.running=false;$("reportgo").disabled=false;render();}
+});
+$("reportcopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("report").value); $("reportstatus").textContent = t("reportcopied"); }
+  catch (_) { $("report").select(); }
+});
+
+const leaving = setupLeaving({
+  getLanguage:()=>lang, isBusy:()=>st.running || finding,
+  setBusy:on=>{st.running=on;render();},log
+});
+const releaseText = {
+ en:{releaseTitle:"Stable version",dual:"Standard",advancedTitle:"Advanced installs (RC · Nightly)",rcTitle:"Release candidate","rc-dual":"Release candidate",rcWhy:"A test build of the next release.",nightlyTitle:"Nightly","nightly-dual":"Nightly",nightlyWhy:"The current development build. Back up before updating."},
+ ja:{releaseTitle:"安定版のバージョン",dual:"標準",advancedTitle:"詳細（RC・Nightly）",rcTitle:"リリース候補","rc-dual":"リリース候補",rcWhy:"次のリリースのテスト版です。",nightlyTitle:"Nightly","nightly-dual":"Nightly",nightlyWhy:"現在の開発版です。先にバックアップしてください。"}
+};
+/* ---- start ---- */
+(async () => {
+  releaseOptions();
+  applyLang();
+  await loadRelease();
+  applyLang();
+  if (!st.image) return;
+  /* MIDI already allowed (a returning visit, or a reload during an install): look without asking */
+  let granted = !!DEMO && DEMO !== "none" && params.has("auto");
+  try {
+    if (!DEMO && navigator.permissions && navigator.requestMIDIAccess) {
+      granted = (await navigator.permissions.query({ name: "midi", sysex: true })).state === "granted";
+    }
+  } catch (_) { /* unknown: wait for the button */ }
+  if (granted) connect();
+})();
+
+})();
 </script>
-</body></html>
+</body>
+</html>
