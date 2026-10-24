@@ -21,11 +21,17 @@ OPTIONS = tuple("MELODEE_" + name for name in (
 
 
 class PerformanceDefaultsTest(unittest.TestCase):
+    def setUp(self):
+        # Clearing Melodee options must not strip PATH or toolchain settings
+        # from the compiler subprocess (hosted Linux compilers need them).
+        self.compiler_env = os.environ.copy()
+
     def macros(self, overrides=()):
         result = subprocess.run([
             "cc", "-E", "-dM", "-x", "c", *overrides,
             "-include", str(ROOT / "firmware/src/performance_options.h"), "-"],
-            input="", capture_output=True, text=True, check=True)
+            input="", capture_output=True, text=True, env=self.compiler_env)
+        self.assertEqual(result.returncode, 0, result.stderr)
         return dict(re.findall(r"^#define (MELODEE_\w+) ([01])$", result.stdout, re.M))
 
     def test_clean_local_build_enables_every_optimization(self):
