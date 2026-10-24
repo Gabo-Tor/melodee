@@ -817,6 +817,7 @@ static void recording_fire(track_t *t, uint32_t i, uint32_t period, uint32_t lat
     if (!gate) gate = 1;
     drum_event_pitch=r->pitch; drum_event_length=recorded_gate(r)?gate:0;
     trk_note_on(t, r->note, r->vel);
+    chord_auto_observe(t, r->note);
     drum_event_pitch=0; drum_event_length=0;
     uint32_t was = recording_sounding(i), remaining = gate > late ? gate - late : 0u;
 #if MELODEE_RECORD_QUEUE

@@ -340,6 +340,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
         if (rec_on(t))
             rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
         trk_note_on(t, t->arp_note, 100);
+        chord_auto_observe(t, t->arp_note);
     }
 }
 
@@ -669,6 +670,7 @@ static int rec_note_start(track_t *t);
 static void seq_advance(uint32_t n);
 static void input_on(track_t *t, uint32_t note, uint32_t vel)
 {
+    if (vel) chord_auto_observe(t, note);
     uint32_t started = vel && rec_note_start(t);
     countin_note(t,note,vel);
     last_note = (uint8_t)note;
@@ -1010,6 +1012,7 @@ static void recording_quantize(track_t *t)
 
 static void seq_stop(void)
 {
+    for (uint32_t k = 0; k < NTRK; k++) chord_auto_forget(k);
     punch.req=-1; punch.keybit=0;
     for (uint32_t t = 0; t < NTRK; t++) midi_insert_cancel(t);
     kb_strum_pending = midi_strum_pending = 0; /* STOP cancels the unplayed part of live sweeps. */
@@ -1084,8 +1087,10 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     if (!slide_in)
         seq_release(t);
     for (i = 0; i < m; i++)
-        if (!((sk >> i) & 1u))
+        if (!((sk >> i) & 1u)) {
             trk_note_on(t, nn[i], vv[i]);
+            chord_auto_observe(t, nn[i]);
+        }
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < m && nn[j] != t->seq_notes[i]; j++)
@@ -1278,6 +1283,7 @@ static void seq_advance(uint32_t n)
 /* everything that happens between two rendered blocks */
 static void events_block(uint32_t n)
 {
+    chord_auto_tick(n);
     uint32_t i, pr;
     if(song.playing || transport_req==1u)resource_release(RES_NOTE_HISTORY);
     uint32_t selected_clock = (uint32_t)song.g[G_CLOCK];

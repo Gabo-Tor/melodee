@@ -135,6 +135,10 @@ static void ui_power_on(void)
     kb_strum_pending = midi_strum_pending = 0;
     memset(kb_strum, 0, sizeof kb_strum);
     memset(chord_alternate, 0, sizeof chord_alternate);
+    memset(chord_auto, 0, sizeof chord_auto);
+    memset(chord_melody, 0, sizeof chord_melody);
+    chord_auto_clock = 0;
+    chord_auto_enabled = 0;
     memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&song, 0, sizeof song);
     memset(&chain, 0, sizeof chain);

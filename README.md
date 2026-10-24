@@ -482,7 +482,9 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
 - **Patterns:** eight independent 64-step banks per track, with up to four notes per step, ties,
   chance, drum hits and bank-specific motion (64 automation events shared across the project)
 - **Songs:** up to 16 rows, each choosing a bank for every track and repeating 1–16 times
-- **Chord keys:** one finger plays an in-key chord (triads or sevenths of the scale, or fixed chord
+- **Chord keys:** AUTO chooses scale-compliant Western chords with melodic context and smooth voice leading;
+  AUTO2 keeps your played melody on top with stable harmony underneath;
+  one finger also plays the scale's triads or sevenths, or fixed chord
   shapes), with voicings; on the keys, MIDI in, recording and the arpeggiator
 - **Arpeggiator** with REPEAT and a beat LED, 70 scales with a white-key mode, glide,
   MONO / LEGATO / UNISON
@@ -1028,7 +1030,48 @@ hits: 12 Ride, 13 Kick, 14 Snare, 15 Closed hat and 16 Open hat. Each pad retrig
 while its duplicate is held. Normal MIDI drum notes outside MPC mode and existing recorded patterns keep their GM mapping.
 
 On the **CHORD** page, CHRD picks the chord keys (OFF, the scale's triads or
-sevenths, or a fixed shape) and VOIC the voicing.
+sevenths, a fixed shape, AUTO or AUTO2) and VOIC the voicing.
+
+**AUTO** chooses three- or four-note chords using only pitches in the selected Western scale
+(the first 16 scales, including pentatonic, blues, whole-tone and diminished). It prefers familiar
+triads, uses suspended or seventh chords when supported by the melody or the previous chord,
+and favours a dominant seventh for ii/IV → V and a triad for V → I when the scale permits them.
+Each key supplies the chord root; an out-of-scale root takes the scale note below it, or the next
+available note at the bottom of the MIDI range. TRN shifts the complete harmonic scale.
+CHR permits all twelve notes and defaults to major triads; it does not assume a hidden major key.
+
+With VOIC CLOSE, AUTO chooses nearby inversions to connect chords smoothly. OPEN, INV1, INV2 and
++OCT override this automatic voicing. At MIDI endpoints it moves the complete chord by octaves
+instead of dropping notes. Recent chords and melody on other unmuted melodic tracks with CHRD OFF
+guide the choice; live, arpeggiated and sequenced melody onsets are remembered for two beats.
+Held live notes and sounding step notes also count. Drums, slices, microtonal tracks and generated
+chords do not supply melodic context. AUTO chooses at each press and freezes the notes through
+release, sustain and strumming. UI previews do not change its history. A two-beat pause, STOP,
+panic or a scale/root/transpose/layout/voicing change starts a fresh harmonic phrase.
+
+The CHORD page shows the chosen chord name. When no supported named chord fits a root, AUTO uses
+a three-note in-scale collection labelled `set`, rather than adding forbidden pitches.
+This is automatic accompaniment, not recognition of a song's intended chord chart. Mono modes play
+only the mapped root and kits retain their own mapping. AUTO plays the input note alone for
+microtonal selections; use the existing DIA3/DIA7 or fixed modes there. Existing chord mode IDs,
+saved songs and manually recorded notes retain their meaning. Recordings store the chosen notes,
+so playback reproduces the take rather than reharmonizing it.
+
+**AUTO2** is the second automatic option, for playing a tune with harmony underneath.
+The key supplies the melody, rather than the chord root: its mapped note is always the highest
+note. AUTO2 chooses a familiar three-note chord containing that melody, entirely within the
+selected Western scale. It favours tonic harmony and familiar major/minor triads, with augmented,
+diminished and suspended alternatives when needed. The chord for a key stays the same regardless
+of previous presses, timing, or notes on other tracks. Original AUTO keeps its existing behaviour.
+
+With CLOSE, accompaniment sits within the octave below the melody. OPEN lowers the bottom voice;
+INV1/INV2 choose the third/fifth as bass (doubling the melody below when necessary), and +OCT adds
+a lower root. All keep the melody fixed at the top. With strumming, the melody sounds immediately;
+DOWN/UP/ALT order the accompaniment after it. At the bottom of the MIDI range unavailable lower
+voices are omitted instead of shifting your melody. Out-of-scale inputs follow the same downward
+mapping as AUTO; QNT ALL makes successive keys walk scale degrees. Mono modes play the mapped
+melody alone; kits and microtonal selections keep the same bypass policy as AUTO. The CHORD page
+labels the actual harmony and highlights the melody key. Recordings keep the notes you heard.
 
 ## Layout
 

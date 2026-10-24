@@ -413,6 +413,10 @@ static void graph_chord(const track_t *t, uint16_t c)
         panel_note("NO CHORDS ON KITS", 0, 0);
         return;
     }
+    if ((t->p[P_CHRD] == CH_AUTO || t->p[P_CHRD] == CH_MELODY) && micro_scale(t)) {
+        panel_note("AUTO: WESTERN SCALES", "CHOOSE DIA3 OR DIA7", 0);
+        return;
+    }
     if (micro_active(t)) {
         if (chord_last[k].n) {
             n = chord_last[k].n;
@@ -432,12 +436,15 @@ static void graph_chord(const track_t *t, uint16_t c)
         for (i = 0; i < n; i++)
             nn[i] = chord_last[k].note[i];
     } else {
-        n = chord_make(t, (uint32_t)(60 + t->p[P_ROOT]), nn, &r, &mask);
+        n = chord_make(t, (uint32_t)clamp(60 + t->p[P_ROOT] + (t->p[P_CHRD] == CH_AUTO || t->p[P_CHRD] == CH_MELODY ? t->p[P_TRANS] : 0), 0, 127), nn, &r, &mask);
         cap = "ON ROOT";
     }
     if (trk_vmode(t) != V_POLY)
         cap = "ROOT ONLY";                              /* MONO / LEGATO / UNISON */
-    chord_name(b, (uint32_t)r, mask);
+    if (t->p[P_CHRD] == CH_MELODY) cap = "MELODY";
+    if (t->p[P_CHRD] == CH_MELODY) chord_melody_name(b, (uint32_t)r, mask);
+    else if (t->p[P_CHRD] == CH_AUTO) chord_auto_name(b, (uint32_t)r, mask);
+    else chord_name(b, (uint32_t)r, mask);
     cv_text_on(14, ty_y(18, TY_VL), TY_VL, b, T_TEXT, T_SURF);
     cv_text_r(226, ty_y(18, TY_LB), TY_LB, cap, T_MID, T_SURF);
     lo = nn[0] - nn[0] % 12u;
@@ -449,7 +456,7 @@ static void graph_chord(const track_t *t, uint16_t c)
         for (j = 0; j < n; j++)
             on |= nn[j] == note;
         cv_rrect(x, BLACK[note % 12u] ? 36 : 62, (int32_t)w - 2, 48, w > 6u ? 3 : 2,
-                 !on ? T_RAISE : note % 12u == (uint32_t)r % 12u ? T_ACCENT : c, T_SURF);
+                 !on ? T_RAISE : (t->p[P_CHRD] == CH_MELODY ? note == nn[n - 1u] : note % 12u == (uint32_t)r % 12u) ? T_ACCENT : c, T_SURF);
     }
 }
 

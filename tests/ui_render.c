@@ -454,7 +454,7 @@ static void eng(uint32_t e) { set_engine_of(TSEL, e); }
 
 enum { S_HOME, S_HOME_IDLE, S_HOME_NOTE, S_HOME_CHORD, S_HOME_INVERSION, S_HOME_WIDE, S_HOME_RELEASED, S_HOME_FM6, S_MESSAGE, S_MESSAGE_KEY, S_PRESETS, S_PRESETS_NOFAV, S_PRESETS_CAT, S_PRESETS_PENDING, S_PRESETS_RECENT, S_USER, S_PROJECT, S_PROJECT_BOOT, S_TEMPO,
        S_SONG_EMPTY, S_SONG, S_STEP, S_PATTERN, S_MOTION, S_DRUM, S_MIXER, S_MIXER_PAN,
-       S_ENV, S_ENVDEST, S_LFO, S_MOD, S_SCL, S_CHORD, S_CHORD_WIDE, S_CHORD_OFF, S_CHORD_KIT, S_ARP, S_VOICE, S_GLOBAL, S_SYSTEM,
+       S_ENV, S_ENVDEST, S_LFO, S_MOD, S_SCL, S_CHORD, S_CHORD_WIDE, S_CHORD_OFF, S_CHORD_KIT, S_CHORD_AUTO, S_CHORD_AUTO_SET, S_CHORD_AUTO_MICRO, S_CHORD_MELODY, S_CHORD_MELODY_OPEN, S_ARP, S_VOICE, S_GLOBAL, S_SYSTEM,
        S_EDIT_SID, S_EDIT_DIGITAL, S_OP_ENV, S_EDIT_WHEEL, S_EDIT_PHYS,
        S_ALG1, S_ALG2, S_ALG3, S_ALG4, S_ALG5, S_ALG6, S_ALG7, S_ALG8, S_OP_LEVEL,
        S_FM6_ALG1, S_FM6_ALG5, S_FM6_ALG22, S_FM6_ALG32, S_FM6_FREQ, S_FM6_EG, S_FM6_PEG, S_FM6_STORE, S_CZ1_ENV,
@@ -486,7 +486,7 @@ enum { S_HOME, S_HOME_IDLE, S_HOME_NOTE, S_HOME_CHORD, S_HOME_INVERSION, S_HOME_
        S_FX_MIDIVERB, S_FX_MIDIDELAY, S_FX_MIDI_RACK, S_FX_MIDI_LIST, S_PUNCH_PEEK, S_PUNCH_ACTIVE, S_PUNCH_LOCK, S_PUNCH_MEMORY, S_PUNCH_END, S_REVERB, S_PEDAL_DRIVE, S_PEDAL_CRUSH, S_PEDAL_PHASER, S_PEDAL_CHORUS, S_PEDAL_FLANGER, S_PUNCH_LOOP, S_PEDAL_FOLD, S_STAGE_MIDI, S_STAGE_MIDI_PARTIAL, S_MIXER_MIDI, S_PATGRID_MIDI, S_SONG_MIDI, S_GLO_MIDI, S_MENU_MIDI_GENERAL, S_MENU_MIDI_MINILAB, S_MENU_MIDI_MODE, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "home_chord", "home_inversion", "home_wide", "home_released", "home_fm6", "message", "message_key", "presets", "presets_nofav", "presets_cat", "presets_pending", "presets_recent", "user",
     "project", "project_boot", "tempo", "song_empty", "song", "step", "pattern", "motion", "drum",
-    "mixer", "mixer_pan", "env", "env_dest", "lfo", "mod", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
+    "mixer", "mixer_pan", "env", "env_dest", "lfo", "mod", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "chord_auto", "chord_auto_set", "chord_auto_micro", "chord_melody", "chord_melody_open", "arp",
     "voice", "global", "system", "edit_sid", "edit_fm6", "op_env", "edit_wheel",
     "edit_phys", "alg_1", "alg_2", "alg_3", "alg_4", "alg_5", "alg_6", "alg_7", "alg_8", "op_level", "fm6_alg_01", "fm6_alg_05", "fm6_alg_22", "fm6_alg_32", "fm6_freq", "fm6_eg", "fm6_peg", "fm6_store", "cz1_env", "confirm_seq", "confirm_project", "confirm_user",
     "confirm_motion", "confirm_erase", "menu", "about", "about_rec", "about_credits", "about_end", "uboot", "calibration",
@@ -1300,6 +1300,27 @@ static void setup(int s)
     }
     case S_CHORD_OFF: go_title("CHORD"); break;
     case S_CHORD_KIT: eng(ENGI_DRUM); TSEL->p[P_CHRD] = CH_DIA3; go_title("CHORD"); break;
+    case S_CHORD_AUTO:
+    case S_CHORD_AUTO_SET:
+    case S_CHORD_AUTO_MICRO: {
+        uint8_t out[CHORD_MAX];
+        eng(HOST_SYNTH); TSEL->p[P_VOICE] = V_POLY; TSEL->p[P_CHRD] = CH_AUTO;
+        TSEL->p[P_ROOT] = TSEL->p[P_TRANS] = 0; TSEL->p[P_QUANT] = Q_ALL;
+        TSEL->p[P_SCALE] = s == S_CHORD_AUTO_SET ? 12 : s == S_CHORD_AUTO_MICRO ? 31 : 1;
+        if (s == S_CHORD_AUTO) chord_build(TSEL, 62, out);
+        chord_build(TSEL, s == S_CHORD_AUTO_SET ? 66 : 67, out);
+        go_title("CHORD"); break;
+    }
+    case S_CHORD_MELODY:
+    case S_CHORD_MELODY_OPEN: {
+        uint8_t out[CHORD_MAX];
+        eng(HOST_SYNTH); TSEL->p[P_VOICE] = V_POLY; TSEL->p[P_CHRD] = CH_MELODY;
+        TSEL->p[P_ROOT] = 7; TSEL->p[P_TRANS] = 0; TSEL->p[P_QUANT] = Q_ALL;
+        TSEL->p[P_SCALE] = 2; TSEL->p[P_VOIC] = s == S_CHORD_MELODY_OPEN ? VC_OPEN : VC_CLOSE;
+        TSEL->p[P_STRUM] = 2;
+        chord_build(TSEL, 67, out);
+        go_title("CHORD"); break;
+    }
     case S_ARP: go_title("ARP"); break;
     case S_VOICE: go_title("VOICE"); break;
     case S_GLOBAL: go_title("GLOBAL"); break;

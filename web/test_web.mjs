@@ -278,9 +278,15 @@ async function editorMock() {
     /* the chord keys (core.h P_CHRD, P_VOIC = 81, 82, just before P_E0 83): the track's, a factory preset keeps them */
     const c0 = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 81)));
     const c1 = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 82)));
-    ok(c0.label === "CHRD" && c0.names.join() === "OFF,DIA3,DIA7,MAJ,MIN,DOM7,MAJ7,MIN7,SUS4,POW" && c0.def === 0 &&
+    ok(c0.label === "CHRD" && c0.names.join() === "OFF,DIA3,DIA7,MAJ,MIN,DOM7,MAJ7,MIN7,SUS4,POW,AUTO,AUTO2" && c0.def === 0 &&
        c1.label === "VOIC" && c1.names.join() === "CLOSE,OPEN,INV1,INV2,+OCT" && c1.def === 0,
       "editor: the chord keys 81, 82 over DESC");
+    for (const mode of [10, 11]) {
+      await rq(E.req.set(0, 81, mode));
+      await rq(E.req.preset(3, 3));
+      ok(E.parse[E.CMD.DUMP](await rq(E.req.dump()), info).p[81] === mode,
+        `editor: appended ${mode === 10 ? "AUTO" : "AUTO2"} chord mode can be selected and survives a sound load`);
+    }
     const strum = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 114)));
     const stroke = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 115)));
     ok(strum.label === "STRUM" && strum.names.join() === "OFF,1/8,1/16,1/32,1/64,1/128,16T,32T" &&
