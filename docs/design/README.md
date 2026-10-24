@@ -179,6 +179,7 @@ place status cards over knobs, lists, waveforms, or notes.
   otherwise it shows the shared keyboard octave. It updates on track/mode changes and disappears at zero.
   In MPC mode the latest accepted pad note selects its track silently; use the normal track context and
   octave pill, without a “MIDI IN → T…” action message. Note-offs and ignored pads do not change selection.
+  Normal channel-routed MIDI also produces no action message and retains the manually selected track.
 - **Screens with their own headers:** while waiting, use the shared transport header; restore the screen's header
   on start, cancel, or a change to a track that is not waiting. Dialogs and pickers retain the header above them.
 

@@ -47,7 +47,7 @@ static void step_midi_edge(uint32_t track, uint32_t pitch, uint32_t on, uint32_t
 }
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
 #define MIDI_TRACK_FOLLOW 0x80u
-static volatile uint8_t midi_hint;       /* track + 1; MPC sets FOLLOW for silent UI selection, otherwise a notice */
+static volatile uint8_t midi_hint;       /* MPC only: FOLLOW | (track + 1), for silent UI selection */
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 

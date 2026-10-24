@@ -1695,7 +1695,6 @@ static void page_tap(uint32_t b)
 /* messages of things that happened elsewhere (a load, the editor, MIDI in): after this frame's own */
 static void ui_notices(void)
 {
-    static uint32_t midi_t, midi_last;
     if (motion_full) { motion_full = 0; ui_message("MOTION FULL"); }
     if (pattern_full) { pattern_full = 0; ui_message("PATTERN STORAGE FULL"); }
     if (recording_quant_blocked) { recording_quant_blocked = 0; ui_message("QNT STEP OCCUPIED"); }
@@ -1707,11 +1706,6 @@ static void ui_notices(void)
         if (h & MIDI_TRACK_FOLLOW) {
             if (trk[0].p[P_QUANT] == Q_MPC)
                 track_select((h & ~MIDI_TRACK_FOLLOW) - 1u); /* use the normal UI track-change path, outside the ISR */
-        } else if (h && trk[0].p[P_QUANT] != Q_MPC && !ui.msg_t && (h != midi_last || fm1_ms - midi_t > 4000u)) {
-            char b[4] = {'T', (char)('0' + h), 0, 0};
-            ui_say("MIDI IN -> ", b);
-            midi_last = h;
-            midi_t = fm1_ms;
         }
     }
 }

@@ -560,8 +560,8 @@ static int test_midi(void)
     midi_event(0x90, 0, 60, 100); midi_event(0x90, 10, 61, 100);
     bad += check("ROUT CH1-4 (default): channel 1 -> part 1, channels 11 and 10 ignored",
                  song.g[G_ROUTE] == 0 && mn_get(0, 60) == 1u && !mn_get(10, 61) && !midi_track(9));
-    bad += check("a note into another track tells the UI", midi_hint == 1u);
-    frame(); bad += check("MIDI IN -> T1 shown", msg_is("MIDI IN -> T1"));
+    bad += check("a note into another track queues no notice", !midi_hint);
+    frame(); bad += check("channel routing is silent and preserves selection", !ui.msg_t && !toast_shown && song.sel == 2u);
     song.g[G_ROUTE] = 1;
     midi_event(0x80, 0, 60, 0); midi_event(0x90, 0, 62, 100);
     bad += check("ROUT changes: note-off releases original owner, new note uses selection",

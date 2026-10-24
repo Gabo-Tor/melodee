@@ -153,14 +153,14 @@ static void track_follow(void)
     midi_event(0x90, 0, MPC_PAD_NOTES[1][1], 100); frame();
     assert(song.sel == 1 && ui.page == page && !ui.home && msg_is("KEPT"));
     midi_event(0x80, 0, MPC_PAD_NOTES[1][1], 0);
-    /* A mode change discards a queued follow; normal MIDI keeps its notice and manual selection. */
+    /* A mode change discards a queued follow; normal MIDI is silent and keeps manual selection. */
     go_home(); ui.msg_t = 0; track_select(0);
     midi_event(0x90, 0, MPC_PAD_NOTES[2][1], 100);
     for (uint32_t k = 0; k < NTRK; k++) trk[k].p[P_QUANT] = Q_OFF;
     frame(); assert(song.sel == 0 && !ui.msg_t);
     midi_event(0x80, 0, MPC_PAD_NOTES[2][1], 0);
     midi_event(0x90, 1, 60, 100); frame();
-    assert(song.sel == 0 && msg_is("MIDI IN -> T2"));
+    assert(song.sel == 0 && !ui.msg_t && !toast_shown && mn_get(1,60) == 2u);
     midi_event(0x80, 1, 60, 0);
     ui.msg_t = 0;
     midi_hint = 2; /* normal notice already queued when MPC is enabled */
