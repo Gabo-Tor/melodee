@@ -1,445 +1,243 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: GPL-3.0-only
+<!-- SPDX-License-Identifier: GPL-3.0-only AND MPL-2.0
      Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-     Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments -->
-<html lang="ja">
+     Portions Copyright (C) 2026 Charles Vestal
+     Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+     Melodee's web installer: connect, choose, install, with the install itself in a screen of its own that asks the
+     player to stay. After fm1-base's web/installer.html (its m-bootloader option, stock firmware and crash report).
+     The firmware and m-bootloader come from bundled metadata (web/make_site.py); ?demo runs the
+     same page against a simulated FM-1 (fakefm1.js). Logic: installer.js; transfer: transfer.js. -->
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Melodee</title>
-<style>
-  :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  }
-  :root[data-theme="dark"] { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 0 0 24px; }
-  .lang { float: right; font-size: 13px; color: var(--dim); cursor: pointer; text-decoration: underline; background: none; padding: 0; color: var(--dim); }
-  p { margin: 0 0 16px; }
-  button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 8px 20px; cursor: pointer; }
-  button:disabled { opacity: .3; cursor: default; }
-  #status { margin-top: 16px; min-height: 1.6em; }
-  .small { color: var(--dim); font-size: 13px; }
-  progress { width: 100%; height: 4px; margin-top: 16px; }
-  pre { color: var(--dim); font-size: 12px; white-space: pre-wrap; margin-top: 16px; max-height: 200px; overflow-y: auto; overflow-wrap: anywhere; }
-  select { font: inherit; max-width: 100%; padding: 4px; background: var(--bg); color: var(--fg); }
-  details { margin-bottom: 16px; }
-  .site { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 24px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .site .brand { font-size: 24px; font-weight: 600; }
-  .site .links { display: flex; gap: 16px; font-size: 13px; }
-  .site .links a { color: var(--dim); text-decoration: none; }
-  .site .links a:hover { color: var(--fg); }
-  .site .links a[aria-current="page"] { color: var(--fg); }
-</style>
+<meta name="color-scheme" content="light dark">
+<title>Install Melodee</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4'/%3E%3C/svg%3E">
+<style>/*INSTALLER_STYLE*/</style>
 </head>
 <body>
-<main>
-  <button class="lang" id="lang"></button>
-  <nav class="site">
-    <span class="brand">Melodee</span>
-    <div class="links">
-      <a href="../editor/">Patch Editor</a>
-      <a href="../installer/" aria-current="page">Installer</a>
-      <a href="../manual/">Manual</a>
-    </div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tab" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18M8.5 4.5V9"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2.5v4.5M15 2.5v4.5M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0V7zM12 16v5.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+  <symbol id="i-fm1" viewBox="0 0 24 24"><rect x="1.5" y="6" width="21" height="12" rx="2"/><path d="M4.5 9h5v2.5h-5zM13 9.5h.01M16 9.5h.01M19 9.5h.01M5 14v4M8.5 14v4M12 14v4M15.5 14v4M19 14v4"/></symbol>
+</svg>
+
+<div class="demo" id="demo" hidden><span data-t="demo">Demo: a simulated FM-1. Nothing is written.</span> <a href="./" data-t="demoleave">Leave the demo</a></div>
+
+<header class="site">
+  <a class="brand" href="../editor/">Melodee</a>
+  <nav>
+    <a href="../editor/" data-t="navEditor">Editor</a>
+    <a href="./" aria-current="page" data-t="navInstall">Install</a>
+    <a href="../manual/" data-t="navManual">Manual</a>
+    <button type="button" class="lang" id="lang" lang="ja">日本語</button>
   </nav>
-  <h1>Installer</h1>
-  <p data-t="intro"></p>
-  <p data-t="warn"></p>
-  <p class="small" data-t="direct"></p>
-  <p class="small" data-t="beta"></p>
-  <p class="small"><span data-t="brick"></span>
-    <a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md" target="_blank" rel="noopener" style="color:inherit" data-t="recoveryLink"></a></p>
-  <p><label><span data-t="releaseTitle"></span><br><select id="release"></select></label></p>
-  <p><label><input type="radio" name="build" id="build-dual" checked> <span data-t="dual"></span></label></p>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="kicker" data-t="kicker">Firmware for the M-VAVE FM-1</p>
+    <h1><span data-t="title">Install Melodee</span> <span class="v" id="hver"></span></h1>
+    <p class="lede" data-t="lede">Synths, sequencing and effects for the FM-1, installed over USB from this page.</p>
+    <ul class="facts">
+      <li data-t="factBrowser">Chrome or Edge</li>
+      <li data-t="factCable">A USB data cable</li>
+      <li data-t="factTime">About 3 minutes</li>
+    </ul>
+  </section>
+
+  <div class="banner" id="resumebanner" hidden>
+    <svg class="i"><use href="#i-pause"/></svg>
+    <p><b data-t="resumeBannerH">An installation didn't finish.</b> <span id="resumetext" data-t="resumeBanner">Your FM-1 is waiting in update mode. Connect it and press Find FM-1 to finish.</span></p>
+  </div>
+  <div class="banner" id="pagefail" hidden role="alert">
+    <svg class="i"><use href="#i-alert"/></svg>
+    <p id="pagefailtext"></p>
+  </div>
+
+  <ol class="steps">
+    <li class="step" id="st-connect" data-state="active">
+      <div>
+        <h2 data-t="s1h">Connect the FM-1</h2>
+        <p data-t="s1p">Plug it straight into this computer, without a hub, and switch it on. Close other music apps and editor tabs. When the browser asks to use MIDI devices, choose Allow.</p>
+        <div class="device" id="device" hidden>
+          <svg class="i"><use href="#i-fm1"/></svg>
+          <div class="what"><b>FM-1</b><span id="devwhat"></span></div>
+          <span class="chip" id="devchip"></span>
+        </div>
+        <p class="msg" id="connmsg" role="alert"></p>
+        <button type="button" class="btn" id="find"><span data-t="find">Find FM-1</span></button>
+      </div>
+    </li>
+
+    <li class="step" id="st-options" data-state="todo" hidden>
+      <div>
+        <h2><span data-t="s2h">Recovery bootloader</span> <span class="tag" data-t="optional">Optional</span></h2>
+        <label class="option" for="mboot">
+          <input type="checkbox" id="mboot">
+          <span><b data-t="mboot">Also install m-bootloader</b>
+            <span data-t="mbootwhy">A recovery menu (hold PLAY while switching on) and USB download mode (hold REC) that work even when a firmware won't start. It replaces M-VAVE's bootloader and stays through firmware updates.</span></span>
+        </label>
+        <p class="note caution"><svg class="i"><use href="#i-alert"/></svg><span data-t="mbootrisk">It writes the FM-1's boot area, the one step where a power cut can need hardware recovery. Leave it off if you're unsure: you can add it later from this page.</span></p>
+        <p class="small"><span data-t="mbootby">By Julius Vitkauskas, MIT licence.</span>
+          <a href="https://github.com/jvitkauskas/m-bootloader" target="_blank" rel="noopener">github.com/jvitkauskas/m-bootloader<span class="sr" data-t="newtab"> (opens in a new tab)</span></a></p>
+      </div>
+    </li>
+
+    <li class="step" id="st-install" data-state="todo">
+      <div>
+        <h2 data-t="s3h">Install</h2>
+
+  <p><label><span data-release-t="releaseTitle"></span><br><select id="release"></select></label></p>
+  <p><label><input type="radio" name="build" id="build-dual" checked> <span data-release-t="dual"></span></label></p>
   <details id="advanced-installs" hidden>
-    <summary data-t="advancedTitle"></summary>
+    <summary data-release-t="advancedTitle"></summary>
     <section id="rc-options" hidden>
-      <p><strong data-t="rcTitle"></strong> · <span id="rc-version"></span></p>
-      <p><label><input type="radio" name="build" id="build-rc-dual"> <span data-t="rc-dual"></span></label></p>
-      <p class="small" data-t="rcWhy"></p>
+      <p><strong data-release-t="rcTitle"></strong> · <span id="rc-version"></span></p>
+      <p><label><input type="radio" name="build" id="build-rc-dual"> <span data-release-t="rc-dual"></span></label></p>
+      <p class="small" data-release-t="rcWhy"></p>
     </section>
     <section id="nightly-options" hidden>
-      <p><strong data-t="nightlyTitle"></strong></p>
-      <p><label><input type="radio" name="build" id="build-nightly-dual"> <span data-t="nightly-dual"></span></label></p>
-      <p class="small" data-t="nightlyWhy"></p>
+      <p><strong data-release-t="nightlyTitle"></strong></p>
+      <p><label><input type="radio" name="build" id="build-nightly-dual"> <span data-release-t="nightly-dual"></span></label></p>
+      <p class="small" data-release-t="nightlyWhy"></p>
       <p class="small" id="nightly-info"></p>
     </section>
   </details>
-  <p><button id="go" disabled data-t="install"></button></p>
-  <section style="margin-top:24px" aria-labelledby="transit-title">
-    <h2 id="transit-title" data-t="transitTitle"></h2>
-    <p data-t="transitWhy"></p>
+
+        <p id="plantext" data-t="s3p">Back up your sounds first: Settings, then Backup, in the editor.</p>
+        <button type="button" class="btn primary big" id="go" disabled></button>
+        <p class="small" id="gohint" data-t="gohint">Find your FM-1 first.</p>
+      </div>
+    </li>
+  </ol>
+<p id="status" role="status" aria-live="polite"></p>
+
+  <section class="more">
+    <details id="d-resume">
+      <summary data-t="mResumeH">If an installation stopped</summary>
+      <div class="in">
+        <p data-t="mResume1">Nothing is lost. Until an installation finishes, the FM-1 starts in update mode: its screen shows UPDATING, or stays dark. That holds even after switching it off.</p>
+        <p data-t="mResume2">Connect it, open this page and press Find FM-1. The page offers to resume, and continues from the start of the write.</p>
+      </div>
+    </details>
+<details id="d-transit"><summary data-leave-t="transitTitle">TransitFM1</summary><div class="in">
+
+    <p data-leave-t="transitWhy"></p>
     <ol>
-      <li data-t="transitFirst"></li>
-      <li data-t="transitNext"></li>
+      <li data-leave-t="transitFirst"></li>
+      <li data-leave-t="transitNext"></li>
     </ol>
-    <p><button id="transit-go" data-t="transitGo"></button></p>
-    <p class="small" data-t="stockBackup"></p>
-    <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
-    <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
-    <p class="small" data-t="transitSafety"></p>
-    <p class="small"><a href="https://quixotic7.github.io/TransitFM1/" target="_blank" rel="noopener" style="color:inherit" data-t="transitAbout"></a>
-      · <a href="https://github.com/Quixotic7/TransitFM1" target="_blank" rel="noopener" style="color:inherit" data-t="transitSource"></a></p>
-  </section>
-  <details style="margin-top:24px">
-    <summary data-t="stockTitle"></summary>
-    <p class="small" data-t="back"></p>
+    <p><button class="btn" id="transit-go" data-leave-t="transitGo"></button></p>
+    <p class="small" data-leave-t="stockBackup"></p>
+    <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-leave-t="stockSkipBackup"></span></label></p>
+    <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-leave-t="stockRecovery"></span></label></p>
+    <p class="small" data-leave-t="transitSafety"></p>
+    <p class="small"><a href="https://quixotic7.github.io/TransitFM1/" target="_blank" rel="noopener" style="color:inherit" data-leave-t="transitAbout"></a>
+      · <a href="https://github.com/Quixotic7/TransitFM1" target="_blank" rel="noopener" style="color:inherit" data-leave-t="transitSource"></a></p>
+  </div></details>
+<details id="d-stock">
+    <summary data-leave-t="stockTitle"></summary><div class="in">
+    <p class="small" data-leave-t="back"></p>
     <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
-    <p><label><span data-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-    <p><button id="stock-go" disabled data-t="stockGo"></button></p>
-    <p class="small" data-t="stockBackup"></p>
-    <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
-    <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
-    <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-t="stockHelp"></a></p>
-  </details>
-  <progress id="bar" max="100" value="0"></progress>
-  <p id="status"></p>
-  <pre id="log"></pre>
-  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
+    <p><label><span data-leave-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
+    <p><button class="btn" id="stock-go" disabled data-leave-t="stockGo"></button></p>
+    <p class="small" data-leave-t="stockBackup"></p>
+    <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-leave-t="stockSkipBackup"></span></label></p>
+    <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-leave-t="stockRecovery"></span></label></p>
+    <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-leave-t="stockHelp"></a></p>
+  </div></details>
+
+
+    <details id="d-report">
+      <summary data-t="mReportH">Report a problem</summary>
+      <div class="in">
+        <p data-t="mReport1">If the FM-1 crashed, don't switch it off: the crash record survives a restart, not a power cycle. Connect it and read the record, then send it with what you were doing.</p>
+        <p><button type="button" class="btn" id="reportgo" data-t="mReportGo">Read the crash report</button>
+          <button type="button" class="btn ghost" id="reportcopy" hidden data-t="mReportCopy">Copy</button></p>
+        <p id="reportstatus" role="status"></p>
+        <label class="sr" for="report" data-t="mReportLabel">Crash report</label>
+        <textarea id="report" readonly hidden rows="12"></textarea>
+      </div>
+    </details>
+    <details id="d-brick">
+      <summary data-t="mBrickH">If the FM-1 won't start</summary>
+      <div class="in">
+        <p data-t="mBrick1">With m-bootloader: switch off, hold PLAY and switch on for its recovery menu, or hold REC for USB download mode.</p>
+        <p><span data-t="mBrick2">Without it, the FM-1's USB recovery route can put a firmware back from a computer:</span>
+          <a href="https://github.com/hugelton/felucca-bsp/tree/main/tools" target="_blank" rel="noopener" data-t="mBrickLink">felucca-bsp recovery tools</a></p>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer>  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
     by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms and Fukiai icons (MIT).<br>
     Font: Inter Tight (The Inter Project Authors, SIL OFL 1.1). Samples: Versilian Studios VSCO-2 Community Edition and VCSL (CC0 1.0).<br>
     FM6 engine: msfa from Dexed (Google Inc., Pascal Gauthier, Apache-2.0). The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners.<br>
-    <span data-t="license"></span> <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
-</main>
+    GPL-3.0-only. Without warranty. <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
+<p>m-bootloader by Julius Vitkauskas (MIT).</p></footer>
+
+<dialog id="preflight" aria-labelledby="pfh">
+  <form method="dialog">
+    <h2 id="pfh" data-t="pfh">Before you start</h2>
+    <ul class="rules">
+      <li><span class="ri"><svg class="i"><use href="#i-tab"/></svg></span>
+        <div><b data-t="pf1h">Keep this tab open and in front</b><span data-t="pf1">Don't switch tabs, minimise the window or close it until the page says Done.</span></div></li>
+      <li><span class="ri"><svg class="i"><use href="#i-plug"/></svg></span>
+        <div><b data-t="pf2h">Leave the FM-1 connected and on</b><span data-t="pf2">Don't unplug the cable or switch the FM-1 off. Plug a laptop into power.</span></div></li>
+      <li><span class="ri"><svg class="i"><use href="#i-clock"/></svg></span>
+        <div><b data-t="pf3h">It takes about 3 minutes</b><span data-t="pf3">The FM-1's screen shows UPDATING, or stays dark. Both are normal.</span></div></li>
+    </ul>
+    <p class="note caution" id="pfboot"><svg class="i"><use href="#i-alert"/></svg><span data-t="pfboot">m-bootloader is written last, after one more restart. Keep the power on until the page says Done.</span></p>
+    <label class="check" id="pfcheck"><input type="checkbox" id="pfok"><span data-t="pfok">I've backed up my sounds, or have nothing to keep.</span></label>
+    <div class="row">
+      <button type="submit" value="cancel" class="btn ghost" data-t="cancel">Cancel</button>
+      <button type="submit" value="go" class="btn primary" id="pfgo" disabled data-t="start">Start installation</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="run" aria-labelledby="runtitle" data-state="running">
+  <div class="run-warn" role="note"><svg class="i"><use href="#i-alert"/></svg><span data-t="runwarn">Keep this tab open and in front. Don't unplug the FM-1.</span></div>
+  <div class="run-main">
+    <div class="live">
+      <p class="run-kicker" id="runtitle"></p>
+      <div class="pct" aria-hidden="true"><span id="pct">0</span><span class="pc">%</span></div>
+      <div class="bar" id="bar" role="progressbar" aria-labelledby="runtitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="barfill"></i></div>
+      <p class="runstep" id="runstep" role="status"></p>
+      <p class="eta" id="eta"></p>
+      <ol class="phases" id="phases">
+        <li data-ph="prepare" data-t="phPrepare">Prepare</li>
+        <li data-ph="write" data-t="phWrite">Write</li>
+        <li data-ph="restart" data-t="phRestart">Restart</li>
+        <li data-ph="boot" data-t="phBoot">m-bootloader</li>
+      </ol>
+      <p class="stall" id="stall" hidden data-t="stall">Waiting for the FM-1… keep the cable connected.</p>
+      <div class="backnote" id="backnote" hidden role="alert"><svg class="i"><use href="#i-info"/></svg><span id="backtext"></span></div>
+    </div>
+    <div class="end" id="end" hidden>
+      <div class="end-icon"><svg class="i"><use id="endicon" href="#i-check"/></svg></div>
+      <h2 id="endtitle"></h2>
+      <p id="endtext"></p>
+      <ul id="endtips"></ul>
+      <div class="row" id="endactions"></div><div class="row" id="legacy-actions" hidden><button type="button" class="btn" id="run-resume" hidden>Resume installation</button><button type="button" class="btn" id="run-close" hidden>Close</button></div>
+    </div>
+    <details class="log"><summary data-t="details">Details</summary><pre id="log"></pre></details>
+  </div>
+</dialog>
+
 <script type="module">
 /*LIB*/
-const $ = (id) => document.getElementById(id);
-const TEXT = {
-  ja: {
-    intro: "FM-1 を USB で接続してください。（Chrome か Edge で使えます）",
-    warn: "書き込み中は USB を抜かないでください。",
-    install: "インストール", other: "English",
-    releaseTitle: "安定版のバージョン", latest: "最新版",
-    advancedTitle: "詳細なインストール（RC・Nightly）",
-    rcTitle: "リリース候補", "rc-dual": "RC",
-    "rc-dualTag": "リリース候補",
-    rcWhy: "次のリリースのテスト版です。標準を選んでインストールすると安定版へ戻せます。",
-    nightlyTitle: "Nightly（next）", "nightly-dual": "Nightly",
-    "nightly-dualTag": "nightly",
-    nightlyWhy: "next の開発版です。インストール前にエディタで全体バックアップを保存してください。標準版を選ぶとリリース版へ戻せます。",
-    dual: "標準", dualTag: "標準",
-    editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
-    direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
-    brick: "起動保護付きファームウェアの更新が中断した場合は、電源を入れ直すか、OCT− だけを押しながら電源を入れてください。キーのライトが短く3回点滅したら更新モードです。USB を接続し直して、もう一度インストールしてください。以前のファームウェアや長い1回の点滅の場合は、USB 復旧手順を確認してください:",
-    recoveryLink: "USB 復旧手順とダウンロード",
-    beta: "Melodee の不具合は GitHub で知らせてください。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
-    transitTitle: "別のファームウェアへ切り替える",
-    transitWhy: "別のカスタムファームウェアへ移る前に、TransitFM1をインストールしてください。切り替えのための中継用ファームウェアで、音は出ません。Baud Girlへ移る場合は、先に公式V15をインストールし、そこから専用インストーラーを使ってください。",
-    transitFirst: "下のボタンでTransitFM1 0.1.3をインストールします。旧版0.1と配布中止の0.1.2は使わないでください。",
-    transitNext: "FM-1にTRANSITと表示されたら、移行先のファームウェア専用インストーラーでインストールします。",
-    transitGo: "バックアップしてTransitFM1をインストール",
-    transitGoNoBackup: "バックアップせずTransitFM1をインストール",
-    transitConfirm: "全体バックアップをパソコンに保存できましたか？ TransitFM1をインストールします。次は移行先のインストーラーを使ってください。",
-    transitConfirmNoBackup: "バックアップを作成せずTransitFM1をインストールしますか？ Melodeeの曲・音色・設定が失われる可能性があり、バックアップなしでは復元できません。続けますか？",
-    transitLoading: "TransitFM1をダウンロードして検証中",
-    transitDone: "TransitFM1をインストールしました。FM-1のTRANSIT表示を確認し、移行先のインストーラーを開いてください。",
-    transitSafety: "TransitFM1は移行先への書き込み中断に備えますが、最後のセクターは保護できない場合があります。Baud Girlなど書き込み範囲を超えるファームウェアには公式V15を経由してください。充電し、MIDIを送信するDAWなどを閉じ、書き込み中はUSBを抜かないでください。中断時は同じファームウェアで再開してください。",
-    transitAbout: "TransitFM1の使い方・復旧手順", transitSource: "Quixotic7によるソース・ライセンス",
-    back: "M-VAVEから公式FM-1 V15を取得し、未変更のFM-1.fwscを選んでください。ファイルはこのブラウザ内で検証し、サーバーへ送りません。ファイルは変更せず、M-VAVE公式の書き込みモードで書き込みます。",
-    stockTitle: "公式V15に戻す", stockFile: "公式FM-1.fwsc", stockGo: "バックアップして公式V15へ戻す",
-    stockBackup: "現在の曲・保存曲・音色バンク・サンプル・設定を先に保存します。バックアップできない場合は、Melodeeを更新するか、データ消失を了承してバックアップを省略できます。復元はMelodeeを再インストールしてエディタから行います。",
-    stockSkipBackup: "バックアップを省略する（Melodeeの曲・音色・設定が失われる可能性があります）",
-    stockGoNoBackup: "バックアップせず公式V15へ戻す",
-    stockConfirmNoBackup: "バックアップを作成せず公式V15へ戻します。Melodeeの曲・音色・設定が失われる可能性があり、バックアップなしでは復元できません。続けますか？",
-    stockRecovery: "更新中断の再開：全体バックアップはすでにパソコンへ保存済み",
-    stockValid: "公式V15を確認しました", stockConfirm: "全体バックアップファイルをパソコンに保存できましたか？ 続けると公式V15へ戻します。Melodeeの曲は公式V15では開けません。",
-    stockNeedBackup: "書き込みモードからはバックアップできません。保存済みバックアップがある場合は更新中断の再開にチェックするか、データ消失を了承してバックアップを省略してください。",
-    stockUnsupported: "このMelodeeは全体バックアップに未対応です。先に最新版をインストールするか、データ消失を了承して「バックアップを省略する」を選び、もう一度押してください。",
-    backup: "全体バックアップ保存中 ", stockError: "公式ファイルを確認できません: ",
-    stockHead: "FM-1 が CHECK HEAD で公式ファイルを拒否しました（FAILED -5）。起動データが V15 と異なります。何も書き込んでおらず、Melodee はそのまま使えます。別の方法で戻そうとしないでください。上の FAILED -5 のリンクを読み、GitHub で報告してください。",
-    stockHelp: "FM-1 に FAILED -5 と表示された場合（理由と報告方法）",
-    loaderStock: "FM-1 は M-VAVE 公式の書き込みモードで待機しています。このモードには公式FM-1.fwscしか書き込めません。何も送っていません。先に「公式V15に戻す」を完了してください。",
-    loaderMelodee: "FM-1 は Melodee の書き込みモードで待機しています。このモードには公式ファイルを送りません。何も送っていません。上の「インストール」で Melodee を完了してから、公式V15に戻してください。",
-    loaderUnknown: "このインストーラーが知らない書き込みモードです。何も送っていません。この名前を添えて GitHub で報告してください: ",
-    nomidi: "このブラウザでは使えません。Chrome か Edge で開いてください。", loadfail: "読み込めませんでした: ",
-    start: "開始します", verify: "確認中", loader: "書き込みモードに切り替え中", write: "書き込み中",
-    reboot: "再起動中", done: "完了しました", stopped: "途中で止まりました。USB を挿し直してもう一度押してください。",
-    error: "エラー: ",
-    denied: "MIDI（SysEx）の使用が許可されませんでした。アドレスバーのサイト設定で MIDI を許可して、もう一度押してください。",
-    notfound: "FM-1 が見つかりません。USB ケーブル（データ通信用か）を確かめ、MIDI を使う他のアプリを閉じてから、もう一度押してください。",
-    model: "接続されている機器は FM-1 ではありません。",
-    lost: "USB の接続が切れました。挿し直してもう一度押してください。",
-    noloader: "書き込みモードの FM-1 が見つかりません。USB を挿し直してもう一度押してください（終わるまで書き込みモードのままです）。",
-    noreturn: "FM-1 が戻ってきません。電源を入れ直してください。",
-    mismatch: "書き込みは終わりましたが、FM-1 が別のバージョンを報告しています: ",
-    badpkg: "インストールするファイルが壊れています。ページを再読み込みしてください。",
-    leave: "書き込み中です。ページを閉じないでください。",
-    license: "GPL-3.0、無保証。ソース:",
-  },
-  en: {
-    intro: "Connect the FM-1 by USB. (Works in Chrome or Edge.)",
-    warn: "Do not unplug the USB cable while writing.",
-    install: "Install", other: "日本語",
-    releaseTitle: "Stable release", latest: "Latest",
-    advancedTitle: "Advanced installs",
-    rcTitle: "Release candidate", "rc-dual": "Release candidate",
-    "rc-dualTag": "release candidate",
-    rcWhy: "Preview of the next release, available for testing. Choose Standard to return to stable.",
-    nightlyTitle: "Nightly (next)", "nightly-dual": "Nightly",
-    "nightly-dualTag": "nightly",
-    nightlyWhy: "Development builds from next. Save a complete backup in the editor before installing. Choose Standard to return to the release.",
-    dual: "Standard", dualTag: "standard",
-    editor: "Editor (after installing: edit sounds and sequences from the computer)",
-    direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
-    brick: "If an update is interrupted on firmware with boot protection, switch the FM-1 on again (or hold OCT− alone while switching on). Three short key-light flashes mean update mode: reconnect USB and press Install again. Older firmware and one long flash need the USB recovery instructions:",
-    recoveryLink: "USB recovery instructions and downloads",
-    beta: "Please report Melodee problems on GitHub. The author accepts no responsibility if your FM-1 is damaged or misbehaves because of this custom firmware. Use it at your own risk.",
-    transitTitle: "Switching to another firmware",
-    transitWhy: "Before leaving Melodee for another custom firmware, install TransitFM1. It is a temporary stop for switching firmware and makes no sound. For Baud Girl, install official V15 first, then use Baud Girl’s own installer.",
-    transitFirst: "Install TransitFM1 0.1.3 using the button below. Do not use the old 0.1 or withdrawn 0.1.2.",
-    transitNext: "Once the FM-1 shows TRANSIT, open the next firmware’s own installer and install it there.",
-    transitGo: "Back up and install TransitFM1",
-    transitGoNoBackup: "Install TransitFM1 without backup",
-    transitConfirm: "Has the complete backup file been saved to this computer? Continue to install TransitFM1, then use the next firmware’s own installer.",
-    transitConfirmNoBackup: "Install TransitFM1 without creating a backup? Melodee music, sounds and settings may be lost and cannot be restored without a backup. Continue?",
-    transitLoading: "Downloading and verifying TransitFM1",
-    transitDone: "TransitFM1 installed. Check that the FM-1 shows TRANSIT, then open the next firmware’s own installer.",
-    transitSafety: "TransitFM1 guards the next firmware’s write against interruptions, except possibly its last sector. Baud Girl and other images beyond its write range require official V15 first. Charge the FM-1, close DAWs and other apps sending MIDI, and keep USB connected while writing. If interrupted, resume with the same firmware.",
-    transitAbout: "TransitFM1 instructions and recovery", transitSource: "Source and licences by Quixotic7",
-    back: "Get official FM-1 V15 from M-VAVE and select the unmodified FM-1.fwsc. The browser validates it locally; it is not sent to a server. The file is installed unchanged, with M-VAVE's own update loader.",
-    stockTitle: "Return to official V15", stockFile: "Official FM-1.fwsc", stockGo: "Back up and return to official V15",
-    stockBackup: "Current music, saved music, sound banks, samples and settings are saved first. If backups are unavailable, update Melodee or choose to skip the backup and accept possible data loss. To restore an archive later, reinstall Melodee and use the editor.",
-    stockSkipBackup: "Skip backup (Melodee music, sounds and settings may be lost)",
-    stockGoNoBackup: "Return to official V15 without backup",
-    stockConfirmNoBackup: "Return to official V15 without creating a backup? Melodee music, sounds and settings may be lost and cannot be restored without a backup. Continue?",
-    stockRecovery: "Resume an interrupted update: I already saved a complete backup to this computer",
-    stockValid: "Official V15 verified", stockConfirm: "Has the complete backup file been saved to this computer? Continue to return to official V15. Official V15 cannot open Melodee music.",
-    stockNeedBackup: "An update loader cannot export a backup. Select resume if you already saved a complete backup, or choose Skip backup to continue and accept possible data loss.",
-    stockUnsupported: "This Melodee does not support complete backups. Install the current Melodee first, or select Skip backup to accept possible data loss and try again.",
-    backup: "Saving complete backup ", stockError: "Cannot validate official firmware: ",
-    stockHead: "The FM-1 refused the official file at CHECK HEAD (FAILED -5): its boot data differs from V15's. Nothing was written; Melodee stays installed. Do not try other ways to return to stock. Open the FAILED -5 link above and report it on GitHub.",
-    stockHelp: "If the FM-1 shows FAILED -5: why, and how to report it",
-    loaderStock: "The FM-1 is waiting in M-VAVE's official update mode, which only accepts the official FM-1.fwsc. Nothing was sent. Finish Return to official V15 first.",
-    loaderMelodee: "The FM-1 is waiting in Melodee's update mode, which never receives the official file. Nothing was sent. Press Install above to finish Melodee first, then return to official V15.",
-    loaderUnknown: "The FM-1 is in an update mode this installer does not know. Nothing was sent. Please report it on GitHub with this name: ",
-    nomidi: "This browser cannot do it. Open the page in Chrome or Edge.", loadfail: "Could not load: ",
-    start: "Starting", verify: "Verifying", loader: "Switching to update mode", write: "Writing",
-    reboot: "Restarting", done: "Done", stopped: "Stopped. Replug the USB cable and press Install again.",
-    error: "Error: ",
-    denied: "MIDI (SysEx) access was not allowed. Allow MIDI in the site settings (address bar) and press Install again.",
-    notfound: "FM-1 not found. Check the USB cable (a data cable), close other apps that use MIDI, and press Install again.",
-    model: "The connected device is not an FM-1.",
-    lost: "The USB connection was lost. Replug it and press Install again.",
-    noloader: "The FM-1 in update mode was not found. Replug the USB cable and press Install again (it stays in update mode until it is finished).",
-    noreturn: "The FM-1 did not come back. Power-cycle it.",
-    mismatch: "Written, but the FM-1 reports another version: ",
-    badpkg: "The file to install is damaged. Reload the page.",
-    leave: "Writing. Do not close the page.",
-    license: "GPL-3.0, no warranty. Source:",
-  },
-};
-let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
-const t = (k) => TEXT[lang][k];
-let lastKey = null, lastArg = "";
-function applyLang() {
-  document.documentElement.lang = lang;
-  document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t); });
-  $("lang").textContent = t("other");
-  $("stock-go").textContent = t($("stock-skip-backup").checked ? "stockGoNoBackup" : "stockGo");
-  $("transit-go").textContent = t($("transit-skip-backup").checked ? "transitGoNoBackup" : "transitGo");
-  if ($("release").options.length) releaseOptions();
-  if (lastKey === "ready") ready();
-  else if (lastKey) $("status").textContent = t(lastKey) + lastArg;
-}
-$("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; applyLang(); });
-applyLang();
-$("stock-skip-backup").addEventListener("change", applyLang);
-$("transit-skip-backup").addEventListener("change", applyLang);
-const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; };
-const say = (txt) => { lastKey = null; $("status").textContent = txt; };
-const buildIds = ["dual", "rc-dual", "nightly-dual"];
-const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
-const selection = () => {     /* the release, or a channel ("nightly-dual": meta.nightly's dual-core package) */
-  const kind = build(), dash = kind.indexOf("-");
-  return dash < 0 ? {kind, channel: (meta.releases || []).find(r => r.version === $("release").value) || meta, key: kind} : {kind, channel: meta[kind.slice(0, dash)], key: kind.slice(dash + 1)};
-};
-const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
-const log = (t) => { const box = $("log"); box.textContent += t + "\n"; box.scrollTop = box.scrollHeight; };
-let image = null;
 const meta = /*META*/{};
-function releaseOptions() {
-  const selected = $("release").value || meta.version;
-  $("release").replaceChildren(...(meta.releases || [meta]).map(r => {
-    const option = document.createElement("option");
-    option.value = r.version;
-    option.textContent = `${r.version === meta.version ? t("latest") + " · " : ""}v${r.version}`;
-    option.selected = r.version === selected;
-    return option;
-  }));
-}
-releaseOptions();
-$("advanced-installs").hidden = !meta.rc && !meta.nightly;
-$("rc-options").hidden = !meta.rc;
-if (meta.rc) $("rc-version").textContent = meta.rc.version;
-$("nightly-options").hidden = !meta.nightly;
-if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
-const images = {};                // a build ("dual", "nightly-dual" ..) -> its package's image, each fetched once
-
-let writing = false, stock = null, stockFileEpoch = 0, buildEpoch = 0;
-const lockInstaller = (on) => {
-  writing = on; $("release").disabled = on; $("go").disabled = on || !image;
-  buildIds.forEach(k => { $("build-" + k).disabled = on; });
-  $("stock-go").disabled = on || !stock;
-  ["stock-file", "stock-recovery", "stock-skip-backup", "transit-go", "transit-recovery", "transit-skip-backup"].forEach(id => { $(id).disabled = on; });
-};
-window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
-
-// the chosen build's package: Install stays off until it is loaded and checked
-async function choose() {
-  if (writing) return;
-  if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
-  const {kind, channel, key} = selection(), epoch = ++buildEpoch;
-  const cacheKey = kind + ":" + (channel?.version || "") + ":" + (channel?.commit || "");
-  image = null; $("go").disabled = true;
-  try {
-    if (!images[cacheKey]) {
-      if (!channel) throw new Error(kind.startsWith("rc-") ? "Release candidate is not available yet" : "Nightly is not available yet");
-      const url = channel.pkg[key] + (channel.commit ? "?commit=" + channel.commit : ""), r = await fetch(url);
-      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-      const pkg = new Uint8Array(await r.arrayBuffer());
-      if (productOf(pkg) !== channel.product) { if (epoch === buildEpoch) sayK("badpkg"); return; }
-      images[cacheKey] = logicalImage(pkg);
-    }
-    if (epoch !== buildEpoch) return;
-    image = images[cacheKey]; if (!writing) ready(); lockInstaller(writing);
-  } catch (e) { if (epoch === buildEpoch) sayK("loadfail", e.message); }
-}
-buildIds.forEach(k => $("build-" + k).addEventListener("change", choose));
-$("release").addEventListener("change", () => {
-  if (writing) return;
-  if (build().includes("-")) $("build-dual").checked = true;
-  choose();
-});
-choose();
-
-// an update loader that is not the package's own gets nothing: the official one would write a Melodee
-// package's head over the boot data, Melodee's would write only V15's application (docs/RECOVERY.md)
-const refuseLoader = (id) => id === STOCK_LOADER ? sayK("loaderStock") : id === MELODEE_LOADER ? sayK("loaderMelodee") : sayK("loaderUnknown", id);
-
-$("go").addEventListener("click", async () => {
-  if (writing || !image) return;
-  const product = selection().channel.product;
-  lockInstaller(true);
-  let midi;
-  try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
-  catch (e) { sayK("denied"); lockInstaller(false); return; }
-  try {
-    const up = new Updater(midi, log);
-    const total = 74 + 1167;
-    const step = (k, a) => {
-      log(`${k} ${a ?? ""}`);
-      if (k === "start") sayK("start");
-      if (k === "verify") { sayK("verify"); $("bar").value = (a / total) * 100; }
-      if (k === "loader") sayK("loader");
-      if (k === "write") { sayK("write"); $("bar").value = ((74 + a) / total) * 100; }
-      if (k === "reboot") sayK("reboot");
-      if (k === "done") { $("bar").value = 100; sayK("done"); }
-    };
-    const ota = await up.find((id) => /^ota-/i.test(id.model));
-    if (ota) {
-      ota.link.close();
-      if (ota.id.text !== MELODEE_LOADER) refuseLoader(ota.id.text);
-      else sayK((await up.resume(image, step, product, MELODEE_LOADER)) ? "done" : "stopped");
-    } else {
-      await up.install(image, product, step, MELODEE_LOADER);
-    }
-  } catch (e) {
-    if (e && e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || "");
-    else sayK("error", e && e.message);
-    log(String(e && e.stack || e));
-  }
-  lockInstaller(false);
-});
-
-$("stock-file").addEventListener("change", async () => {
-  if (writing) return;
-  const epoch = ++stockFileEpoch, file = $("stock-file").files[0]; stock = null; lockInstaller(false);
-  if (!file) return;
-  try {
-    if (file.size !== STOCK_V15_SIZE) throw new Error("FM-1 V15 / FM-1.fwsc");
-    const verified = await validateStockPackage(new Uint8Array(await file.arrayBuffer()));
-    if (epoch !== stockFileEpoch) return;
-    stock = verified; if (!writing) sayK("stockValid"); lockInstaller(writing);
-  } catch (e) { if (epoch === stockFileEpoch && !writing) sayK("stockError", e.message); }
-});
-function saveArchive(archive) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], {type:"application/json"}));
-  const a = document.createElement("a"); a.href = url; a.download = `Melodee-backup-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-function archiveInfo(a) {
-  let pos = a.indexOf(0); if (pos < 0) throw new Error("Invalid INFO");
-  const version = String.fromCharCode(...a.slice(0,pos)); pos++;
-  const engines = a[pos]; pos += 5;
-  for (let i = 0; i < engines; i++) { const end = a.indexOf(0,pos); if (end < 0) throw new Error("Invalid INFO"); pos = end + 1; }
-  const ext = a.slice(pos + 1);
-  // Archives contain opaque objects; backup support is independent of motion and UI versions.
-  const supported = /^(MELODEE|FELUCCA) /i.test(version) &&
-    ext[8] === 0x42 && ext[9] === 1 && (ext[10] & 1);
-  return {version,supported};
-}
-async function leaveMelodee(target) {
-  if (writing || (target === "stock" && !stock)) return;
-  if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
-  let selected = stock;
-  const transit = target === "transit", ownLoader = transit ? MELODEE_LOADER : STOCK_LOADER;
-  const skipBackup = $(target + "-skip-backup").checked;
-  const confirmation = () => confirm(t(target + (skipBackup ? "ConfirmNoBackup" : "Confirm")));
-  const complete = () => { $("bar").value = 100; sayK(transit ? "transitDone" : "done"); };
-  lockInstaller(true); $("bar").value = 0;
-  let link = null;
-  try {
-    let midi;
-    try { midi = await navigator.requestMIDIAccess({sysex:true}); } catch (e) { sayK("denied"); return; }
-    if (transit) { sayK("transitLoading"); selected = await fetchTransitPackage(); }
-    const up = new Updater(midi, log);
-    const step = (k, n) => {
-      log(`${k} ${n ?? ""}`);
-      if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k);
-      if (k === "verify") $("bar").value = Math.min(10, n / 10);
-      if (k === "write") $("bar").value = Math.min(99, 10 + n / (selected.image.length / 512) * 90);
-    };
-    const loader = await up.find(id => /^ota-/i.test(id.model));
-    if (loader) {
-      loader.link.close();
-      if (loader.id.text !== ownLoader) { refuseLoader(loader.id.text); return; }
-      if (!skipBackup && !$(target + "-recovery").checked) { sayK("stockNeedBackup"); return; }
-      if (!confirmation()) return;
-      if (await up.resume(selected.image, step, selected.product, ownLoader)) complete();
-      else sayK("stopped");
-    } else {
-      const device = await up.find(id => id.model === "FM-1");
-      if (!device) { sayK("notfound"); return; }
-      const input = device.link.input, output = device.link.output; device.link.close();
-      if (!skipBackup) {
-        link = new BackupConnection(input, output);
-        const info = archiveInfo(await link.request([1,[]]));
-        if (!info.supported) { sayK("stockUnsupported"); return; }
-        const archive = await captureBackup((r,o) => link.request(r,o), info.version,
-          (done,total) => sayK("backup", `${Math.round(done / Math.max(1,total) * 100)}%`));
-        saveArchive(archive); link.close(); link = null;
-      }
-      if (!confirmation()) return;
-      await up.install(selected.image, selected.product, step, ownLoader);
-      complete();
-    }
-  } catch (e) {
-    // Melodee stops reading at CHECK HEAD when the device's boot data differs from V15's (FAILED -5):
-    // refused, never retried another way
-    if (!transit && e.code === "stopped" && e.lastRead >= selected.head.from && e.lastRead < selected.head.to) sayK("stockHead");
-    else if (e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || ""); else sayK("error",e.message);
-    log(String(e.stack || e));
-  } finally { if (link) link.close(); lockInstaller(false); }
-}
-$("stock-go").addEventListener("click", () => leaveMelodee("stock"));
-$("transit-go").addEventListener("click", () => leaveMelodee("transit"));
+/*INSTALLER*/
 </script>
 </body>
 </html>

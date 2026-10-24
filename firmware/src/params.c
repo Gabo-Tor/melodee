@@ -10,7 +10,42 @@ static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "
 static const char *const N_RECQ[] = {"OFF", "1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
 static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
-static const char *const N_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "ECHO", "ROOM", "REVERB", "CHORUS"};
+/* SOFT .. FUZZ are one DRIVE, their SHAPE on KNOB 4 (N_SHAPE) */
+static const char *const N_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "REVERB", "CHORUS", "NOTE TAIL", "NOTE ECHO", "DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"};
+static const char *const N_AUDIO_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "REVERB", "CHORUS", "", "", "DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"};
+static const char *const N_SHAPE[FX_FUZZ + 1u] = {[FX_SOFT] = "SOFT", [FX_HARD] = "HARD", [FX_FOLD] = "FOLD", [FX_FUZZ] = "FUZZ"};
+/* the effects as the picker and the list give them (README "FX rack"), in families: Space, Motion, Dirt, Colour,
+ * Notes (the track's racks only: the last two); DRIVE stands for SOFT .. FUZZ. The stored IDs keep their numbers */
+static const uint8_t FX_ORDER[] = {FX_OFF, FX_ROOM, FX_REVERB, FX_WIDTH, FX_PHASER, FX_CHORUS, FX_FLANGER, FX_PEDAL_PHASER,
+                                   FX_PEDAL_CHORUS, FX_SOFT, FX_CRUSH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_MIDIDELAY, FX_MIDIVERB};
+static const uint8_t FX_FAM_FIRST[] = {0, 1, 4, 9, 11, 14, 16};   /* each family's first place in FX_ORDER */
+static const char *const FX_FAM_NAME[] = {"Off", "Space", "Motion", "Dirt", "Colour", "Notes"};
+enum { FXF_OFF, FXF_SPACE, FXF_MOTION, FXF_DIRT, FXF_COLOUR, FXF_NOTES };
+static int fx_names(const param_desc_t *d) { return d->names == N_FX || d->names == N_AUDIO_FX; }
+static uint32_t fx_order_n(const param_desc_t *d) { return d->names == N_AUDIO_FX ? FX_FAM_FIRST[FXF_NOTES] : NELEM(FX_ORDER); }
+static uint32_t fx_rank(int32_t type)                   /* its place in FX_ORDER */
+{
+    uint32_t i;
+    if (type >= FX_SOFT && type <= FX_FUZZ)
+        type = FX_SOFT;
+    for (i = 0; i < NELEM(FX_ORDER); i++)
+        if (FX_ORDER[i] == type)
+            return i;
+    return 0;
+}
+static uint32_t fx_family(int32_t type)
+{
+    uint32_t r = fx_rank(type), f = 0;
+    while (r >= FX_FAM_FIRST[f + 1u])
+        f++;
+    return f;
+}
+/* steps places on from an effect in FX_ORDER (its ends kept; no step: the effect as it is, a DRIVE's shape too) */
+static int32_t fx_step(const param_desc_t *d, int32_t from, int32_t steps)
+{
+    int32_t r = (int32_t)fx_rank(from), to = clamp(r + steps, 0, (int32_t)fx_order_n(d) - 1);
+    return to == r ? from : FX_ORDER[to];
+}
 static const char *const N_ONOFF[] = {"OFF", "ON"};
 static const char *const N_VPOINTS[] = {"AUTO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
                                         "14", "15"};
@@ -57,7 +92,7 @@ static const char *const N_MSRC[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", 
 static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "", "", "", "", "RATE",
                                      "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH"};
 static const char *const N_ENGNAME[] = {"-", "-", MELODEE_LEGACY_EXTRAS ? "PHASE" : "-", "SID", "-", MELODEE_LEGACY_EXTRAS ? "VOICE" : "-", MELODEE_LEGACY_EXTRAS ? "TRIO" : "-", MELODEE_LEGACY_EXTRAS ? "WHEEL" : "-", "-", MELODEE_LEGACY_EXTRAS ? "PHYS" : "-",
-                                             "DRUM", MELODEE_LEGACY_EXTRAS ? "NOISE" : "-", "FM6", MELODEE_SLICE ? "SLICE" : "-", "-", "CZ-1", "-", "-", "-", "PROPHET"};
+                                             "DRUM", MELODEE_LEGACY_EXTRAS ? "NOISE" : "-", "FM6", MELODEE_SLICE ? "SLICE" : "-", "-", "CZ-1", "-", "-", "-", "PROPHET", "-", "MIDI Track"};
 
 #define PD(l, f, mn, mx, df) {l, f, mn, mx, df, 0, 0}
 #define PE(l, n, df) {l, F_ENUM, 0, (int16_t)(sizeof(n) / sizeof(n[0]) - 1), df, n, 0}
@@ -113,7 +148,7 @@ static const param_desc_t FM6_SD[4] = {                 /* the STORE page: the s
  * whole ratio) or, FIXED, Hz (CRS: 1, 10, 100, 1000) */
 static void fm6_freq_text(char *val, const char **unit, int coarse)
 {
-    const uint8_t *op = &fm6_patch[song.sel % NTRK][(5u - fm6_opsel % 6u) * FP_OP];
+    const uint8_t *op = &fm6_patch_of(song.sel % NTRK)[(5u - fm6_opsel % 6u) * FP_OP];
     int32_t c = op[FP_FC], f = coarse ? 0 : op[FP_FF];
     if (!op[FP_MODE]) {
         if (coarse && c)
@@ -257,15 +292,15 @@ static const param_desc_t GP[G_COUNT] = {
     [G_RESERVED24] = PD("", F_INT, 0, 127, 0),
     [G_RESERVED25] = PD("", F_INT, 0, 127, 0),
     [G_RESERVED26] = PD("", F_INT, 0, 127, 0),
-    [G_MFXTYPE] = PE("TYPE", N_FX, 0),
+    [G_MFXTYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFXMIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFXRATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFXCHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [G_MFX2TYPE] = PE("TYPE", N_FX, 0),
+    [G_MFX2TYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFX2MIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFX2RATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFX2CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [G_MFX3TYPE] = PE("TYPE", N_FX, 0),
+    [G_MFX3TYPE] = PE("TYPE", N_AUDIO_FX, 0),
     [G_MFX3MIX] = PD("MIX", F_PCT, 0, 127, 127),
     [G_MFX3RATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [G_MFX3CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
@@ -278,23 +313,58 @@ static const param_desc_t GP[G_COUNT] = {
 
 };
 
+static const param_desc_t *fx_pedal_desc(uint32_t type,uint32_t col,const param_desc_t *original)
+{
+    static param_desc_t d;d=*original;
+    if(fx_sloop_swept(type)){if(col==4u){d.label="RESO";d.fmt=F_BIPCT;}else if(col==3u)d.label="DEPTH";}
+    else if(type>=FX_SOFT && type<=FX_FUZZ){
+        if(col==2u){d.label="DRIVE";d.fmt=F_PCT;}
+        if(col==3u){d.label="TONE";d.fmt=F_CUTOFF;}
+    }else if(type==FX_CRUSH){d.label=col==2u?"BITS":"ALIAS";d.fmt=col==2u?F_BITS:F_ALIAS;}
+    return &d;
+}
+/* a DRIVE's KNOB 4 (the slot's TONE place): its SHAPE, the slot's effect SOFT .. FUZZ itself */
+static const param_desc_t FX_SHAPE = {"SHAPE", F_ENUM, FX_SOFT, FX_FUZZ, FX_SOFT, N_SHAPE, 0};
+static int fx_drive(int32_t type) { return type >= FX_SOFT && type <= FX_FUZZ; }
 static const param_desc_t *global_desc(uint32_t id)
 {
+    if(id>=G_MFXTONE && id<=G_MFX3TONE){uint32_t type=song.g[G_MFXTYPE+(id-G_MFXTONE)*FX_PARAMS];if(fx_sloop_swept(type))return fx_pedal_desc(type,4,&GP[id]);}
     if(param_master_fx(id) && (id-G_MFXTYPE)%FX_PARAMS>=2u){
-        static param_desc_t d;static const char *const character[]={"CHAR","DEPTH","DEPTH","FOCUS","JITTER","BITE","REPEAT","DECAY","DEPTH","DEPTH"};
-        uint32_t base=G_MFXTYPE+(id-G_MFXTYPE)/FX_PARAMS*FX_PARAMS,type=(uint32_t)clamp(song.g[base],0,NELEM(N_FX)-1);d=GP[id];
-        if(id-base==3u)d.label=character[type];else if(type>=6u && type<=8u){d.label=type==6u?"TIME":"SIZE";d.fmt=F_PCT;}return &d;
+        static param_desc_t d;static const char *const character[]={"CHAR","DEPTH","DEPTH","FOCUS","JITTER","BITE","REPEAT","DECAY","DAMP","DEPTH","","","TONE","TONE","TONE","TONE","ALIAS","DEPTH","DEPTH","DEPTH"};
+        uint32_t base=G_MFXTYPE+(id-G_MFXTYPE)/FX_PARAMS*FX_PARAMS,type=(uint32_t)clamp(song.g[base],0,NELEM(N_AUDIO_FX)-1);d=GP[id];
+        if(fx_sloop_type(type))return fx_pedal_desc(type,id-base,&GP[id]);
+        if(id-base==3u)d.label=character[type];else if(type>=6u && type<=8u){d.label=type==6u?"TIME":"SIZE";d.fmt=F_PCT;}
+        return &d;
     }
     return &GP[id];
 }
 static uint32_t scale_count(const track_t *t);          /* seq.c */
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
+    if (midi_track_audio_disabled(t->eng_req, id)) {
+        static param_desc_t disabled;
+        disabled = TP[id]; disabled.min = disabled.max = disabled.def = t->p[id];
+        return &disabled;
+    }
+    if(param_fx_tone(id)){uint32_t type=t->p[P_FXTYPE+(id-P_FXTONE)*FX_PARAMS];if(fx_sloop_swept(type))return fx_pedal_desc(type,4,&TP[id]);}
+    if (id >= P_FXTYPE && id <= P_FX3CHAR) {
+        uint32_t base = P_FXTYPE + (id - P_FXTYPE) / FX_PARAMS * FX_PARAMS, col = id - base;
+        if (fx_is_midi(t->p[base]) && col) {
+            static param_desc_t d;
+            d = TP[id];
+            if (t->p[base] == FX_MIDIVERB) { d.label = "REL"; d.fmt = F_TIME; }
+            else if (col == 1u) d.label = "LEVEL";     /* (the echoes' velocity, of the note's) */
+            else if (col == 2u) { d.label = "TIME"; d.fmt = F_ENUM; d.names = N_DIV; d.max = NELEM(N_DIV) - 1u; }
+            else if (col == 3u) { d.label = "DECAY"; d.fmt = F_PCT; }
+            return &d;
+        }
+    }
     if (param_fx(id) && !param_fx_tone(id) && ((id-P_FXTYPE)%FX_PARAMS)>=2u) {
         static param_desc_t fx_desc;
-        static const char *const character[] = {"CHAR", "DEPTH", "DEPTH", "FOCUS", "JITTER", "BITE", "REPEAT", "DECAY", "DEPTH", "DEPTH"};
+        static const char *const character[] = {"CHAR", "DEPTH", "DEPTH", "FOCUS", "JITTER", "BITE", "REPEAT", "DECAY", "DAMP", "DEPTH", "", "", "TONE", "TONE", "TONE", "TONE", "ALIAS", "DEPTH", "DEPTH", "DEPTH"};
         uint32_t base=P_FXTYPE+(id-P_FXTYPE)/FX_PARAMS*FX_PARAMS;
         fx_desc=TP[id];uint32_t type=(uint32_t)clamp(t->p[base],0,NELEM(N_FX)-1);
+        if(fx_sloop_type(type))return fx_pedal_desc(type,id-base,&TP[id]);
         if(id-base==3u)fx_desc.label=character[type];
         else if(type>=6u && type<=8u){fx_desc.label=type==6u?"TIME":"SIZE";fx_desc.fmt=F_PCT;}
         return &fx_desc;
@@ -336,11 +406,15 @@ static int32_t enum_orig(const param_desc_t *d, int32_t v)
 static int32_t enum_step(const param_desc_t *d, int32_t from, int32_t v)
 {
     int32_t dir = v > from ? 1 : -1;
+    if (fx_names(d))                                    /* (the effects: in their families' order) */
+        return fx_step(d, from, v - from);
     while (v != from && enum_orig(d, v) != v)
         v = v + dir > d->max || v + dir < d->min ? from : v + dir;
     return v;
 }
 
+/* CRUSH's ALIAS: samples each one is held (fx_sloop_insert.h INS_HOLD, its copy in flash for the pages) */
+static const uint8_t CRUSH_HOLD[16] = {64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1};
 static uint8_t fmt_named;        /* the last param_format was a name (F_ENUM, even "4"): ui_draw.c's digits do not roll it */
 
 /* value string (<= 5 chars) and unit for a parameter value */
@@ -391,6 +465,21 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         else
             fmt_fix(val, (int32_t)(h / 10u), 1);
         *unit = "Hz";
+        break;
+    }
+    case F_BITS:                                      /* CRUSH: fx_sloop_insert.h ins_bits_sh of 127 - v */
+        fmt_int(val, 1 + ((127 - clamp(v, 0, 127)) >> 3));
+        *unit = "bit";
+        break;
+    case F_ALIAS: {                                   /* CRUSH: the held sample's rate */
+        uint32_t h = FS / CRUSH_HOLD[(127 - clamp(v, 0, 127)) >> 3];
+        if (h < 1000u) {
+            fmt_int(val, (int32_t)h);
+            *unit = "Hz";
+        } else {
+            fmt_fix(val, (int32_t)((h + 50u) / 100u), 1);
+            *unit = "kHz";
+        }
         break;
     }
     case F_TONE:                                      /* (the cut's frequency: the FX picture's strip) */
@@ -627,7 +716,7 @@ static uint8_t fx_rack_row[2];   /* the racks' rows KNOB 2 picks: FX's (0..2 its
 static const param_desc_t *fm6_page_desc(const page_t *pg, uint32_t slot, int16_t **valp)
 {
     uint32_t id = pg->id[slot], tr = song.sel % NTRK;
-    const uint8_t *v = fm6_patch[tr];
+    const uint8_t *v = fm6_patch_of(tr);
     const param_desc_t *d;
     *valp = 0;
     if (id == 0xFFu || TSEL->eng_req != ENGI_FM6)
@@ -662,7 +751,7 @@ static void fm6_page_put(const page_t *pg, uint32_t slot, int32_t val)
             fm6_bslot = (uint16_t)(val - 1);
         return;
     }
-    memcpy(v, fm6_patch[tr], FP_SIZE);
+    memcpy(v, fm6_patch_of(tr), FP_SIZE);
     if (pg->scope == SC_FMOP) {
         uint32_t k = 5u - fm6_opsel % 6u;
         if (id == FP_OP) {
@@ -729,6 +818,10 @@ static const param_desc_t *fx_rack_desc(const page_t *pg, uint32_t slot, int16_t
 static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **valp)
 {
     uint32_t id = pg->id[slot];
+    if (midi_track_only(TSEL) && ((pg->fam == FAM_FX && pg->scope == SC_TRACK) ||
+        ((pg->scope == SC_TRACK || pg->scope == SC_ENGINE) && midi_track_audio_disabled(TSEL->eng_req, id)))) {
+        *valp = 0; return 0;
+    }
     if(pg->scope==SC_P5 || pg->scope==SC_P5STORE){
         if(id==255u || (pg->scope==SC_P5 && (id>=88u || !P5_PANEL[id].label))){*valp=0;return 0;}
         p5_cell[slot&3u]=pg->scope==SC_P5STORE?(slot?0:p5_store_slot):p5_patch_of(TSEL)->raw[id]+(id==P5_BEND?1:0);
@@ -793,9 +886,22 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         *valp = &drumch_cell;
         return global_desc(id);
     }
-    if ((pg->scope == SC_GLOBAL && id >= G_MFXTONE && id <= G_MFX3TONE &&    /* TONE: ECHO, ROOM and REVERB only */
-         !fx_has_tone(song.g[G_MFXTYPE + (id - G_MFXTONE) * FX_PARAMS])) ||
-        (pg->scope == SC_TRACK && param_fx_tone(id) && !fx_has_tone(TSEL->p[P_FXTYPE + (id - P_FXTONE) * FX_PARAMS]))) {
+    if (pg->scope == SC_TRACK && id >= P_FXMIX && id <= P_FX3CHAR) {
+        uint32_t base = P_FXTYPE + (id - P_FXTYPE) / FX_PARAMS * FX_PARAMS;
+        if (TSEL->p[base] == FX_MIDIVERB && id - base >= 2u) { *valp = 0; return 0; }
+    }
+    if (pg->scope == SC_GLOBAL && id >= G_MFXTONE && id <= G_MFX3TONE &&    /* a DRIVE's KNOB 4: its SHAPE */
+        fx_drive(song.g[G_MFXTYPE + (id - G_MFXTONE) * FX_PARAMS])) {
+        *valp = &song.g[G_MFXTYPE + (id - G_MFXTONE) * FX_PARAMS];
+        return &FX_SHAPE;
+    }
+    if (pg->scope == SC_TRACK && param_fx_tone(id) && fx_drive(TSEL->p[P_FXTYPE + (id - P_FXTONE) * FX_PARAMS])) {
+        *valp = &TSEL->p[P_FXTYPE + (id - P_FXTONE) * FX_PARAMS];
+        return &FX_SHAPE;
+    }
+    if ((pg->scope == SC_GLOBAL && id >= G_MFXTONE && id <= G_MFX3TONE &&    /* TONE: ROOM only */
+         !fx_third_control(song.g[G_MFXTYPE + (id - G_MFXTONE) * FX_PARAMS])) ||
+        (pg->scope == SC_TRACK && param_fx_tone(id) && !fx_third_control(TSEL->p[P_FXTYPE + (id - P_FXTONE) * FX_PARAMS]))) {
         *valp = 0;
         return 0;
     }

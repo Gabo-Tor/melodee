@@ -327,7 +327,7 @@ static int test_held_gestures(void)
     {
         uint32_t ly = ui.ly;
         fm1_in.buttons &= ~(1u << panel.btn[B_FX]); frame();
-        bad += check("  retired FX while recording live: no layer, the note stays", !ly &&
+        bad += check("  FX armed while recording live preserves the note", ly==LAYER_FX &&
                      step_on(&t->step[9]));
     }
     song.octave = 0; song.rec = 0; song.playing = 0;
@@ -352,8 +352,8 @@ static int test_compact_history(void)
                     exact &= !memcmp(&s, &decoded, sizeof s);
                 }
     bad += check("compact history preserves every step byte for all control combinations", exact);
-    bad += check("all eight levels have fixed storage even for dense patterns",
-                 sizeof step_history.state[0].step == NSTEP * 9u && sizeof undo_sram[0].step == NSTEP * 9u);
+    bad += check("all eight levels use bounded compact snapshots even for dense patterns",
+                 sizeof *step_history.state[0].step == 9u && STEP_HISTORY_BYTES == (STEP_HISTORY + 2u) * NSTEP * 9u && sizeof undo_sram[0].step == NSTEP * 9u);
     track_t *t = edit_setup();
     for (uint32_t i = 0; i < NSTEP; i++) {
         put_note(t, i, 48u + i % 36u, 1);

@@ -70,7 +70,7 @@ int main(void)
     uint32_t e, i, k;
     int32_t v[16];
     printf("{\"P_COUNT\":%d,\"G_COUNT\":%d,\"NSTEP\":%d,\"P_E0\":%d,\"G_ENGSEL\":%d,\"P_RESERVED45\":%d,\"NTRK\":%d,\n",
-           P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_RESERVED45, NTRK);
+           P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_RESERVED45, NPART);   /* (the tracks the editor protocol lists: ED_TRK) */
     printf("\"TP\":");
     js_descs(TP, P_E0);                                  /* P_E0.. are the engine's */
     printf(",\n\"GP\":");

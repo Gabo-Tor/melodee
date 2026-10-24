@@ -7,6 +7,28 @@ extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end
 extern uint32_t _dsp_start[], _dsp_end[], _dsp_load[], _dt_start[], _dt_end[], _dt_load[];
 extern uint32_t _audio_start[], _audio_end[], _audio_load[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
+extern uint32_t _ustack_top[];
+
+/* Stack high-water marks (editor AUDIO_STATS flag 64): fm1_cstart paints each stack below what is in use, a reading
+ * finds the lowest word written since. Sizes to trim them by: never measured before */
+#define STACK_PAINT 0xA5C3A5C3u
+static void stack_paint(uint32_t *lo, uint32_t *hi) { while (lo < hi) *lo++ = STACK_PAINT; }
+static uint32_t stack_peak(const uint32_t *lo, const uint32_t *hi)   /* bytes used at most */
+{
+    const uint32_t *p = lo;
+    while (p < hi && *p == STACK_PAINT) p++;
+    return (uint32_t)((uintptr_t)hi - (uintptr_t)p);
+}
+/* v[0..5]: CPU0's user stack used at most, its size, the system stack's, its size; CPU1's user and system stacks used
+ * at most (4 KiB each) */
+static void stack_report(uint32_t *v)
+{
+    const uint32_t *u = (const uint32_t *)_ustack_lo, *s = (const uint32_t *)_sstack_lo;
+    const uint32_t *c1 = (const uint32_t *)_cpu1_stacks_lo, *c2 = c1 + 1024;
+    v[0] = stack_peak(u, _ustack_top); v[1] = (uint32_t)((uintptr_t)_ustack_top - (uintptr_t)u);
+    v[2] = stack_peak(s, (const uint32_t *)_sstack_top); v[3] = (uint32_t)((uintptr_t)_sstack_top - (uintptr_t)s);
+    v[4] = stack_peak(c1, c2); v[5] = stack_peak(c2, (const uint32_t *)_cpu1_stacks_hi);
+}
 
 
 /* TIMER5 outranks ALNK0, so the scan keeps its 100 us pace while a half buffer renders: before,
@@ -143,6 +165,9 @@ static void fm1_fault(const fm1_crash_t *c)
 static void melodee_init(void)
 {
     uint32_t i;
+    trk_voices_bind();
+    midi_insert_init();
+    punch_reset();
     chain_defaults(&chain_config);
     pattern_init();
     for (i = 0; i < G_COUNT; i++)
@@ -153,8 +178,8 @@ static void melodee_init(void)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         track_defaults(t);
-        set_engine_of(t, TRK_DEF[i][0]);
-        apply_preset_to(t, TRK_DEF[i][1]);    /* with its sends */
+        set_engine_of(t, trk_def_engine(i));
+        apply_preset_to(t, trk_def_preset(i));    /* with its sends */
         t->engine = t->eng_req;
         track_defaults_steps(t);              /* (a sound load never touches them) */
         pat_sig[i] = steps_sig(t);            /* (empty: not the user's) */
@@ -240,14 +265,26 @@ static void fm1_main(void)
 
     for (;;) {
         uint32_t m = fm1_ms;
+        wire_release();                                 /* last turn's jobs are done with the scratch */
         fm1_wdt_feed();
         pattern_poll();
+#if MELODEE_USB_HOST
+        uh_task(fm1_ms);                                /* before usb_retry: a host port is not retried as a device */
+        if (uh.msg) {
+            static const char *const UH_TEXT[] = {"", "", "", "MIDI READY", "NO MIDI DEVICE",
+                                                  "LOW SPEED", "CONTROLLER LOST"};
+            if (UH_TEXT[uh.msg][0])                     /* (on / off is the header's HOST tag, not a toast) */
+                ui_say("USB ", UH_TEXT[uh.msg]);
+            uh.msg = 0;
+        }
+#endif
         usb_retry(fm1_ms);
 #if MELODEE_USB_AUDIO
-        if (ua_off_apply(fm1_ms)) {                     /* USB direction or capture mode changed: the host re-reads */
+        int usb_change=ua_off_apply(fm1_ms);
+        if (usb_change==1) {                           /* USB direction or capture mode changed: the host re-reads */
             settings_save();                            /* while off the bus: no USB deadline missed */
             ui_say("USB ", "RECONNECTING");
-        }
+        }else if(usb_change==2)ui_message("USB MEMORY FULL");
 #endif
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
@@ -367,6 +404,12 @@ void fm1_cstart(void)
         fm1_enter_uboot();
     }
     fm1_irq_init();
+    {   /* (IRQs off, CPU1 held: the system stack and CPU1's are unused; this frame's own is kept) */
+        uint32_t here;
+        stack_paint((uint32_t *)_ustack_lo, (uint32_t *)((uintptr_t)&here & ~3u) - 64);
+        stack_paint((uint32_t *)_sstack_lo, (uint32_t *)_sstack_top);
+        stack_paint((uint32_t *)_cpu1_stacks_lo, (uint32_t *)_cpu1_stacks_hi);
+    }
     for (d = _bss_start; d < _bss_end; d++)
         *d = 0;
     for (d = _pool_start; d < _pool_end; d++)

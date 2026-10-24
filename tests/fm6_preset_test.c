@@ -40,14 +40,14 @@ int main(void)
     bad+=check("Z128 stores all original 144 CZ-1 bytes",native_put(ENGI_CZ,127,cz)==0 && !memcmp(native_raw(ENGI_CZ,127),cz,144));
     bad+=check("shared slots expose their actual engine without duplicate entries",up_used(63) && up_used(127) && up_count()==2 && !native_used(ENGI_CZ,63) && !native_used(ENGI_FM6,127));
     TSEL->p[P_RESERVED33]=47;TSEL->p[P_LD_PIT]=12;TSEL->step[0]=(step_t){.time=ST_NOTE,.n=1,.note={60}};
-    native_load(ENGI_FM6,63,0);fm6_pack(fm6_patch[0],got);
+    native_load(ENGI_FM6,63,0);fm6_pack(fm6_patch_of(0),got);
     bad+=check("native FM6 load keeps effects, modulation and pattern",!memcmp(got,fm,128) && !TSEL->p[P_RESERVED33] && TSEL->p[P_LD_PIT]==TP[P_LD_PIT].def && TSEL->step[0].note[0]==60);
     native_load(ENGI_CZ,127,0);
-    bad+=check("native CZ load keeps effects, modulation and pattern",!memcmp(cz_patch[0].raw,cz,144) && !TSEL->p[P_RESERVED33] && TSEL->p[P_LD_PIT]==TP[P_LD_PIT].def && TSEL->step[0].note[0]==60);
+    bad+=check("native CZ load keeps effects, modulation and pattern",!memcmp(cz_patch_of(0)->raw,cz,144) && !TSEL->p[P_RESERVED33] && TSEL->p[P_LD_PIT]==TP[P_LD_PIT].def && TSEL->step[0].note[0]==60);
     uint32_t total,cur=preset_all_pos(&total),k,e=preset_all_at(cur-1u,&k);
     bad+=check("Z128 follows the final CZ factory tone in the real browser",e==ENGI_CZ && k==64u && user_of(TSEL)==127);
     preset_go(cur-1u);bad+=check("global preset scrolling loads the preceding factory tone",TSEL->eng_req==ENGI_CZ && TSEL->preset==64u && !TSEL->user);
-    preset_go(cur);bad+=check("global preset scrolling returns to Z128",TSEL->user==128 && !memcmp(cz_patch[0].raw,cz,144));
+    preset_go(cur);bad+=check("global preset scrolling returns to Z128",TSEL->user==128 && !memcmp(cz_patch_of(0)->raw,cz,144));
     cur=preset_all_pos(&total);e=preset_all_at(cur,&k);
     bad+=check("global preset browser identifies native slots as user sounds",e==USER_GENERAL && k==127);
     favorite_set(USER_NATIVE_FM,63,1);favorite_set(USER_NATIVE_CZ,127,1);favorites.filter=1;

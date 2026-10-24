@@ -74,7 +74,7 @@ static int check(const char *what, int ok)
 static void reset(void)
 {
     uint32_t t, i;
-    memset(&song, 0, sizeof song); memset(trk, 0, sizeof trk);
+    memset(&song, 0, sizeof song); memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&chain, 0, sizeof chain); chain_defaults(&chain_config);
     pattern_init();
     memset(&sx_import,0,sizeof sx_import);memset(&bulk,0,sizeof bulk);resource_release(RES_NOTE_HISTORY);note_transaction_ptr=0;fm6_rx_ready=0;
@@ -86,7 +86,7 @@ static void reset(void)
     transport_req = panic_req = 0; sx_ready = sx_collect = sx_busy = 0;
     so_r = so_w = mi_r = mi_w = 0; midi_in_overflow = 0; usb.config = 1;
     for (i = 0; i < G_COUNT; i++) song.g[i] = GP[i].def;
-    for (t = 0; t < NTRK; t++) {
+    for (t = 0; t < NPART; t++) {
         track_defaults(&trk[t]); set_engine_of(&trk[t], 3); apply_preset_to(&trk[t], 0);   /* (SID: values on p[]) */
         trk[t].engine = trk[t].eng_req; track_defaults_steps(&trk[t]);
     }
@@ -317,7 +317,7 @@ static int fm6_patches(void)
     a[0] = ED_FM6_TRACK; a[1] = 2; memcpy(a + 2, pk, FM6_PACKED);
     n = request(ED_FM6_PUT, a, sizeof a);
     bad += check("FM6_PUT track 3: rc 0, the track's patch", n == 9u && host_wire[7] == 0 &&
-                 !memcmp(fm6_patch[2] + FP_NAME, "MY PATCH  ", 10));
+                 !memcmp(fm6_patch_of(2) + FP_NAME, "MY PATCH  ", 10));
     a[1] = 2;
     n = request(ED_FM6_GET, a, 2);
     bad += check("FM6_GET track 3: as sent", host_wire[7] == 0 && !memcmp(host_wire + 8, pk, FM6_PACKED));
@@ -414,21 +414,21 @@ static int cz_native_protocol(void)
     for(uint32_t k=0;k<8;k++){raw[21+2*k]=(uint8_t)(k*15);raw[22+2*k]=(uint8_t)(k*17);}raw[28]|=128;
     a[0]=0;a[1]=2;for(uint32_t i=0;i<CZ_BYTES;i++){a[2+2*i]=raw[i]&15;a[3+2*i]=raw[i]>>4;}
     request(ED_CZ_PUT,a,290);
-    bad+=check("CZ PUT preserves all eight DCA points, velocity and hidden waves",host_wire[7]==0 && trk[2].eng_req==ENGI_CZ && trk[2].p[P_E7]==CZ_NATIVE && !memcmp(cz_patch[2].raw,raw,CZ_BYTES));
+    bad+=check("CZ PUT preserves all eight DCA points, velocity and hidden waves",host_wire[7]==0 && trk[2].eng_req==ENGI_CZ && trk[2].p[P_E7]==CZ_NATIVE && !memcmp(cz_patch_of(2)->raw,raw,CZ_BYTES));
     request(ED_CZ_GET,a,2);int same=host_wire_n==297 && host_wire[7]==0;
     for(uint32_t i=0;i<CZ_BYTES;i++)same &= host_wire[8+2*i]==(raw[i]&15) && host_wire[9+2*i]==(raw[i]>>4);
     bad+=check("CZ GET returns exact low-first tone nibbles",same);
-    a[40]=16;request(ED_CZ_PUT,a,290);bad+=check("invalid CZ upload leaves live patch intact",host_wire[7]==1 && !memcmp(cz_patch[2].raw,raw,CZ_BYTES));a[40]=raw[19]&15;
+    a[40]=16;request(ED_CZ_PUT,a,290);bad+=check("invalid CZ upload leaves live patch intact",host_wire[7]==1 && !memcmp(cz_patch_of(2)->raw,raw,CZ_BYTES));a[40]=raw[19]&15;
     a[0]=1;a[1]=8;request(ED_CZ_PUT,a,290);bad+=check("CZ tone uses atomic ordinary preset storage",host_wire[7]==0 && up_used(8) && up_rec(8)->ver==UP_VER_CZ && !memcmp(up_rec(8)->packed,raw,CZ_BYTES));
-    song.sel=1;up_load(8);bad+=check("loading user CZ preset restores all 144 native bytes",TSEL->p[P_E7]==CZ_NATIVE && !memcmp(cz_patch[1].raw,raw,CZ_BYTES));
+    song.sel=1;up_load(8);bad+=check("loading user CZ preset restores all 144 native bytes",TSEL->p[P_E7]==CZ_NATIVE && !memcmp(cz_patch_of(1)->raw,raw,CZ_BYTES));
     project_t q,r;project_store_t packed;project_capture(&q);bad+=check("native tones survive project serialization",proj_pack(&packed,&q) && proj_unpack(&r,packed.raw) && !memcmp(q.cz,r.cz,sizeof q.cz));
     static uint8_t banked[BANK_STORE_SIZE];
     bad+=check("native tones survive full pattern-bank serialization",bank_pack(banked,&q,1) && bank_valid(banked,sizeof banked) && !memcmp(q.cz,proj_scratch.cz,sizeof q.cz));
     template_save(); static tmpl_t saved; saved=tmpl;
     memset(cz_patch,0,sizeof cz_patch); memset(&tmpl,0,sizeof tmpl);
     int restored=tmpl_take((const uint8_t *)&saved,sizeof saved);template_load();
-    bad+=check("native tone bytes and mode survive a saved template",restored && trk[1].p[P_E7]==CZ_NATIVE && !memcmp(cz_patch[1].raw,raw,CZ_BYTES));
-    const uint32_t sizes[]={sizeof(tmpl_fx_legacy_t),sizeof(tmpl_fx_single_t),sizeof(tmpl_t)-NTRK*2u*(P_COUNT-116u)-20u,sizeof(tmpl_t)-NTRK*2u*(P_COUNT-117u)-4u,sizeof(tmpl_t)-NTRK*2u*(P_COUNT-119u)-4u,sizeof(tmpl_t)+NTRK*2u*(125u-P_COUNT),sizeof(tmpl_t)-NTRK*2u*(P_COUNT-122u),sizeof(tmpl_t)};
+    bad+=check("native tone bytes and mode survive a saved template",restored && trk[1].p[P_E7]==CZ_NATIVE && !memcmp(cz_patch_of(1)->raw,raw,CZ_BYTES));
+    const uint32_t sizes[]={sizeof(tmpl_fx_legacy_t),sizeof(tmpl_fx_single_t),sizeof(tmpl_t)-NPART*2u*(P_COUNT-116u)-20u,sizeof(tmpl_t)-NPART*2u*(P_COUNT-117u)-4u,sizeof(tmpl_t)-NPART*2u*(P_COUNT-119u)-4u,sizeof(tmpl_t)+NPART*2u*(125u-P_COUNT),sizeof(tmpl_t)-NPART*2u*(P_COUNT-122u),sizeof(tmpl_t)};
     for(uint32_t k=0;k<NELEM(sizes);k++){
         uint8_t begin[12]={0,1},abort[2]={3,1};uint32_t len=sizeof(persist_t)+sizes[k];
         for(uint32_t j=0;j<5;j++)begin[2+j]=(uint8_t)((len>>(7*j))&127u);
@@ -443,9 +443,9 @@ static int cz_casio_sysex(void)
     const uint8_t head[]={0xf0,0x44,0,0,0x70,0x21,0x60};memcpy(frame,head,7);for(uint32_t j=0;j<CZ_BYTES;j++){frame[7+2*j]=raw[j]&15;frame[8+2*j]=raw[j]>>4;}frame[295]=0xf7;
     for(uint32_t j=0;j<sizeof frame;j++)sysex_byte(frame[j]);cz_service();host_drain();
     bad+=check("direct Casio MIDI SysEx stages exact named tone in the CZ user list",sx_import.count==1 && library_engine()==ENGI_CZ && !memcmp(sx_import.data,raw,CZ_BYTES) && cur_page()->graph==GR_USER);
-    ui.uslot=7;sysex_choose();native_load(ENGI_CZ,7,0);memcpy(got,cz_patch[0].raw,CZ_BYTES);
+    ui.uslot=7;sysex_choose();native_load(ENGI_CZ,7,0);memcpy(got,cz_patch_of(0)->raw,CZ_BYTES);
     frame[10]=16;for(uint32_t j=0;j<sizeof frame;j++)sysex_byte(frame[j]);cz_service();
-    bad+=check("invalid direct Casio SysEx leaves the native tone intact",!memcmp(cz_patch[0].raw,got,CZ_BYTES));
+    bad+=check("invalid direct Casio SysEx leaves the native tone intact",!memcmp(cz_patch_of(0)->raw,got,CZ_BYTES));
     const uint8_t request[]={0xf0,0x44,0,0,0x70,0x11,0x60,0xf7};host_wire_n=0;for(uint32_t j=0;j<sizeof request;j++)sysex_byte(request[j]);cz_service();host_drain();
     int same=host_wire_n==295 && host_wire[5]==0x30;for(uint32_t j=0;same && j<CZ_BYTES;j++)same=host_wire[6+2*j]==(raw[j]&15) && host_wire[7+2*j]==(raw[j]>>4);
     bad+=check("direct Casio tone request exports exact native bytes",same);return bad;
@@ -483,7 +483,7 @@ static int native_protocol(void)
     a[1]=0;a[2]=120;a[3]=16;request(ED_NATIVE,a,4);
     bad+=check("last native page clamps to Z128 and reports 128 slots",!host_wire[8] && host_wire[9]==8 && host_wire[10]==0 && host_wire[11]==1);
     a[1]=4;a[2]=127;a[3]=2;trk[2].p[P_PAN]=37;trk[2].p[P_LEVEL]=61;trk[2].step[0].note[0]=67;request(ED_NATIVE,a,4);
-    bad+=check("native load targets track 3 and preserves pan, level and pattern",!host_wire[8] && trk[2].user==128 && !trk[2].user_native && trk[2].p[P_PAN]==37 && trk[2].p[P_LEVEL]==61 && trk[2].step[0].note[0]==67 && !memcmp(cz_patch[2].raw,cz,sizeof cz));
+    bad+=check("native load targets track 3 and preserves pan, level and pattern",!host_wire[8] && trk[2].user==128 && !trk[2].user_native && trk[2].p[P_PAN]==37 && trk[2].p[P_LEVEL]==61 && trk[2].step[0].note[0]==67 && !memcmp(cz_patch_of(2)->raw,cz,sizeof cz));
     trk[2].p[P_E2]=23;request(ED_NATIVE,a,4);
     bad+=check("same-engine native load also keeps track macros",trk[2].p[P_E2]==param_desc_of(ENGI_CZ,P_E2)->def);
     a[1]=7;a[2]=2;request(ED_NATIVE,a,3);
@@ -595,12 +595,12 @@ static int project_scale_protocol(void)
         uint16_t v = (uint16_t)(values[i] + 8192);
         uint8_t a[4] = {0, ids[i], v & 127u, v >> 7};
         request(ED_SET, a, sizeof a);
-        for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].p[ids[i]] == values[i];
+        for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].p[ids[i]] == values[i];
         a[0] = 2;
         v = (uint16_t)(TP[ids[i]].def + 8192);
         a[2] = v & 127u; a[3] = v >> 7;
         request(ED_TRACK_PARAM, a, sizeof a);
-        for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].p[ids[i]] == TP[ids[i]].def;
+        for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].p[ids[i]] == TP[ids[i]].def;
     }
     return check("SET and TRACK_PARAM share project ROOT, scale and note quantization", ok);
 }
@@ -682,9 +682,30 @@ static int library_transfers(void)
     sysex_cancel();bad+=check("cancel releases a pending import without changing its destination",!sx_import.count&&native_used(ENGI_FM6,3));
     return bad;
 }
+static int midi_track_protocol(void)
+{
+    reset(); int bad = 0;
+    song.sel = 2; set_engine_of(TSEL, ENGI_MIDI);
+    int16_t level = TSEL->p[P_LEVEL], pan = TSEL->p[P_PAN];
+    uint8_t a[4] = {0, P_E0, 16, 64};
+    request(ED_SET, a, 4);
+    a[1] = P_E1; a[2] = 1; request(ED_SET, a, 4);
+    bad += check("MIDI Track channel and TRS controls use ordinary track parameters",
+                 TSEL->eng_req == ENGI_MIDI && TSEL->p[P_E0] == 16 && TSEL->p[P_E1] == 1);
+    a[1] = P_LEVEL; a[2] = 0; request(ED_SET, a, 4);
+    a[0] = 2; a[1] = P_PAN; a[2] = 30; request(ED_TRACK_PARAM, a, 4);
+    a[1] = 0; a[2] = 64; a[3] = 1; request(ED_TRACK_MIX, a, 4);
+    bad += check("MIDI Track editor level and pan are inert while mute remains available",
+                 TSEL->p[P_LEVEL] == level && TSEL->p[P_PAN] == pan && TSEL->p[P_MUTE]);
+    a[0] = 0; a[1] = P_FXTYPE; a[2] = FX_REVERB; a[3] = 64; request(ED_SET, a, 4);
+    a[0] = 2; a[1] = P_FXSEND; a[2] = 127; request(ED_TRACK_PARAM, a, 4);
+    bad += check("MIDI Track editor cannot enable insert FX or shared sends",
+                 TSEL->p[P_FXTYPE] == FX_OFF && !TSEL->p[P_FXSEND]);
+    return bad;
+}
 int main(void)
 {
-    int bad = library_transfers() + native_motion_protocol() + prophet_protocol() + bank_protocol() + preferences() + framing() + uart_recovery() + steps() + song_protocol() + malformed_saves() + names_whole() +
+    int bad = midi_track_protocol() + library_transfers() + native_motion_protocol() + prophet_protocol() + bank_protocol() + preferences() + framing() + uart_recovery() + steps() + song_protocol() + malformed_saves() + names_whole() +
               native_protocol() + shared_protocol() + fm6_patches() + user_preset_roundtrip() + cz_native_protocol() + cz_dedicated_banks() + cz_casio_sysex() + concert_pitch() + scale_catalogue() + project_scale_protocol();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");
     return bad != 0;

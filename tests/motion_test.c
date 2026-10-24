@@ -113,7 +113,7 @@ static void pack_np(project_store_t *out, const project_t *q, const motion_store
     memset(b + 68, 0, PROJ_FM6_OFF - 68u);
     uint32_t magic=0x46554E43u;memcpy(b,&magic,4);memcpy(b+8,q->g,2u*PROJ_GLOBALS);
     b[66] = (uint8_t)np;
-    for (t = 0; t < NTRK; t++) {
+    for (t = 0; t < NPART; t++) {
         for (i = 0; i < np; i++) b[pos++] = (uint8_t)(q->t[t].p[i < np - 8u ? i : i - (np - 8u) + P_E0] + 64);
         b[pos++] = q->t[t].engine; b[pos++] = q->t[t].preset;
         for (i = 0; i < NSTEP; i++) {
@@ -133,7 +133,7 @@ static int older_count(void)
     project_t before, after; project_store_t old; motion_store_t m;
     const uint32_t np = 104u, e0 = np - 8u;
     uint32_t i, k;
-    for (k = 0; k < NTRK; k++)
+    for (k = 0; k < NPART; k++)
         for (i = 0; i < 8u; i++) trk[k].p[P_E0 + i] = (int16_t)(ENGINES[trk[k].eng_req]->edit[i].min + (int16_t)(k + i) %
             (ENGINES[trk[k].eng_req]->edit[i].max - ENGINES[trk[k].eng_req]->edit[i].min + 1));
     t->p[P_FM1_ATK] = 33; t->p[P_LEVEL] = 20;
@@ -146,7 +146,7 @@ static int older_count(void)
     m.event[2] = (motion_event_t){6, P_FM1_ATK, 20};               /* below its P_E0: the same id then and now */
     pack_np(&old, &before, &m, np);
     ok = proj_import(&after, &old, sizeof old);
-    for (k = 0; ok && k < NTRK; k++) {
+    for (k = 0; ok && k < NPART; k++) {
         for (i = 0; i < 8u; i++) ok &= after.t[k].p[P_E0 + i] == before.t[k].p[P_E0 + i];
         for (i = 0; i < e0; i++) ok &= after.t[k].p[i] == before.t[k].p[i];
         for (i = e0; i < P_E0; i++) ok &= after.t[k].p[i] == param_desc_of(after.t[k].engine, i)->def;
@@ -269,7 +269,7 @@ static int native_motion_test(void)
     ui_power_on(); set_engine_of(TSEL, ENGI_CZ); apply_preset_to(TSEL, 0);
     for (uint32_t j = 0; j < MOTION_MAX - 1u; j++) motion_set_event(TSEL, j, P_LEVEL, 30);
     song.rec = 1; seq_start(); seq_tick(TSEL, CTL); uint8_t old[MO_NATIVE_N]; motion_native_peek(TSEL, old);
-    cz_patch[0].raw[38] ^= 1; cz_patch[0].raw[39] ^= 1; motion_native_edited(TSEL, old);
+    cz_patch_of(0)->raw[38] ^= 1; cz_patch_of(0)->raw[39] ^= 1; motion_native_edited(TSEL, old);
     bad += check("full pool refuses a whole multi-byte native edit without partial events", motion.count == MOTION_MAX - 1u && motion_full);
     seq_stop();
     return bad;
@@ -282,7 +282,7 @@ static int overlapping_motion_ids(void)
     bad+=check("common engine and native motion sharing wire ID P_E1 coexist", P_E1>=MO_NATIVE &&
         !motion_set_event(t,0,P_E1,common) && !motion_set_event(t,0,P_E1,native) && motion.count==2 && motion_valid(&motion));
     uint16_t ids[MO_MAX];bad+=check("colliding wire IDs produce separate UI lanes",mo_lanes(ids)==2 && ids[0]==P_E1 && ids[1]==(P_E1|256u));
-    motion_step(t,0,&motion);bad+=check("both colliding motion destinations play independently",t->p[P_E1]==common && fm6_patch[0][P_E1-MO_NATIVE]==80);
+    motion_step(t,0,&motion);bad+=check("both colliding motion destinations play independently",t->p[P_E1]==common && fm6_patch_of(0)[P_E1-MO_NATIVE]==80);
     motion_delete_event(t,0,P_E1);bad+=check("typed common deletion keeps native motion",motion.count==1 && motion.event[0].value==native);
     motion_set_event(t,0,P_E1,common);motion_delete_event(t,0,P_E1|256u);
     bad+=check("typed native deletion keeps common motion",motion.count==1 && motion.event[0].value==common);

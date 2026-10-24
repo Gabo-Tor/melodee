@@ -40,10 +40,10 @@ static void designer_snapshot(designer_sound_t *s)
     memset(s,0,sizeof *s);
     s->eng=t->eng_req;s->preset=t->preset;s->user=t->user;s->native=t->user_native;
     memcpy(s->p,t->p,sizeof s->p);
-    if(s->eng==ENGI_FM6){memcpy(s->raw.fm.patch,fm6_patch[k],sizeof s->raw.fm.patch);memcpy(s->raw.fm.fn,fm6_fn[k],FM6_NFN);s->raw.fm.on=fm6_on[k];}
-    else if(s->eng==ENGI_CZ)s->raw.cz=cz_patch[k];
+    if(s->eng==ENGI_FM6){memcpy(s->raw.fm.patch,fm6_patch_of(k),sizeof s->raw.fm.patch);memcpy(s->raw.fm.fn,fm6_fn[k],FM6_NFN);s->raw.fm.on=fm6_on[k];}
+    else if(s->eng==ENGI_CZ)s->raw.cz=(*cz_patch_of(k));
     else if(s->eng==ENGI_PROPHET)s->raw.p5=*p5_patch_of(t);
-    else if(s->eng==ENGI_DRUM)s->raw.drum=drum_patch[k];
+    else if(s->eng==ENGI_DRUM)s->raw.drum=(*drum_patch_of(k));
 }
 static void designer_restore(const designer_sound_t *s)
 {
@@ -52,9 +52,9 @@ static void designer_restore(const designer_sound_t *s)
     t->eng_req=s->eng;t->preset=s->preset;t->user=s->user;t->user_native=s->native;
     for(uint32_t i=0;i<P_COUNT;i++)if(!param_kept(i))t->p[i]=s->p[i];
     if(s->eng==ENGI_FM6){fm6_put_patch(k,s->raw.fm.patch,0);memcpy(fm6_fn[k],s->raw.fm.fn,FM6_NFN);fm6_on[k]=s->raw.fm.on;}
-    else if(s->eng==ENGI_CZ){cz_patch[k]=s->raw.cz;cz_track_accept(t);}
+    else if(s->eng==ENGI_CZ){(*cz_patch_of(k))=s->raw.cz;cz_track_accept(t);}
     else if(s->eng==ENGI_PROPHET){p5_patch[k]=s->raw.p5;p5_ready[k]=1;}
-    else if(s->eng==ENGI_DRUM)drum_patch[k]=s->raw.drum;
+    else if(s->eng==ENGI_DRUM)(*drum_patch_of(k))=s->raw.drum;
     sync_reload=1;
 }
 static void designer_compare(void)
@@ -91,7 +91,7 @@ static void designer_close(int discard)
 static void designer_cz_put(uint32_t id,uint32_t v)
 {
     uint8_t raw[CZ_BYTES];
-    if(cz_ed_put(song.sel,id,v,raw))memcpy(cz_patch[song.sel].raw,raw,CZ_BYTES);
+    if(cz_ed_put(song.sel,id,v,raw))memcpy(cz_patch_of(song.sel)->raw,raw,CZ_BYTES);
 }
 /* FEATURES, the first stage: the paths a sound is built from, as the
  * instrument's own switches (Prophet pulse, Poly-Mod, unison; FM operators;
@@ -114,7 +114,7 @@ static const uint8_t DS_F_ANY[] = {DF_VOICE, DF_GLIDE, DF_SPREAD, DF_PENV, DF_VI
 static const uint8_t *designer_feats(uint32_t *n)       /* the selected track's engine's (a drum kit: none) */
 {
     uint32_t e=TSEL->eng_req;
-    if(drum_track(TSEL)){*n=0;return 0;}
+    if(drum_track(TSEL) || midi_track_only(TSEL)){*n=0;return 0;}
     *n=e==ENGI_PROPHET?sizeof DS_F_P5:e==ENGI_FM6?sizeof DS_F_FM:e==ENGI_CZ?sizeof DS_F_CZ:sizeof DS_F_ANY;
     return e==ENGI_PROPHET?DS_F_P5:e==ENGI_FM6?DS_F_FM:e==ENGI_CZ?DS_F_CZ:DS_F_ANY;
 }
@@ -126,9 +126,9 @@ static int designer_p5_on(const uint8_t *q,uint32_t level,uint32_t offset,int wa
 }
 static uint32_t designer_feat_get(uint32_t f)
 {
-    track_t *t=TSEL;const uint8_t *q=p5_patch_of(t)->raw,*v=fm6_patch[song.sel];
+    track_t *t=TSEL;const uint8_t *q=p5_patch_of(t)->raw,*v=fm6_patch_of(song.sel);
     uint8_t c[LCZ_PACKED];
-    if(f>=DF_LINES && f<=DF_CZVIB)cz_ed_decode(c,cz_patch[song.sel].raw);
+    if(f>=DF_LINES && f<=DF_CZVIB)cz_ed_decode(c,cz_patch_of(song.sel)->raw);
     if(f>=DF_OP1 && f<=DF_OP6){uint32_t k=5u-(f-DF_OP1);return fm6_op_on(t,k) && v[k*FP_OP+FP_OL];}
     switch(f){
     case DF_OSCB:return designer_p5_on(q,P5_LEVEL_B,P_E7,q[P5_SAW_B]||q[P5_TRI_B]||q[P5_PULSE_B]);
@@ -229,7 +229,7 @@ static void designer_feat_set(uint32_t f,uint32_t s)
         return;
     }
     if(f>=DF_OP1 && f<=DF_PEG){
-        uint8_t v[FP_SIZE+1u];memcpy(v,fm6_patch[song.sel],sizeof v);
+        uint8_t v[FP_SIZE+1u];memcpy(v,fm6_patch_of(song.sel),sizeof v);
         if(f>=DF_OP1 && f<=DF_OP6){
             uint32_t k=5u-(f-DF_OP1);
             if(s && !v[k*FP_OP+FP_OL])v[k*FP_OP+FP_OL]=(uint8_t)((fm6_carriers(v[FP_ALG])>>k)&1u?90:60);
@@ -247,7 +247,7 @@ static void designer_feat_set(uint32_t f,uint32_t s)
         return;
     }
     if(f>=DF_LINES && f<=DF_CZVIB){
-        uint8_t c[LCZ_PACKED];cz_ed_decode(c,cz_patch[song.sel].raw);
+        uint8_t c[LCZ_PACKED];cz_ed_decode(c,cz_patch_of(song.sel)->raw);
         if(f==DF_LINES){designer_cz_put(LCZ_LINE,s);return;}
         if(f==DF_CZVIB){designer_cz_put(LCZ_VDEP,designer_amount(c[LCZ_VDEP],s,15));return;}
         if(s && !c[LCZ_LINE])designer_cz_put(LCZ_LINE,2);   /* line 2 needs a second line: 1+2' */
@@ -297,8 +297,8 @@ static const char *designer_silent(void)
         if(!designer_p5_on(q,P5_LEVEL_A,P_E6,q[P5_SAW_A]||q[P5_PULSE_A]) && !designer_feat_get(DF_OSCB) && !q[P5_NOISE])
             return "MIXER SILENT";
     }else if(t->eng_req==ENGI_FM6){
-        uint32_t c=fm6_carriers(fm6_patch[song.sel][FP_ALG]);
-        for(uint32_t k=0;k<6u;k++)if(((c>>k)&1u) && fm6_op_on(t,k) && fm6_patch[song.sel][k*FP_OP+FP_OL])return 0;
+        uint32_t c=fm6_carriers(fm6_patch_of(song.sel)[FP_ALG]);
+        for(uint32_t k=0;k<6u;k++)if(((c>>k)&1u) && fm6_op_on(t,k) && fm6_patch_of(song.sel)[k*FP_OP+FP_OL])return 0;
         return "NO CARRIER ON";
     }
     return 0;
@@ -308,7 +308,7 @@ static const char *designer_silent(void)
 static void designer_recipe(void)
 {
     track_t *t=TSEL;uint32_t g=ds.goal;
-    if(g==DG_FREE || drum_track(t))return;
+    if(g==DG_FREE || drum_track(t) || midi_track_only(t))return;
     int pad=g==DG_PAD, shorty=g==DG_PLUCK||g==DG_KEYS;
     t->p[P_VOICE]=(g==DG_BASS||g==DG_LEAD)?V_MONO:V_POLY;
     if(t->eng_req==ENGI_PROPHET){
@@ -323,7 +323,7 @@ static void designer_recipe(void)
         if(g==DG_FX){p[P5_POLY_B]=25;p[P5_POLY_FREQ]=1;p[P5_SAW_B]=1;p[P5_LOW_B]=1;p[P5_KEY_B]=0;}
         p5_track_accept(t);
     }else if(t->eng_req==ENGI_FM6){
-        uint8_t v[FP_SIZE+1u];memcpy(v,fm6_patch[song.sel],sizeof v);
+        uint8_t v[FP_SIZE+1u];memcpy(v,fm6_patch_of(song.sel),sizeof v);
         v[FP_ALG]=4; /* three independent two-operator pairs */
         for(uint32_t op=0;op<6;op++){
             uint8_t *p=v+op*FP_OP;
@@ -366,6 +366,7 @@ static int designer_category(uint32_t i)
 static int designer_page_ok(uint32_t i)
 {
     const page_t *p=&PAGES[i];
+    if (midi_track_only(TSEL)) return p->scope == SC_ENGINE && p->id[0] == P_E0;
     if(!page_visible(i) || (p->fam!=FAM_EDIT && p->fam!=FAM_ENV && p->fam!=FAM_LFO))return 0;
     if(p->graph==GR_FMSTORE || p->graph==GR_CZTOOLS || p->scope==SC_P5STORE || p->graph==GR_MOTION)return 0;
     /* Track mixer/performance parameters and the drum lanes' notes are outside a tone. */
@@ -398,8 +399,8 @@ static int designer_live(uint32_t i)
 {
     const char *s=PAGES[i].title;
     if(PAGES[i].scope!=SC_CZ1)return 1;
-    if(str_prefix(s,"CZ1 ") || str_prefix(s,"C1 "))return cz_ed_active(cz_patch[song.sel].raw,LCZ_LBASE(0)+LCZ_W1);
-    if(str_prefix(s,"CZ2 ") || str_prefix(s,"C2 "))return cz_ed_active(cz_patch[song.sel].raw,LCZ_LBASE(1)+LCZ_W1);
+    if(str_prefix(s,"CZ1 ") || str_prefix(s,"C1 "))return cz_ed_active(cz_patch_of(song.sel)->raw,LCZ_LBASE(0)+LCZ_W1);
+    if(str_prefix(s,"CZ2 ") || str_prefix(s,"C2 "))return cz_ed_active(cz_patch_of(song.sel)->raw,LCZ_LBASE(1)+LCZ_W1);
     return 1;
 }
 static void designer_add(uint32_t i,uint32_t op,uint32_t st)
@@ -469,13 +470,13 @@ static uint32_t designer_need(void)
         default:return DF_LFO;                          /* rate, waves, initial, mix */
     }
     if(p->scope==SC_FMOP && id!=FP_OP && !designer_feat_get(DF_OP1+fm6_opsel%6u))return DF_OP1+fm6_opsel%6u;
-    if(p->scope==SC_CZ1 && !cz_ed_active(cz_patch[song.sel].raw,id)){
+    if(p->scope==SC_CZ1 && !cz_ed_active(cz_patch_of(song.sel)->raw,id)){
         uint32_t line;
         if(id==LCZ_VWAVE || id==LCZ_VRATE || id==LCZ_VDELAY)return DF_CZVIB;
         if(id==LCZ_SIGN)return DF_DETUNE;
         if(id<LCZ_GLOBALS)return DF_LINES;              /* (DETUNE, MOD: line 2's) */
         line=id>=LCZ_WIN(0)?id-LCZ_WIN(0):id<LCZ_EBASE(0,0)?(id-LCZ_GLOBALS)/8u:(id-LCZ_EBASE(0,0))/54u;   /* (cz_ed_active) */
-        if(id>=LCZ_EBASE(0,0) && id<LCZ_OLD_NP && cz_ed_active(cz_patch[song.sel].raw,LCZ_LBASE(line&1u)+LCZ_W1))return DF_COUNT;
+        if(id>=LCZ_EBASE(0,0) && id<LCZ_OLD_NP && cz_ed_active(cz_patch_of(song.sel)->raw,LCZ_LBASE(line&1u)+LCZ_W1))return DF_COUNT;
         return DF_LINES;                                /* (line 2's values; line 1's in LINE2) */
     }
     if(p->scope==SC_TRACK && id==P_DETUNE && TSEL->p[P_VOICE]!=V_UNISON)return DF_VOICE;
@@ -560,9 +561,11 @@ static void designer_start_draw(void)
         cv_blit(0,(uint32_t)(LIST_Y0+(int32_t)k*LIST_ROW));
     }
     if(text_w(f,ENGINES[ds.eng]->name)>220 || !text_has(f,ENGINES[ds.eng]->name))f=TY_VL;
-    cv_begin(240,Y_FOOT-(LIST_Y0+3*LIST_ROW),T_BG);   /* (the engine: large) */
-    cv_text_c(120,ty_y((Y_FOOT-(LIST_Y0+3*LIST_ROW))/2,f),f,ENGINES[ds.eng]->name,T_THEME,T_BG);
-    cv_blit(0,LIST_Y0+3*LIST_ROW);
+    for (uint32_t band = 0; band < (uint32_t)(Y_FOOT-(LIST_Y0+3*LIST_ROW)); band += CV_MAX / (240)) {
+        cv_begin_band(240,Y_FOOT-(LIST_Y0+3*LIST_ROW),T_BG,band);   /* (the engine: large) */
+        cv_text_c(120,ty_y((Y_FOOT-(LIST_Y0+3*LIST_ROW))/2,f),f,ENGINES[ds.eng]->name,T_THEME,T_BG);
+        cv_blit_band(0,LIST_Y0+3*LIST_ROW);
+    }
     new_keys_row("Design",ICON_X_RIGHT);
 }
 /* FEATURES: a row a path, its state at the right (off: dim); an FM operator says what it is in the algorithm */
@@ -572,7 +575,7 @@ static int designer_feat_cap(uint32_t r,char *lb,char *v,uint16_t *vc)
     f=fs[r%n];st=designer_feat_get(f);
     str_cpy(lb,DF_WORD[f],16);
     if(f>=DF_OP1 && f<=DF_OP6)
-        str_cpy(lb+3,(fm6_carriers(fm6_patch[song.sel][FP_ALG])>>(5u-(f-DF_OP1)))&1u?" carrier":" modulator",13);
+        str_cpy(lb+3,(fm6_carriers(fm6_patch_of(song.sel)[FP_ALG])>>(5u-(f-DF_OP1)))&1u?" carrier":" modulator",13);
     str_cpy(v,designer_feat_text(f,st),16);
     *vc=st || designer_feat_states(f)>2u?T_TEXT:T_DIM;
     return 0;

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+#include "performance_options.h"
 /* Prophet prototype: native patches and five (experimental dual-core: eight) voices, with two provisional
  * filter characters. Stored engine ID 19 is independent of legacy ANALOG.
  * MELODEE_PROPHET_PROTOTYPE additionally aliases ID 0 for measurement rigs. */
@@ -87,12 +88,12 @@ static int32_t p5_value(const uint8_t *p,uint32_t k) { return p[k]>127u?127:p[k]
 /* Linear attack, exponential decay/release; the SSM filter envelope uses
  * its measured linear decay. Float avoids an integer floor in quiet tails. */
 static float p5_env_tick(p5_env_t *e, int gate, const uint8_t *p,
-                        uint32_t a, uint32_t d, uint32_t s, uint32_t r, int32_t variation, const uint8_t *value, int ssm)
+                        uint32_t a, uint32_t d, uint32_t s, uint32_t r, int32_t variation, const uint8_t *value, int ssm, uint32_t release)
 {
     if (!gate && e->stage != 0u) e->stage = 3;
     float target = (float)value[s] * (1.0f / 127.0f);
     float scale = 1.0f + (float)variation * (1.0f / 32768.0f);
-    uint32_t rel = p[P5_RELEASE_ON] ? value[r] : 16u;
+    uint32_t rel = release ? release : p[P5_RELEASE_ON] ? value[r] : 16u;
     if (e->stage == 1u) {
         e->value += P5_ENV_ATK[value[a]] * scale;
         if (e->value >= 1.0f) { e->value = 1.0f; e->stage = 2; }
@@ -175,9 +176,6 @@ static inline __attribute__((always_inline)) float p5_pitch_ratio(float x)
     fm_bits_t scale;scale.u=(uint32_t)(octave+127)<<23;
     return ratio*scale.f;
 }
-#ifndef MELODEE_PROPHET_FAST
-#define MELODEE_PROPHET_FAST 1
-#endif
 /* Rev-4 full-amount triangle swings +-235 cents. Shared by every voice. */
 static __attribute__((section(".dsp_text"))) void p5_mod_samples(p5_part_t *s,const uint8_t *p,uint32_t inc,float amount,float mix)
 {
@@ -492,8 +490,8 @@ static void p5_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vm
     const uint8_t *q=part->value;
     float f0=s->filter_prev, a0=s->amp_prev;
     int curtis=!!p[P5_FILTER_REV];
-    float f1=p5_env_tick(&s->filter,v->gate,p,P5_ATTACK_FILTER,P5_DECAY_FILTER,P5_SUSTAIN_FILTER,P5_RELEASE_FILTER,s->env_drift,q,!curtis);
-    float a1=p5_env_tick(&s->amp,v->gate,p,P5_ATTACK_AMP,P5_DECAY_AMP,P5_SUSTAIN_AMP,P5_RELEASE_AMP,s->env_drift,q,0);
+    float f1=p5_env_tick(&s->filter,v->gate,p,P5_ATTACK_FILTER,P5_DECAY_FILTER,P5_SUSTAIN_FILTER,P5_RELEASE_FILTER,s->env_drift,q,!curtis,midi_verb[t-trk]);
+    float a1=p5_env_tick(&s->amp,v->gate,p,P5_ATTACK_AMP,P5_DECAY_AMP,P5_SUSTAIN_AMP,P5_RELEASE_AMP,s->env_drift,q,0,midi_verb[t-trk]);
     s->filter_prev=f1; s->amp_prev=a1;
     int32_t glide=0;
     if(p[P5_GLIDE]){

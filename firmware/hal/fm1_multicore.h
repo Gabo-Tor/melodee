@@ -23,6 +23,15 @@ static inline __attribute__((always_inline)) void fm1_aw_store(volatile uint32_t
 }
 #define AW_LOAD(p) fm1_aw_load(p)
 #define AW_STORE(p,v) fm1_aw_store(p,v)
+/* CPU1 has no interrupt to wake a sleeping core. Poll with a short register-only
+ * pause instead of continuously loading shared SRAM and issuing csync while
+ * CPU0 prepares controls or mixes. The bounded delay stays below a microsecond. */
+static inline __attribute__((always_inline)) void fm1_aw_relax(void)
+{
+    for(uint32_t i=0;i<16u;i++)
+        __asm__ volatile("nop; nop; nop; nop" ::: "memory");
+}
+#define AW_IDLE() fm1_aw_relax()
 static inline __attribute__((always_inline)) uint32_t fm1_aw_ticks(void) { return FM1_T4_CNT; }
 #define AW_TICKS() fm1_aw_ticks()
 #define AW_TIMEOUT_TICKS (10000u * FM1_TICKS_PER_US)

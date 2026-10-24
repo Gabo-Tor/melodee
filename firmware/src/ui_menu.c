@@ -4,6 +4,7 @@
 /* Melodee menu (HOME held): COLOR, FONT (the type: RUBIK or PIXEL, ui.c TY_*), HOLD (the layer threshold), LIGHTS (the keys' and buttons'
  * glow: ui_input.c ui_leds), KNOB ACCEL (ui_input.c accel_by), USB AUDIO (IN+OUT, IN, OUT or OFF; usb.c ua_off_set),
  * USB INPUT (stereo master or four track stems; usb.c ua_tracks_set),
+ * USB HOST (the USB-C port hosts a USB-MIDI controller instead of talking to a computer; not saved; usb_host.c),
  * AUTOSAVE (automatic project saves after five seconds stopped and untouched), HOME SELECT (what SELECT turns on HOME:
  * ui.c HS_*), GLO SELECT (what SELECT turns with GLO held, on any page: the same choices), UNUSED TRACKS (SHOW:
  * Stage and MIXER keep a greyed "Add track" row for each place not in use; HIDE: the tracks in use only, ui.c
@@ -16,11 +17,17 @@ enum { MI_COLOR, MI_FONT, MI_HOLD, MI_LIGHTS,
 #if MELODEE_USB_AUDIO
        MI_USB, MI_USB_INPUT,
 #endif
+#if MELODEE_USB_HOST
+       MI_USB_HOST,
+#endif
        MI_CLICK, MI_CLICK_LEVEL, MI_COUNTIN, MI_PREVIEW, MI_ADD, MI_AUTOSAVE, MI_PICKER, MI_ACCEL, MI_HOME_SEL, MI_GLO_SEL, MI_TRACKS, MI_SCREEN, MI_PANEL, MI_ABOUT, MI_DESIGNER, MI_BACK,
        MI_COUNT };
 static const char *const MI_NAME[MI_COUNT] = {"COLOR", "FONT", "HOLD", "LIGHTS",
 #if MELODEE_USB_AUDIO
                                               "USB AUDIO", "USB INPUT",
+#endif
+#if MELODEE_USB_HOST
+                                              "USB HOST",
 #endif
                                               "AUDIO CLICK", "CLICK LEVEL", "COUNT-IN", "NOTE PREVIEW", "CHORD ENTRY",
                                               "AUTOSAVE", "PICKER POPUPS", "KNOB ACCEL", "HOME SELECT", "GLO SELECT", "UNUSED TRACKS", "SCREEN OFF", "CALIBRATION", "ABOUT", "SOUND DESIGNER", "BACK"};
@@ -243,78 +250,85 @@ static void draw_menu(void)
         int32_t thumb = MENU_DOC_H * MENU_DOC_H / (max + MENU_DOC_H);
         if (thumb < 12) thumb = 12;
         for (pass = 0; pass < 2u; pass++) {
-            cv_begin(240, pass ? MENU_DOC_H - 124u : 124u, T_BG);
-            cv_oy = pass ? -124 : 0;
-            cv_scroll = 1;
-            menu_document(-scroll, 1);
-            cv_scroll = 0;
-            cv_rrect(235, 2, 3, MENU_DOC_H - 4, 1, T_LINE, T_BG);           /* the scroll bar */
-            cv_rrect(235, 2 + (max ? scroll * (MENU_DOC_H - 4 - thumb) / max : 0), 3, thumb, 1, T_THEME, T_LINE);
-            cv_oy = 0;
-            cv_blit(0, MENU_HEAD + pass * 124u);
+            for (uint32_t band = 0; band < (uint32_t)(pass ? MENU_DOC_H - 124u : 124u); band += CV_MAX / (240)) {
+                cv_begin_band(240,pass ? MENU_DOC_H - 124u : 124u,T_BG,band);
+                cv_oy = pass ? -124 : 0;
+                cv_scroll = 1;
+                menu_document(-scroll, 1);
+                cv_scroll = 0;
+                cv_rrect(235, 2, 3, MENU_DOC_H - 4, 1, T_LINE, T_BG);           /* the scroll bar */
+                cv_rrect(235, 2 + (max ? scroll * (MENU_DOC_H - 4 - thumb) / max : 0), 3, thumb, 1, T_THEME, T_LINE);
+                cv_oy = 0;
+                cv_blit_band(0, MENU_HEAD + pass * 124u);
+            }
         }
         return;
     }
     for (pass = 0; pass < 2u; pass++) {
         int32_t top = pass ? MENU_SPLIT : MENU_HEAD;
-        cv_begin(240, (uint32_t)(pass ? 240 - MENU_SPLIT : MENU_SPLIT - MENU_HEAD), T_BG);
-        cv_oy = -top;                                 /* drawn in screen rows */
-        uint32_t first=ui.menu_sel>=MENU_VISIBLE?ui.menu_sel-MENU_VISIBLE+1u:0u;
-        for (i = first; i < first+MENU_VISIBLE && i<MI_COUNT; i++) {
-            int32_t y = MENU_Y0 + (int32_t)(i-first) * MENU_ROW;
-            int sel = i == ui.menu_sel;
-            const char *value = 0;
-            char b[24], w[24], v[24];
-            if (y + MENU_RH <= top || y >= top + (int32_t)cv_h)
-                continue;
-            menu_words(w, MI_NAME[i], sizeof w);
-            if (i >= MI_CLICK && i <= MI_ADD)
-                value = i==MI_CLICK?(const char *const[]){"OFF","REC","ON"}[settings_click%3u]:
-                  i==MI_CLICK_LEVEL?(const char *const[]){"LOW","MID","HIGH"}[settings_click_level%3u]:
-                  i==MI_COUNTIN?(const char *const[]){"OFF","1 BAR","2 BARS"}[settings_countin%3u]:
-                  i==MI_PREVIEW?(settings_preview?"ON":"OFF"):(settings_chord_add?"ADD":"HOLD");
-            if (i == MI_ACCEL) value = PREF_BITS & PREF_ACCEL_OFF ? "OFF" : "ON";
-            if (i == MI_PICKER) value = PREF_BITS & PREF_PICK_OFF ? "OFF" : "ON";
-            if (i == MI_FONT) value = TY_PIXEL ? "PIXEL" : "RUBIK";
-            if (i == MI_AUTOSAVE) value = settings_autosave ? "ON" : "OFF";
-            if (i == MI_HOME_SEL) value = HS_NAME[home_select()];
-            if (i == MI_GLO_SEL) value = HS_NAME[glo_select()];
-            if (i == MI_TRACKS) value = GLO_SELECT & TRACKS_HIDE ? "HIDE" : "SHOW";
-            if (i == MI_SCREEN) value = (const char *const[]){"NEVER", "5 MIN", "15 MIN", "30 MIN", "60 MIN"}[scr_get()];
-            if (i == MI_LIGHTS) value = LIGHTS_NAME[settings_lights % LIGHTS_N];
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)(pass ? 240 - MENU_SPLIT : MENU_SPLIT - MENU_HEAD)); band += CV_MAX / (240)) {
+            cv_begin_band(240,(uint32_t)(pass ? 240 - MENU_SPLIT : MENU_SPLIT - MENU_HEAD),T_BG,band);
+            cv_oy = -top;                                 /* drawn in screen rows */
+            uint32_t first=ui.menu_sel>=MENU_VISIBLE?ui.menu_sel-MENU_VISIBLE+1u:0u;
+            for (i = first; i < first+MENU_VISIBLE && i<MI_COUNT; i++) {
+                int32_t y = MENU_Y0 + (int32_t)(i-first) * MENU_ROW;
+                int sel = i == ui.menu_sel;
+                const char *value = 0;
+                char b[24], w[24], v[24];
+                if (y + MENU_RH <= top || y >= top + (int32_t)cv_h)
+                    continue;
+                menu_words(w, MI_NAME[i], sizeof w);
+                if (i >= MI_CLICK && i <= MI_ADD)
+                    value = i==MI_CLICK?(const char *const[]){"OFF","REC","ON"}[settings_click%3u]:
+                      i==MI_CLICK_LEVEL?(const char *const[]){"LOW","MID","HIGH"}[settings_click_level%3u]:
+                      i==MI_COUNTIN?(const char *const[]){"OFF","1 BAR","2 BARS"}[settings_countin%3u]:
+                      i==MI_PREVIEW?(settings_preview?"ON":"OFF"):(settings_chord_add?"ADD":"HOLD");
+                if (i == MI_ACCEL) value = PREF_BITS & PREF_ACCEL_OFF ? "OFF" : "ON";
+                if (i == MI_PICKER) value = PREF_BITS & PREF_PICK_OFF ? "OFF" : "ON";
+                if (i == MI_FONT) value = TY_PIXEL ? "PIXEL" : "RUBIK";
+                if (i == MI_AUTOSAVE) value = settings_autosave ? "ON" : "OFF";
+                if (i == MI_HOME_SEL) value = HS_NAME[home_select()];
+                if (i == MI_GLO_SEL) value = HS_NAME[glo_select()];
+                if (i == MI_TRACKS) value = GLO_SELECT & TRACKS_HIDE ? "HIDE" : "SHOW";
+                if (i == MI_SCREEN) value = (const char *const[]){"NEVER", "5 MIN", "15 MIN", "30 MIN", "60 MIN"}[scr_get()];
+                if (i == MI_LIGHTS) value = LIGHTS_NAME[settings_lights % LIGHTS_N];
 #if MELODEE_USB_AUDIO
-            if (i == MI_USB_INPUT) value = ua_tracks_want ? "4 TRACKS" : "STEREO";
-            if (i == MI_USB) value = (const char *const[]){"In + Out", "In", "Out", "Off"}[ua_off_want & 3u];
+                if (i == MI_USB_INPUT) value = ua_tracks_want ? "4 TRACKS" : "STEREO";
+                if (i == MI_USB) value = (const char *const[]){"In + Out", "In", "Out", "Off"}[ua_off_want & 3u];
 #endif
-            if (i == MI_HOLD) {                         /* "0.4 s" */
-                str_cpy(b, "0.4 s", sizeof b);
-                b[2] = (char)('0' + HOLD_MS[settings_hold % 4u] / 100u);
-                value = b;
+#if MELODEE_USB_HOST
+                if (i == MI_USB_HOST) value = uh.want ? "ON" : "OFF";
+#endif
+                if (i == MI_HOLD) {                         /* "0.4 s" */
+                    str_cpy(b, "0.4 s", sizeof b);
+                    b[2] = (char)('0' + HOLD_MS[settings_hold % 4u] / 100u);
+                    value = b;
+                }
+                if (i == MI_COLOR) {                        /* the palette's four track colours as swatches */
+                    uint32_t k;
+                    int32_t x;
+                    uint16_t bg = sel ? ux_mix(T_BG, T_KNOB(i), 18) : T_BG;
+                    menu_words(v, UI_PALETTES[settings.palette % NPALETTES].name, sizeof v);
+                    x = row_draw(y, w, v, T_TEXT, sel, 0, i) - 10 - 16 * 4;
+                    for (k = 0; k < 4u; k++)
+                        cv_rrect(x + 16 * (int32_t)k + 2, y + MENU_RH / 2 - 5, 10, 10, 3, T_TRK(k), bg);
+                } else {
+                    v[0] = 0;
+                    if (value)
+                        menu_words(v, value, sizeof v);
+                    row_draw(y, w, v, T_TEXT, sel, 0, i);
+                }
             }
-            if (i == MI_COLOR) {                        /* the palette's four track colours as swatches */
-                uint32_t k;
-                int32_t x;
-                uint16_t bg = sel ? ux_mix(T_BG, T_KNOB(i), 18) : T_BG;
-                menu_words(v, UI_PALETTES[settings.palette % NPALETTES].name, sizeof v);
-                x = row_draw(y, w, v, T_TEXT, sel, 0, i) - 10 - 16 * 4;
-                for (k = 0; k < 4u; k++)
-                    cv_rrect(x + 16 * (int32_t)k + 2, y + MENU_RH / 2 - 5, 10, 10, 3, T_TRK(k), bg);
-            } else {
-                v[0] = 0;
-                if (value)
-                    menu_words(v, value, sizeof v);
-                row_draw(y, w, v, T_TEXT, sel, 0, i);
+            {   /* where the rows are in the list: a bar at the right edge */
+                int32_t th = MENU_VISIBLE * MENU_ROW * (int32_t)MENU_VISIBLE / (int32_t)MI_COUNT;
+                int32_t ty = MENU_Y0 + (MI_COUNT > MENU_VISIBLE ? (MENU_VISIBLE * MENU_ROW - th) * (int32_t)first /
+                                        (int32_t)(MI_COUNT - MENU_VISIBLE) : 0);
+                cv_rect(238, MENU_Y0, 2, MENU_VISIBLE * MENU_ROW, T_LINE);
+                cv_rect(238, ty, 2, th, T_THEME);
             }
+            cv_oy = 0;
+            cv_blit_band(0, (uint32_t)top);
         }
-        {   /* where the rows are in the list: a bar at the right edge */
-            int32_t th = MENU_VISIBLE * MENU_ROW * (int32_t)MENU_VISIBLE / (int32_t)MI_COUNT;
-            int32_t ty = MENU_Y0 + (MI_COUNT > MENU_VISIBLE ? (MENU_VISIBLE * MENU_ROW - th) * (int32_t)first /
-                                    (int32_t)(MI_COUNT - MENU_VISIBLE) : 0);
-            cv_rect(238, MENU_Y0, 2, MENU_VISIBLE * MENU_ROW, T_LINE);
-            cv_rect(238, ty, 2, th, T_THEME);
-        }
-        cv_oy = 0;
-        cv_blit(0, (uint32_t)top);
     }
 }
 static void enc_drop(void)                             /* knob turns nobody takes */
@@ -370,6 +384,13 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         ua_off_set(UA_OFF_OUT, !(v & UA_OFF_OUT), fm1_ms);
         ua_off_set(UA_OFF_IN, !(v & UA_OFF_IN), fm1_ms);
         ok = 0;
+    }
+#endif
+#if MELODEE_USB_HOST
+    if ((s != 0 || ok) && ui.menu == 1 && ui.menu_sel == MI_USB_HOST) {
+        /* KNOB 1 right ON, left OFF, OCT+ toggles. Not saved: the next boot is a device again (usb_host.c) */
+        uh.want = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !uh.want);
+        ui.force = 1; ok = 0;                           /* (the row is not part of the menu's signature) */
     }
 #endif
     if ((s != 0 || ok) && ui.menu == 1 && ui.menu_sel == MI_LIGHTS) {

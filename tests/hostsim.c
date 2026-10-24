@@ -32,6 +32,11 @@
 __attribute__((constructor)) static void host_dsp_tables(void) { dsp_tables_init(); }
 #define __attribute__(x)
 static struct { volatile uint32_t notes, buttons; } fm1_in;
+/* Serial host fixtures retain their established admission policy. Dedicated
+ * resident/dual-core tests select the target policy explicitly. */
+#ifndef MELODEE_RAM_AUDIO
+#define MELODEE_RAM_AUDIO 0
+#endif
 #include "../firmware/src/core.h"
 #include "../firmware/src/engines.c"
 /* the packed factory banks, unpacked for comparisons (four slots each, so a few can be held at once) */
@@ -56,6 +61,9 @@ static const uint8_t *cz_fac(uint32_t k)
 #include "../firmware/src/voice.c"
 #include "../firmware/src/mix.c"
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
+#if MELODEE_USB_HOST
+static void fm1_wdt_feed(void);                       /* (usb_host.c's waits; the including test defines it) */
+#endif
 #include "../firmware/src/usb.c"
 #include "../firmware/src/midi_uart.c"                /* TRS MIDI IN: its parser (um_byte) feeds midi_in_q */
 #include "../firmware/src/song_chain.c"
@@ -97,6 +105,8 @@ static uint64_t now_ns(void)
 
 static void host_tracks_init(void)                /* as melodee_init: defaults, empty patterns */
 {
+    trk_voices_bind();
+    midi_insert_init();
     cz_init();
     pattern_init();
     uint32_t i, k;
@@ -128,7 +138,7 @@ static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset
     t->p[P_ED_FLT] = p->fenv;
     t->p[P_VOICE] = p->mono ? V_LEGATO : V_POLY;
     cz_factory_loaded(t);
-    if(e==ENGI_PROPHET){uint32_t k=(uint32_t)(t-trk)%NTRK;p5_ready[k]=1;p5_preset_loaded(t,pi);}   /* (its program, as ui.c) */
+    if(e==ENGI_PROPHET){uint32_t k=(uint32_t)(t-trk)%NPART;p5_ready[k]=1;p5_preset_loaded(t,pi);}   /* (its program, as ui.c) */
     fm6_track_loaded(t);                          /* FM6: the preset's patch (ui.c apply_preset_to) */
 }
 static void host_preset_req(track_t *t, uint32_t e, uint32_t pi)
@@ -798,7 +808,7 @@ static int tracks_test(const char *dir)
     printf("tracks: WAVs in %s: %s (mix), %s, %s, %s, %s, steal.wav, engine_switch.wav\n", dir, SOLO[0], SOLO[1], SOLO[2], SOLO[3], SOLO[4]);
     /* one part: every preset with 8 held notes (the engine's cap: VOICE 4); the worst one */
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             uint8_t parts[NPART][3] = {{(uint8_t)e, (uint8_t)pi, 8}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
             double c = tracks_cost(parts, 0);
             if (c > best_e[e]) {
@@ -813,7 +823,7 @@ static int tracks_test(const char *dir)
         }
     printf("tracks: one part, 8 notes held (host -O2, ns per sample, heaviest preset per engine):");
     for (e = 0; e < NENGINES; e++)
-        if (eng_ok(e))
+        if (eng_ok(e) && e != ENGI_MIDI)
             printf(" %s %s %.1f%s", ENGINES[e]->name, eng_preset(ENGINES[e], heavy[e])->name, best_e[e],
                    e + 1u < NENGINES ? "," : "\n");
     {   /* FM6, PHASE, VOICE (their heaviest presets) and drums on part 4 at once:
@@ -852,6 +862,7 @@ int main(int argc, char **argv)
     const char *out = argc > 4 ? argv[4] : "out.wav";
     uint32_t i, frames = FS * (getenv("SWEEP") ? 4 : 2), f, nk = 0;
     clock_t c0;
+    trk_voices_bind();
     FILE *w = fopen(out, "wb");
     if (getenv("SECS"))
         frames = FS * (uint32_t)atoi(getenv("SECS"));

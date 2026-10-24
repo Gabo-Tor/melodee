@@ -21,7 +21,7 @@ static int check(const char *what, int ok)
 static void blank(project_t *a)
 {
     memset(a, 0, sizeof *a);
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         p5_patch_init(&a->p5[k]);
         cz_patch_init(a->cz[k].raw);
         memcpy(a->fm6[k], FM6_INIT, FM6_PACKED);
@@ -39,6 +39,22 @@ int main(void)
     bad += check("layout: SLICER after DETUNE, then the matrix just before P_E0",
                  P_RESERVED45 == P_DETUNE + 1 && P_RESERVED48 + 1 == P_M1SRC && P_M4AMT + 1 == P_FM1_ATK && P_FM4_LEVEL + 1 == P_CHRD && P_VOIC + 1 == P_MPCDEG && P_MPCDEG + 1 == P_LN0 && P_LN7 + 1 == P_LSYNC && P_SPRD + 1 == P_FXTYPE && P_FX3CHAR + 1 == P_FXSEND && P_FXSEND + 1 == P_FXSEND2 && P_FXSEND2 + 1 == P_FXSEND3 && P_FXSEND3 + 1 == P_FXTONE && P_FX3TONE + 1 == P_STRUM && P_STRUM + 1 == P_STROKE && P_STROKE + 1 == P_E0 && P_E0 == 116);
     bad += check("FUN16 fits its record", sizeof(project_store_t) == PROJ_STORE_SIZE);
+
+    {   /* Reconstruct the prior raw layout independently of RAM bitfields. */
+        static uint8_t old[sizeof(project_t)+RECORD_MAX];blank(&q);
+        q.recording[0]=(recorded_note_t){.on=65535, .duration=49321, .note=127, .vel=91, .owner=255, .step=255, .pitch=-24, .length=1};
+        uint32_t at=__builtin_offsetof(project_t,recording),tail=__builtin_offsetof(project_t,pattern);
+        memcpy(old,&q,at);
+        for(uint32_t i=0;i<RECORD_MAX;i++){
+            const recorded_note_t *r=&q.recording[i];uint8_t v[10]={r->on,r->on>>8,r->duration,r->duration>>8,r->note,r->vel,r->owner,r->step,(uint8_t)r->pitch,recorded_legacy_length(r)};
+            memcpy(old+at+i*10u,v,10);
+        }
+        memcpy(old+at+RECORD_MAX*10u,(uint8_t *)&q+tail,sizeof q-tail);
+        uint32_t size=sizeof old,sum;memcpy(old+4,&size,4);sum=proj_hash(old,sizeof old-4u);memcpy(old+sizeof old-4u,&sum,4);
+        bad+=check("ten-byte raw snapshots import before RAM packing",sizeof old==16456u&&proj_import(&q2,old,sizeof old)&&q2.recording[0].on==65535u&&q2.recording[0].duration==49321u&&q2.recording[0].pitch==-24&&q2.recording[0].vel==91);
+        old[at+4u]=255;sum=proj_hash(old,sizeof old-4u);memcpy(old+sizeof old-4u,&sum,4);
+        bad+=check("legacy raw notes reject invalid fields before bitfield truncation",!proj_import(&q2,old,sizeof old));
+    }
 
     /* a project_t round trip (the host's RAM slots): as stored (a matrix slot, a retired engine's byte, a DRUM step
      * with notes and hits) */
@@ -76,7 +92,7 @@ int main(void)
         static project_store_t st, st2;
         uint32_t i, zero = 1;
         bad += check("FUN16: the name at the end of the record, the FM6 patches before the tones, after the data",
-                     PROJ_NAME_OFF == PROJ_STORE_SIZE - 16u && PROJ_FM6_OFF == 3104u && 68u + NTRK * (P_COUNT + 2u + NSTEP * 8u) +
+                     PROJ_NAME_OFF == PROJ_STORE_SIZE - 16u && PROJ_FM6_OFF == 3104u && 68u + NPART * (P_COUNT + 2u + NSTEP * 8u) +
                      sizeof(chain_config_t) + sizeof(motion_store_t) + 188u == PROJ_FM6_OFF);
         blank(&a);
         a.t[1].p[P_LEVEL] = 99;
@@ -113,7 +129,7 @@ int main(void)
         static project_store_t st, slot;
         uint32_t i, k, sum;
         blank(&a);
-        for (k = 0; k < NTRK; k++) {
+        for (k = 0; k < NPART; k++) {
             memcpy(a.fm6[k], FM6_FACTORY[k * 2u], FM6_PACKED);
             a.t[k].engine = ENGI_FM6;
             a.t[k].p[P_E7] = (int16_t)(k * 2u);
@@ -121,7 +137,7 @@ int main(void)
         memcpy(a.name, "FM SONG", 7);
         a.sum = proj_sum(&a);
         ok = proj_pack(&st, &a) && ((uint32_t *)st.raw)[0] == PROJ_MAGIC && proj_import(&c, &st, sizeof st);
-        for (k = 0; k < NTRK; k++)
+        for (k = 0; k < NPART; k++)
             ok &= !memcmp(c.fm6[k], FM6_FACTORY[k * 2u], FM6_PACKED) && c.t[k].engine == ENGI_FM6 &&
                   !memcmp(st.raw + PROJ_FM6_OFF + k * FM6_PACKED, FM6_FACTORY[k * 2u], FM6_PACKED);
         bad += check("FUN16: the four FM6 patches round trip (bytes at PROJ_FM6_OFF)", ok && !memcmp(c.name, "FM SONG", 7));

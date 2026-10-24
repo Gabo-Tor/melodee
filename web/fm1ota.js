@@ -68,6 +68,8 @@ function parseIdentity(pkt) {
   const d = unpack7(pkt.slice(1, -1));
   if (d.length !== 34 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x11) return null;
   const txt = String.fromCharCode(...d.slice(6, 33)).replace(/\0+$/, "");
+  if (/^FM1_(OFFICIAL_OPEN|COMMUNITY_\d+)$/.test(txt))
+    return {text:txt,model:"FM-1",open:true};
   const m = /^([^_]+)_(\d+)$/.exec(txt);
   return m ? { text: txt, model: m[1], version: parseInt(m[2], 10) } : null;
 }
@@ -185,11 +187,12 @@ export class Updater {
     const dev = await this.find((id) => !IS_OTA(id));
     if (!dev) throw fail("notfound", "FM-1 not found (USB cable, and no other app using it?)");
     const [model] = product.split("_");
+    if (dev.id.open) { dev.link.close(); throw fail("open", "Return from M-VAVE Open firmware to official firmware before installing Melodee."); }
     if (dev.id.model !== model) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
     step("start", dev.id.text);
     dev.link.send(UPGRADE);
     await sleep(2000);
-    const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n) => step("verify", n));
+    const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n, addr, bytes) => step("verify", n, bytes));
     dev.link.close();
     if (!s1.finished) {
       const e = fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
@@ -220,7 +223,7 @@ export class Updater {
   async write(ota, image, step) {
     ota.link.send(UPGRADE);
     await sleep(2000);
-    const s2 = await this.serve(ota.link, image, 0xF0000000, 180000, (n) => step("write", n));
+    const s2 = await this.serve(ota.link, image, 0xF0000000, 180000, (n, addr, bytes) => step("write", n, bytes));
     ota.link.close();
     return s2;
   }

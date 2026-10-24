@@ -10,7 +10,7 @@ static void setup_mpc(void)
 {
     ui_power_on();
     midi_hint = 0;
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         set_engine_of(&trk[k], 3);
         trk[k].p[P_QUANT] = Q_MPC; trk[k].p[P_SCALE] = 1;
         trk[k].p[P_ROOT] = trk[k].p[P_TRANS] = 0;
@@ -30,7 +30,7 @@ static void buttons_and_mapping(void)
 {
     setup_mpc();
     static const int8_t oct[] = {-2, -1, 1, 2};
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         song.sel = (uint8_t)k;
         for (int32_t n = 0; n < (oct[k] < 0 ? -oct[k] : oct[k]); n++) press(oct[k] < 0 ? B_OCTDN : B_OCTUP);
         assert(trk[k].mpc_octave == oct[k] && song.octave == 2);
@@ -83,19 +83,19 @@ static void persistence(void)
     static project_store_t wire;
     static tmpl_t saved;
     setup_mpc();
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].mpc_octave = (int8_t)((int32_t)k * 2 - 3);
+    for (uint32_t k = 0; k < NPART; k++) trk[k].mpc_octave = (int8_t)((int32_t)k * 2 - 3);
     project_capture(&p);
     assert(proj_pack(&wire, &p) && proj_unpack(&restored, wire.raw));
-    for (uint32_t k = 0; k < NTRK; k++) assert(restored.t[k].mpc_octave == trk[k].mpc_octave);
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].mpc_octave = 0;
+    for (uint32_t k = 0; k < NPART; k++) assert(restored.t[k].mpc_octave == trk[k].mpc_octave);
+    for (uint32_t k = 0; k < NPART; k++) trk[k].mpc_octave = 0;
     assert(!project_restore_runtime(&restored));
-    for (uint32_t k = 0; k < NTRK; k++) assert(trk[k].mpc_octave == (int32_t)k * 2 - 3);
+    for (uint32_t k = 0; k < NPART; k++) assert(trk[k].mpc_octave == (int32_t)k * 2 - 3);
     /* An old project's zero tail restores neutral bank octaves; malformed tagged state is rejected. */
     wire.raw[PROJ_MPC_OCT_WIRE] = wire.raw[PROJ_MPC_OCT_WIRE+1u] = 0;
     uint32_t hash = proj_hash(wire.raw, PROJ_STORE_SIZE - 4u);
     memcpy(wire.raw + PROJ_STORE_SIZE - 4u, &hash, 4);
     assert(proj_unpack(&restored, wire.raw));
-    for (uint32_t k = 0; k < NTRK; k++) assert(!restored.t[k].mpc_octave);
+    for (uint32_t k = 0; k < NPART; k++) assert(!restored.t[k].mpc_octave);
     wire.raw[PROJ_MPC_OCT_WIRE] = 7; wire.raw[PROJ_MPC_OCT_WIRE+1u] = 0xA0;
     hash = proj_hash(wire.raw, PROJ_STORE_SIZE - 4u); memcpy(wire.raw+PROJ_STORE_SIZE-4u, &hash, 4);
     assert(!proj_unpack(&restored, wire.raw));
@@ -104,16 +104,16 @@ static void persistence(void)
     assert(tmpl_blob_valid((const uint8_t *)&saved, sizeof saved));
     memset(&tmpl, 0, sizeof tmpl);
     assert(tmpl_take((const uint8_t *)&saved, sizeof saved));
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].mpc_octave = 0;
+    for (uint32_t k = 0; k < NPART; k++) trk[k].mpc_octave = 0;
     template_load();
-    for (uint32_t k = 0; k < NTRK; k++) assert(trk[k].mpc_octave == (int32_t)k * 2 - 3);
+    for (uint32_t k = 0; k < NPART; k++) assert(trk[k].mpc_octave == (int32_t)k * 2 - 3);
     saved.g[TMPL_MPC_OCT_G] = (int16_t)0xA007u;
     assert(!tmpl_blob_valid((const uint8_t *)&saved, sizeof saved));
     saved.g[TMPL_MPC_OCT_G] = 0;
     assert(tmpl_take((const uint8_t *)&saved, sizeof saved)); template_load();
-    for (uint32_t k = 0; k < NTRK; k++) assert(!trk[k].mpc_octave);
+    for (uint32_t k = 0; k < NPART; k++) assert(!trk[k].mpc_octave);
     /* Removing a track carries the octave with its sound, and adding a track starts neutral. */
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].mpc_octave = (int8_t)k;
+    for (uint32_t k = 0; k < NPART; k++) trk[k].mpc_octave = (int8_t)k;
     assert(!track_remove(1));
     assert(trk[0].mpc_octave == 0 && trk[1].mpc_octave == 2 && trk[2].mpc_octave == 3 && trk[3].mpc_octave == 0);
     track_blank(3); assert(!trk[3].mpc_octave);
@@ -124,7 +124,7 @@ static void track_follow(void)
 {
     setup_mpc();
     ui.msg_t = 0;
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         trk[k].mpc_octave = (int8_t)((int32_t)k - 2);
         midi_event(0x90, 0, MPC_PAD_NOTES[k][1], 100);
         frame();
@@ -146,32 +146,32 @@ static void track_follow(void)
     midi_event(0x90, 0, 60, 100); frame(); assert(song.sel == 0);
     song.ntrk = 2;
     midi_event(0x90, 0, MPC_PAD_NOTES[3][1], 100); frame(); assert(song.sel == 0);
-    song.ntrk = NTRK;
+    song.ntrk = NPART;
     /* Follow works on parameter pages too, preserving the current page and unrelated feedback. */
     go_title("PATTERN"); uint32_t page = ui.page;
     ui_message("KEPT");
     midi_event(0x90, 0, MPC_PAD_NOTES[1][1], 100); frame();
     assert(song.sel == 1 && ui.page == page && !ui.home && msg_is("KEPT"));
     midi_event(0x80, 0, MPC_PAD_NOTES[1][1], 0);
-    /* A mode change discards a queued follow; normal MIDI keeps its notice and manual selection. */
+    /* A mode change discards a queued follow; normal MIDI is silent and keeps manual selection. */
     go_home(); ui.msg_t = 0; track_select(0);
     midi_event(0x90, 0, MPC_PAD_NOTES[2][1], 100);
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].p[P_QUANT] = Q_OFF;
+    for (uint32_t k = 0; k < NPART; k++) trk[k].p[P_QUANT] = Q_OFF;
     frame(); assert(song.sel == 0 && !ui.msg_t);
     midi_event(0x80, 0, MPC_PAD_NOTES[2][1], 0);
     midi_event(0x90, 1, 60, 100); frame();
-    assert(song.sel == 0 && msg_is("MIDI IN -> T2"));
+    assert(song.sel == 0 && !ui.msg_t && !toast_shown && mn_get(1,60) == 2u);
     midi_event(0x80, 1, 60, 0);
     ui.msg_t = 0;
     midi_hint = 2; /* normal notice already queued when MPC is enabled */
-    for (uint32_t k = 0; k < NTRK; k++) trk[k].p[P_QUANT] = Q_MPC;
+    for (uint32_t k = 0; k < NPART; k++) trk[k].p[P_QUANT] = Q_MPC;
     frame(); assert(!ui.msg_t && song.sel == 0);
     for (uint32_t source = 1; source <= 2u; source++) {
         setup_mpc(); ui.msg_t = 0;
         song.g[G_MIDI] = (int16_t)(source - 1u);
         song.rec = 15u;
-        for (uint32_t k = 0; k < NTRK; k++) memset(trk[k].step, 0, sizeof trk[k].step);
-        for (uint32_t k = 0; k < NTRK; k++) {
+        for (uint32_t k = 0; k < NPART; k++) memset(trk[k].step, 0, sizeof trk[k].step);
+        for (uint32_t k = 0; k < NPART; k++) {
             uint32_t note = MPC_PAD_NOTES[k][1];
             if (source == 1u) midi_in_event(0x09u | 0x90u << 8 | note << 16 | 100u << 24);
             else { um_byte(0x90); um_byte((uint8_t)note); um_byte(100); }
@@ -196,7 +196,7 @@ static void drum_pads(void)
     };
     for (uint32_t kit = DK_808; kit <= DK_SID; kit++) {
         setup_mpc();
-        for (uint32_t k = 0; k < NTRK; k++) {
+        for (uint32_t k = 0; k < NPART; k++) {
             track_t *t = &trk[k];
             set_engine_of(t, ENGI_DRUM); t->p[P_E0] = (int16_t)kit;
             t->p[P_QUANT] = Q_MPC; t->p[P_SCALE] = 2; t->p[P_ROOT] = 11;
@@ -222,7 +222,7 @@ static void drum_pads(void)
     for (uint32_t source = 1; source <= 2u; source++)
         for (uint32_t kit = DK_808; kit <= DK_SID; kit++) {
             setup_mpc(); song.g[G_MIDI] = (int16_t)(source - 1u); ui.msg_t = 0;
-            for (uint32_t k = 0; k < NTRK; k++) {
+            for (uint32_t k = 0; k < NPART; k++) {
                 track_t *t = &trk[k]; set_engine_of(t, ENGI_DRUM); t->p[P_E0] = (int16_t)kit;
                 t->p[P_QUANT] = Q_MPC; t->mpc_octave = 3;
                 for (uint32_t p = 0; p < 16u; p++) {

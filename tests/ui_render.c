@@ -22,6 +22,7 @@
  * text, the draw cost), OUTDIR/text_audit.tsv (MONO, per screen: texts, icons and keycaps with their ink-box px, the
  * ellipsised ones, the texts closer than 2 px to their cell's edge, the words).
  * Exit 1 on a finding or a MONO pixel off gray. */
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -72,7 +73,9 @@ static void hk_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 static uint16_t ref_screen[240 * 240];                  /* the screen as sending every canvas whole leaves it */
 static void hk_whole(uint32_t x, uint32_t y, uint32_t r0, uint32_t fill);
 #define GFX_HOOK_WHOLE(x, y, r0, fill) hk_whole(x, y, r0, fill)
-#define GFX_HOOK_BEGIN() (npend = ncells = 0)
+#define GFX_HOOK_LIMIT_SOURCE(w,h,file,line) ((w)*(h)>CV_MAX ? (fprintf(stderr,"large caller %s:%d\n",file,line),abort(),0) : 0)
+#define GFX_HOOK_LIMIT(w,h) do{if(w*h>CV_MAX){fprintf(stderr,"large canvas %s %ux%u\n",cur_name,w,h);abort();}}while(0)
+#define GFX_HOOK_BEGIN() (assert(w*h<=CV_MAX), npend = ncells = 0)
 #define GFX_HOOK_CELL(x0, y0, x1, y1) hk_cell(x0, y0, x1, y1)
 #define GFX_HOOK_COVER(x0, y0, x1, y1) hk_cover(x0, y0, x1, y1)
 #define GFX_HOOK_PIXELS(n) (px_visited += (n))
@@ -86,7 +89,7 @@ static void fm6_hook(uint32_t kind, uint32_t a, uint32_t b);
  * (bit: the part), then the canvas as drawn restored with the part on it; at FMH_END the parts are checked */
 #define FMP_MAX 48u
 #define FMP_SENT 0x0861u
-static uint64_t fmp_mask[CV_MAX];
+static uint64_t fmp_mask[240u*124u];
 static uint16_t fmp_save[CV_MAX];
 static uint8_t fmp_kind[FMP_MAX], fmp_a[FMP_MAX], fmp_b[FMP_MAX];
 static uint32_t fmp_n, fmp_charts;
@@ -162,16 +165,16 @@ static void fmp_check(uint32_t alg)
 }
 static void fm6_hook(uint32_t kind, uint32_t a, uint32_t b)
 {
-    uint32_t i, n = cv_w * cv_h;
+    uint32_t i, n = cv_w * cv_rows,base=cv_top*cv_w;
     if (fmp_n) {                                         /* the part just drawn: its pixels */
         for (i = 0; i < n; i++)
-            if (cv_px[i] != FMP_SENT) fmp_mask[i] |= (uint64_t)1u << (fmp_n - 1u);
+            if (cv_px[i] != FMP_SENT) fmp_mask[base+i] |= (uint64_t)1u << (fmp_n - 1u);
             else cv_px[i] = fmp_save[i];
     } else {
-        memset(fmp_mask, 0, n * sizeof fmp_mask[0]);
+        if(!cv_top)memset(fmp_mask, 0, sizeof fmp_mask);
     }
     if (kind == FMH_END) {
-        fmp_check(a);
+        if(cv_top+cv_rows>=cv_h)fmp_check(a);
         fmp_n = 0;
         return;
     }
@@ -409,7 +412,7 @@ static void state(void)                          /* a playing song with steps on
 #endif
     song.playing = 1;
     song.g[G_BPM] = 124;
-    for (i = 0; i < NTRK; i++) trk[i].seq_idx = 5;
+    for (i = 0; i < NPART; i++) trk[i].seq_idx = 5;
     my_steps(&trk[1]);
     trk[0].step[2].flags |= SF_ACCENT;
     trk[0].step[6].flags |= SF_SLIDE;
@@ -478,8 +481,9 @@ enum { S_HOME, S_HOME_IDLE, S_HOME_NOTE, S_HOME_CHORD, S_HOME_INVERSION, S_HOME_
        S_REF_SHEET_SOUND, S_REF_SHEET_SONG, S_REF_PICKER_WAVE, S_REF_PICKER_MODE, S_REF_SECTIONS_P5, S_REF_MAP_P5, S_REF_MAP_FM6,
        S_REF_SCL_LIST, S_REF_SHEET_PROJECT, S_REF_SHEET_NOTE, S_REF_SHEET_HIT, S_REF_MOTION,
        S_REF_SHEET_MOTION, S_REF_MOD, S_REF_PICKER_MOD, S_REF_ARP, S_REF_PATTERN,
-       S_REF_FMEG, S_REF_GRID, S_REF_SCALES, S_FX_PHASER, S_FX_WIDTH, S_FX_FORMANT, S_FX_TAPE, S_FX_SPIT, S_FX_ECHO, S_FX_ROOM, S_FX_REVERB, S_FX_CHORUS, S_FX_FULL, S_FX_SLOT2, S_FX_SLOT3, S_FX_RACK, S_FX_RACK_SPLIT, S_FX_RACK_PICK, S_FX_RACK_LIST, S_FX_BUS1, S_FX_BUS2, S_FX_BUS3, S_FX_SHARED, S_FX_SHARED_SPLIT, S_FX_SHARED_SHEET, S_FX_TONE_DARK, S_FX_TONE_THIN, S_BOOT_MIGRATION, S_BOOT_UPDATE, S_BOOT_ERROR, S_BOOT_COMPLETE, S_BOOT_WIPE_CONFIRM, S_BOOT_WIPING, S_BOOT_UPDATE_ERROR, S_MAP_DRUM_KIT, S_MAP_DRUM_HIT, S_MAP_DRUM_CATEGORY,
-       S_STAGE_UNUSED1, S_STAGE_UNUSED3, S_MIXER_UNUSED2, S_MENU_TRACKS, S_COUNT };
+       S_REF_FMEG, S_REF_GRID, S_REF_SCALES, S_FX_PHASER, S_FX_WIDTH, S_FX_FORMANT, S_FX_TAPE, S_FX_SPIT, S_FX_ROOM, S_FX_CHORUS, S_FX_FULL, S_FX_SLOT2, S_FX_SLOT3, S_FX_RACK, S_FX_RACK_SPLIT, S_FX_RACK_PICK, S_FX_RACK_LIST, S_FX_BUS1, S_FX_BUS2, S_FX_BUS3, S_FX_SHARED, S_FX_SHARED_SPLIT, S_FX_SHARED_SHEET, S_FX_TONE_DARK, S_FX_TONE_THIN, S_BOOT_MIGRATION, S_BOOT_UPDATE, S_BOOT_ERROR, S_BOOT_COMPLETE, S_BOOT_WIPE_CONFIRM, S_BOOT_WIPING, S_BOOT_UPDATE_ERROR, S_MAP_DRUM_KIT, S_MAP_DRUM_HIT, S_MAP_DRUM_CATEGORY,
+       S_STAGE_UNUSED1, S_STAGE_UNUSED3, S_MIXER_UNUSED2, S_MENU_TRACKS,
+       S_FX_MIDIVERB, S_FX_MIDIDELAY, S_FX_MIDI_RACK, S_FX_MIDI_LIST, S_PUNCH_PEEK, S_PUNCH_ACTIVE, S_PUNCH_LOCK, S_PUNCH_MEMORY, S_PUNCH_END, S_REVERB, S_PEDAL_DRIVE, S_PEDAL_CRUSH, S_PEDAL_PHASER, S_PEDAL_CHORUS, S_PEDAL_FLANGER, S_PUNCH_LOOP, S_PEDAL_FOLD, S_STAGE_MIDI, S_STAGE_MIDI_PARTIAL, S_MIXER_MIDI, S_PATGRID_MIDI, S_SONG_MIDI, S_GLO_MIDI, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "home_chord", "home_inversion", "home_wide", "home_released", "home_fm6", "message", "message_key", "presets", "presets_nofav", "presets_cat", "presets_pending", "presets_recent", "user",
     "project", "project_boot", "tempo", "song_empty", "song", "step", "pattern", "motion", "drum",
     "mixer", "mixer_pan", "env", "env_dest", "lfo", "mod", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -503,8 +507,9 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "h
     "home_select_level", "pattern_key_dialog", "stage_1track_rec",
     "mixer_1track", "mixer_2tracks", "mixer_3tracks", "patterns_2tracks", "song_2tracks", "layer_glo_2tracks", "new_roles_1track",
     "stage_long", "stage_3tracks_long", "stage_2tracks_long", "stage_1track_long",
-    "ref_stage_held", "ref_stage_released", "ref_stage_cutoff", "ref_stage_drum", "ref_browser", "ref_patterns", "ref_song", "ref_env", "ref_lfo", "ref_edit_osc", "ref_mixer", "ref_notes", "ref_settings", "ref_dialog", "ref_sheet_sound", "ref_sheet_song", "ref_picker_wave", "ref_picker_mode", "ref_sections_p5", "ref_map_p5", "ref_map_fm6", "ref_scl_list", "ref_sheet_project", "ref_sheet_note", "ref_sheet_hit", "ref_motion", "ref_sheet_motion", "ref_mod", "ref_picker_mod", "ref_arp", "ref_pattern", "ref_fmeg", "ref_grid", "ref_scales", "fx_phaser", "fx_width", "fx_formant", "fx_tape", "fx_spit", "fx_echo", "fx_room", "fx_reverb", "fx_chorus", "fx_full", "fx_slot2", "fx_slot3", "fx_rack", "fx_rack_split", "fx_rack_pick", "fx_rack_list", "fx_bus1", "fx_bus2", "fx_bus3", "fx_shared", "fx_shared_split", "fx_shared_sheet", "fx_tone_dark", "fx_tone_thin", "boot_migration", "boot_update", "boot_error", "boot_complete", "boot_wipe_confirm", "boot_wiping", "boot_update_error", "map_drum_kit", "map_drum_hit", "map_drum_category",
-    "stage_unused_1track", "stage_unused_3tracks", "mixer_unused_2tracks", "menu_unused_tracks"};
+    "ref_stage_held", "ref_stage_released", "ref_stage_cutoff", "ref_stage_drum", "ref_browser", "ref_patterns", "ref_song", "ref_env", "ref_lfo", "ref_edit_osc", "ref_mixer", "ref_notes", "ref_settings", "ref_dialog", "ref_sheet_sound", "ref_sheet_song", "ref_picker_wave", "ref_picker_mode", "ref_sections_p5", "ref_map_p5", "ref_map_fm6", "ref_scl_list", "ref_sheet_project", "ref_sheet_note", "ref_sheet_hit", "ref_motion", "ref_sheet_motion", "ref_mod", "ref_picker_mod", "ref_arp", "ref_pattern", "ref_fmeg", "ref_grid", "ref_scales", "fx_phaser", "fx_width", "fx_formant", "fx_tape", "fx_spit", "fx_room", "fx_chorus", "fx_full", "fx_slot2", "fx_slot3", "fx_rack", "fx_rack_split", "fx_rack_pick", "fx_rack_list", "fx_bus1", "fx_bus2", "fx_bus3", "fx_shared", "fx_shared_split", "fx_shared_sheet", "fx_tone_dark", "fx_tone_thin", "boot_migration", "boot_update", "boot_error", "boot_complete", "boot_wipe_confirm", "boot_wiping", "boot_update_error", "map_drum_kit", "map_drum_hit", "map_drum_category",
+    "stage_unused_1track", "stage_unused_3tracks", "mixer_unused_2tracks", "menu_unused_tracks",
+    "fx_midiverb", "fx_mididelay", "fx_midi_rack", "fx_midi_list", "punch_peek", "punch_active", "punch_lock", "punch_memory", "punch_end", "fx_reverb", "fx_pedal_drive", "fx_pedal_crush", "fx_pedal_phaser", "fx_pedal_chorus", "fx_pedal_flanger", "punch_loop", "fx_pedal_fold", "stage_midi", "stage_midi_partial", "mixer_midi", "patterns_midi", "song_midi", "layer_glo_midi"};
 
 /* the scenes of the UI design screens: the state the UI-redesign
  * prototype drew them from (its setup(): two pattern tracks, the drum pattern on track 4, a synthetic scope),
@@ -522,7 +527,7 @@ static void mock_state(int s)
     scope_w = 0;
     song.playing = 1;
     song.g[G_BPM] = 124;
-    for (i = 0; i < NTRK; i++) trk[i].seq_idx = 5;
+    for (i = 0; i < NPART; i++) trk[i].seq_idx = 5;
     demo_pat16(&trk[0], DEMO_ACID);
     demo_pat16(&trk[1], DEMO_PAD);
     for (i = 0; i < 16u; i++) {
@@ -684,7 +689,7 @@ static void ref_scene(int s)
     set_engine_of(&trk[1], ENGI_PROPHET); apply_preset_to(&trk[1], 33);           /* Pickle Pincher */
     set_engine_of(&trk[2], ENGI_CZ); apply_preset_to(&trk[2], preset_named(ENGI_CZ, "ELEC.PIANO"));
     set_engine_of(&trk[3], ENGI_FM6); apply_preset_to(&trk[3], preset_named(ENGI_FM6, "BRASS SECT"));
-    for (k = 0; k < NTRK; k++) {
+    for (k = 0; k < NPART; k++) {
         trk[k].engine = trk[k].eng_req;
         if (PAT[k]) pattern_switch(&trk[k], PAT[k]);
         ref_steps(&trk[k], ON[k], 45u + 12u * k, k == 0u);
@@ -736,7 +741,7 @@ static void ref_scene(int s)
         for (k = 0; k < 6u; k++) {
             static const uint8_t ROW[6] = {0, 0, 1, 1, 2, 0};
             chain_config.row[k] = (chain_row_t){ROW[k], 1};
-            memset(chain_patterns[k], ROW[k], NTRK);
+            memset(chain_patterns[k], ROW[k], NPART);
         }
         chain.running = 1; chain.row = 2;
         go_page(GR_PATGRID);
@@ -744,10 +749,10 @@ static void ref_scene(int s)
     case S_REF_SONG: {                               /* the mock's: four sections, B twice; T1 1 2 2 3, T2 1 2 2 4,
                                                       * T3 - 1 2 1, T4 - - 3 2 (-: pattern 6, empty); B's second time
                                                       * playing, a quarter in; KNOB 1 on D */
-        static const uint8_t SP[4][NTRK] = {{0, 0, 5, 5}, {1, 1, 0, 5}, {1, 1, 1, 2}, {2, 3, 0, 1}};
+        static const uint8_t SP[4][NPART] = {{0, 0, 5, 5}, {1, 1, 0, 5}, {1, 1, 1, 2}, {2, 3, 0, 1}};
         uint32_t b;
         song.playing = 0;
-        for (k = 0; k < NTRK; k++) {
+        for (k = 0; k < NPART; k++) {
             for (b = 0; b < 4u; b++) { pattern_switch(&trk[k], b); ref_steps(&trk[k], ON[(k + b) % 4u], 45u + 12u * k, k == 0u); }
             pattern_switch(&trk[k], 0);
         }
@@ -755,7 +760,7 @@ static void ref_scene(int s)
         chain_config.count = 4;
         for (k = 0; k < 4u; k++) {
             chain_config.row[k] = (chain_row_t){SP[k][0], (uint8_t)(k == 1u ? 2u : 1u)};
-            memcpy(chain_patterns[k], SP[k], NTRK);
+            memcpy(chain_patterns[k], SP[k], NPART);
         }
         ui.song_row = 3; go_page(GR_SONG);
         song.playing = 1; chain.running = 1; chain.row = 1; chain.remaining = 1; trk[0].seq_idx = 4;
@@ -870,7 +875,7 @@ static void ref_scene(int s)
         uint32_t i;
         set_engine_of(&trk[1], ENGI_FM6); apply_preset_to(&trk[1], preset_named(ENGI_FM6, "TINE EP")); trk[1].engine = ENGI_FM6;
         song.playing = 0; trk[1].pattern_next = 0xFF; fm6_opsel = 2;
-        op = &fm6_patch[1][(5u - 2u) * FP_OP];
+        op = &fm6_patch_of(1)[(5u - 2u) * FP_OP];
         for (i = 0; i < 4u; i++) { op[FP_R1 + i] = R[i]; op[FP_L1 + i] = L[i]; }
         fm6_pgen[1]++;
         go_title("EG RATE"); ui.hot_col = 2; ui.hot_t = 30;
@@ -898,7 +903,7 @@ static void ref_scene(int s)
         break;
     case S_REF_MIXER: {                              /* (R5) the mock's levels, pans, sends; 3 muted, 1 and 4 armed */
         static const int16_t LV[4] = {91, 70, 44, 112}, PN[4] = {0, -20, 0, 13}, RV[4] = {51, 15, 0, 20};
-        for (k = 0; k < NTRK; k++) { trk[k].p[P_LEVEL] = LV[k]; trk[k].p[P_PAN] = PN[k]; trk[k].p[P_RESERVED36] = RV[k]; }
+        for (k = 0; k < NPART; k++) { trk[k].p[P_LEVEL] = LV[k]; trk[k].p[P_PAN] = PN[k]; trk[k].p[P_RESERVED36] = RV[k]; }
         trk[2].p[P_MUTE] = 1; song.rec = 1u | 8u; song.playing = 0;
         go_title("MIXER");
         break;
@@ -923,6 +928,23 @@ static void setup(int s)
         return;
     }
     switch (s) {
+    case S_STAGE_MIDI: case S_STAGE_MIDI_PARTIAL: case S_MIXER_MIDI:
+    case S_PATGRID_MIDI: case S_SONG_MIDI: case S_GLO_MIDI:
+        ui_power_on(); song.ntrk=s==S_STAGE_MIDI_PARTIAL?5u:NTRK;
+        song.sel=s==S_STAGE_MIDI_PARTIAL?4u:6u;
+        for(uint32_t k=NPART;k<trk_n();k++){
+            demo_pat16(&trk[k],DEMO_ACID); trk[k].pattern=(uint8_t)(k-NPART); trk[k].seq_idx=5;
+        }
+        song.rec=(uint8_t)(1u<<song.sel); trk[7].p[P_MUTE]=1;
+        go_home();
+        if(s==S_MIXER_MIDI)go_page(GR_TRK);
+        if(s==S_PATGRID_MIDI)go_page(GR_PATGRID);
+        if(s==S_SONG_MIDI){
+            chain_config.count=2; chain_config.row[0]=(chain_row_t){0,2}; chain_config.row[1]=(chain_row_t){1,4};
+            chain_patterns[1][6]=2; go_page(GR_SONG);
+        }
+        if(s==S_GLO_MIDI)ui.layer=LAYER_GLO;
+        break;
     case S_MAP_DRUM_KIT: case S_MAP_DRUM_HIT: case S_MAP_DRUM_CATEGORY:
         ui_power_on(); set_engine_of(TSEL, ENGI_DRUM); go_title("EDIT 1"); smap_open();
         if (s != S_MAP_DRUM_KIT) smap_input(1, 0, 0);
@@ -970,7 +992,7 @@ static void setup(int s)
         song.playing = 0; project_save(0); project_save(1);
         chain_config.count = 3;
         chain_config.row[0] = (chain_row_t){0, 2}; chain_config.row[1] = (chain_row_t){1, 4}; chain_config.row[2] = (chain_row_t){2, 1};
-        memset(chain_patterns[1], 1, NTRK); memset(chain_patterns[2], 2, NTRK); ui.song_row = 1; go_page(GR_SONG); chain_prepare(); events_block(32);
+        memset(chain_patterns[1], 1, NPART); memset(chain_patterns[2], 2, NPART); ui.song_row = 1; go_page(GR_SONG); chain_prepare(); events_block(32);
         break;
     case S_NOTES_SLIDE:
     case S_NOTES_MIXED:
@@ -996,8 +1018,7 @@ static void setup(int s)
             static const uint8_t step[]={0,0,64,1,15|64|128}, note[]={60,64,60,67,72};
             uint32_t start=count==RECORD_MAX?(i+1u)*60u:on[i];
             uint8_t pos=count==RECORD_MAX?(start>=32768u?64u:0u):step[i];
-            recording[i]=(recorded_note_t){(uint16_t)start,(uint16_t)(count==RECORD_MAX?96:32768),
-                (uint8_t)(s==S_NOTES_DRUM?(i%2u?38:36):count==RECORD_MAX?60:note[i]),(uint8_t)(90+i%38u),(uint8_t)recording_owner(t),pos};
+            recording[i]=(recorded_note_t){.on=(uint16_t)start, .duration=(uint16_t)(count==RECORD_MAX?96:32768), .note=(uint8_t)(s==S_NOTES_DRUM?(i%2u?38:36):count==RECORD_MAX?60:note[i]), .vel=(uint8_t)(90+i%38u), .owner=(uint8_t)recording_owner(t), .step=pos};
             uint32_t view=recording_view(t,&recording[i]);t->step[view].time=ST_NOTE;t->step[view].flags=SF_RECORDED;
         }
         recording_reindex();
@@ -1081,7 +1102,7 @@ static void setup(int s)
         uint32_t k;
         song.ntrk = 3; go_home(); ui.home_pg = 1;
         memset(&view, 0, sizeof view);
-        for (k = 0; k < NTRK; k++) trk[k].engine = trk[k].eng_req;
+        for (k = 0; k < NPART; k++) trk[k].engine = trk[k].eng_req;
         trk[0].peak = 9000; trk[1].peak = 4000; trk[2].peak = 300;
         if (s == S_VIEW_EMPTY) { TSEL->p[P_ROOT] = 9; TSEL->p[P_SCALE] = 2; break; }   /* (A minor) */
         track_select(1);
@@ -1101,7 +1122,7 @@ static void setup(int s)
             input_off(TSEL, 67); view_notes(on, of, &f);
             input_off(TSEL, 69); view_notes(on, of, &f);
             input_off(&trk[0], 45);
-            for (k = 0; k < NTRK; k++) for (uint32_t i = 0; i < NVOICE; i++) trk[k].v[i].gate = 0;
+            for (k = 0; k < NPART; k++) for (uint32_t i = 0; i < NVOICE; i++) trk[k].v[i].gate = 0;
         }
         break;
     }
@@ -1124,7 +1145,7 @@ static void setup(int s)
     case S_SONG_T2:
         song.ntrk = 2; song.playing = 0; chain_config.count = 2;
         chain_config.row[0] = (chain_row_t){0, 2}; chain_config.row[1] = (chain_row_t){1, 4};
-        memset(chain_patterns[1], 1, NTRK); ui.song_row = 1; go_page(GR_SONG); break;
+        memset(chain_patterns[1], 1, NPART); ui.song_row = 1; go_page(GR_SONG); break;
     case S_GLO_T2: song.ntrk = 2; go_home(); ui.layer = LAYER_GLO; trk[1].p[P_MUTE] = 1; break;
     case S_NEW_ROLES_T1: song.playing = 0; new_open(); nw.on = 2; break;
     case S_STAGE_DRUM:
@@ -1166,7 +1187,7 @@ static void setup(int s)
             chain_config.count = 4;
             chain_config.row[0] = (chain_row_t){0, 2}; chain_config.row[1] = (chain_row_t){1, 4};
             chain_config.row[2] = (chain_row_t){0, 1}; chain_config.row[3] = (chain_row_t){2, 16};
-            memset(chain_patterns[1], 1, NTRK); chain_patterns[1][3] = 0; memset(chain_patterns[3], 2, NTRK);
+            memset(chain_patterns[1], 1, NPART); chain_patterns[1][3] = 0; memset(chain_patterns[3], 2, NPART);
             chain.running = 1; chain.row = 1;
         } else {                                         /* no song: the jam's rows */
             jam.n = 2; jam.pat[0][0] = 0; jam.rep[0] = 4; jam.pat[1][0] = 1; jam.pat[1][1] = 4; jam.rep[1] = 2;
@@ -1200,14 +1221,22 @@ static void setup(int s)
         trk[0].p[P_RESERVED36] = 127; trk[2].p[P_RESERVED36] = 1; trk[3].p[P_MUTE] = 1;
         song.rec = 1u | 8u; ui.hot_col = 3; ui.hot_t = 30;
         break;
-    case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ECHO: case S_FX_ROOM: case S_FX_REVERB: case S_FX_CHORUS: case S_FX_FULL:
-        TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ECHO:s-S_FX_PHASER+1);go_title("FX 1");
+    case S_FX_MIDIVERB: case S_FX_MIDIDELAY: case S_FX_MIDI_RACK: case S_FX_MIDI_LIST:
+        TSEL->p[P_FXTYPE] = FX_MIDIVERB; TSEL->p[P_FXMIX] = 84;
+        TSEL->p[P_FX2TYPE] = FX_MIDIDELAY; TSEL->p[P_FX2MIX] = 84;
+        TSEL->p[P_FX2RATE] = 4; TSEL->p[P_FX2CHAR] = 72;
+        if (s == S_FX_MIDIDELAY) go_title("FX 2");       /* (NOTE TAIL: no page, its rack row) */
+        else { go_title("FX"); fx_rack_row[0] = s == S_FX_MIDIVERB ? 0 : 1;
+               if (s == S_FX_MIDI_LIST) { TSEL->p[P_FX3TYPE] = FX_OFF; fx_rack_row[0] = 2; vlist_open(ui.page, 0); vl.sel = FX_MIDIDELAY; } }
+        break;
+    case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ROOM: case S_FX_CHORUS: case S_FX_FULL:
+        TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ROOM:s==S_FX_ROOM?FX_ROOM:s==S_FX_CHORUS?FX_CHORUS:s-S_FX_PHASER+1);go_title("FX 1");
         TSEL->p[P_FXMIX]=84;TSEL->p[P_FXRATE]=60;TSEL->p[P_FXCHAR]=72;
         if(s==S_FX_FULL)fx_state[(song.sel%NPART)*FX_SLOTS].failed=1;
         break;
     case S_FX_RACK: case S_FX_RACK_SPLIT: case S_FX_RACK_PICK: case S_FX_RACK_LIST: case S_FX_SHARED: case S_FX_SHARED_SPLIT: case S_FX_SHARED_SHEET:
     case S_FX_TONE_DARK: case S_FX_TONE_THIN: {       /* the mock's chain: Echo, Room; shared Reverb, Echo */
-        static const int16_t ins[8]={FX_ECHO,84,60,72,FX_ROOM,51,70,64},bus[8]={FX_REVERB,127,90,100,FX_ECHO,51,60,72};
+        static const int16_t ins[8]={FX_ROOM,84,60,72,FX_ROOM,51,70,64},bus[8]={FX_CHORUS,127,90,100,FX_ROOM,51,60,72};
         memcpy(TSEL->p+P_FXTYPE,ins,sizeof ins);memcpy(song.g+G_MFXTYPE,bus,sizeof bus);
         TSEL->p[P_FXSEND]=81;TSEL->p[P_FXSEND2]=40;TSEL->p[P_FXSEND3]=0;song.g[G_FXRETURN]=100;
         song.g[G_FXMODE]=s==S_FX_RACK_SPLIT || s==S_FX_SHARED_SPLIT;
@@ -1220,12 +1249,12 @@ static void setup(int s)
         break;
     }
     case S_FX_BUS1: case S_FX_BUS2: case S_FX_BUS3:
-        for(uint32_t slot=0;slot<3;slot++){uint32_t b=G_MFXTYPE+slot*4;song.g[b]=slot==0?FX_REVERB:slot==1?FX_TAPE:FX_ECHO;song.g[b+1]=127;song.g[b+2]=90;song.g[b+3]=100;}
+        for(uint32_t slot=0;slot<3;slot++){uint32_t b=G_MFXTYPE+slot*4;song.g[b]=slot==0?FX_CHORUS:slot==1?FX_TAPE:FX_ROOM;song.g[b+1]=127;song.g[b+2]=90;song.g[b+3]=100;}
         go_title(s==S_FX_BUS1?"SEND FX 1":s==S_FX_BUS2?"SEND FX 2":"SEND FX 3");break;
     case S_FX_SLOT2: case S_FX_SLOT3:
         for(uint32_t slot=0;slot<FX_SLOTS;slot++){
             uint32_t base=P_FXTYPE+slot*FX_PARAMS;
-            TSEL->p[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ECHO:FX_REVERB);
+            TSEL->p[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ROOM:FX_CHORUS);
             TSEL->p[base+1]=84;TSEL->p[base+2]=60;TSEL->p[base+3]=72;
         }
         go_title(s==S_FX_SLOT2?"FX 2":"FX 3");
@@ -1292,14 +1321,14 @@ static void setup(int s)
     case S_FM6_ALG5: eng(ENGI_FM6); TSEL->p[P_E0] = 5; TSEL->p[P_E1] = 3; go_title("EDIT 1"); ui.hot_col = 1; ui.hot_t = 30; break;
     case S_FM6_ALG22: eng(ENGI_FM6); TSEL->p[P_E0] = 22; TSEL->p[P_E6] = 40; go_title("EDIT 2"); ui.hot_col = 2; ui.hot_t = 30; break;
     case S_FM6_ALG32:
-        eng(ENGI_FM6); TSEL->p[P_E0] = 32; fm6_patch[song.sel][FP_OL] = 0; fm6_pgen[song.sel]++;   /* (op 6: the patch's first) */
+        eng(ENGI_FM6); TSEL->p[P_E0] = 32; fm6_patch_of(song.sel)[FP_OL] = 0; fm6_pgen[song.sel]++;   /* (op 6: the patch's first) */
         go_title("EDIT 1"); ui.hot_col = 2; ui.hot_t = 30;
         break;
     /* FM6's own pages: operator 2's FREQ (KNOB 1 just turned), operator 3's EG RATE, the pitch EG, STORE onto B3
      * (a patch there: its name) */
     case S_FM6_FREQ: eng(ENGI_FM6); go_title("FREQ"); fm6_opsel = 1; ui.hot_col = 1; ui.hot_t = 30; break;
     case S_FM6_EG: eng(ENGI_FM6); go_title("EG RATE"); fm6_opsel = 2; break;
-    case S_FM6_PEG: eng(ENGI_FM6); fm6_factory(3, fm6_pk); fm6_unpack(fm6_pk, fm6_patch[song.sel]); fm6_pgen[song.sel]++;
+    case S_FM6_PEG: eng(ENGI_FM6); fm6_factory(3, fm6_pk); fm6_unpack(fm6_pk, fm6_patch_of(song.sel)); fm6_pgen[song.sel]++;
         go_title("PITCH EG"); break;
     case S_FM6_STORE:
         eng(ENGI_FM6); song.playing = 0; fm6_factory(5, fm6_pk); (void)native_store(ENGI_FM6, 63, song.sel, "WOOD BARS");
@@ -1334,6 +1363,16 @@ static void setup(int s)
     /* the FX layer's map: held alone; REPEAT 1/16 + LPF + a mute playing with the macros turned;
      * at 72 BPM: a REPEAT 1/16 waiting for its 1/16 (shown THEME) beside TAPE STOP playing, and REPEAT 1/8
      * held, too long at that tempo (it and REVERSE dimmed) */
+    case S_PUNCH_PEEK:go_home();ui.layer=LAYER_FX;ui.punch_view=PX_REV;break;
+    case S_PUNCH_LOOP:go_home();ui.layer=LAYER_FX;punch.req=punch.cur=PX_LOOP8;song.playing=1;break;
+    case S_PUNCH_ACTIVE:go_home();ui.layer=LAYER_FX;punch.req=punch.cur=PX_KHIGH;ui.punch_view=PX_KHIGH;song.rec=1;song.g[G_BPM]=300;break;
+    case S_PUNCH_LOCK:go_home();ui.layer=ui.lock=LAYER_FX;punch.req=punch.cur=PX_FREEZE;ui.punch_view=PX_FREEZE;break;
+    case S_PUNCH_MEMORY:go_home();ui.layer=LAYER_FX;punch.req=PX_ECHO;punch_memory_failed=1;break;
+    case S_PUNCH_END:go_home();punch.req=punch.cur=-1;ui.layer=0;break;
+    case S_PEDAL_DRIVE:case S_PEDAL_CRUSH:case S_PEDAL_PHASER:case S_PEDAL_CHORUS:case S_PEDAL_FLANGER:case S_PEDAL_FOLD:
+        go_title("FX 1");TSEL->p[P_FXTYPE]=s==S_PEDAL_DRIVE?FX_SOFT:s==S_PEDAL_FOLD?FX_FOLD:s==S_PEDAL_CRUSH?FX_CRUSH:s==S_PEDAL_PHASER?FX_PEDAL_PHASER:s==S_PEDAL_CHORUS?FX_PEDAL_CHORUS:FX_FLANGER;TSEL->p[P_FXMIX]=80;TSEL->p[P_FXTONE]=s==S_PEDAL_PHASER?-20:32;
+        if(s==S_PEDAL_FOLD || s==S_PEDAL_PHASER){ui.hot_col=3;ui.hot_t=30;}break;
+    case S_REVERB:go_title("FX 1");TSEL->p[P_FXTYPE]=FX_REVERB;TSEL->p[P_FXMIX]=80;break;
     case S_MENU_CLICK: ui.menu=1;ui.menu_sel=MI_CLICK;settings_click=2;break;
     case S_MENU_CLICK_LEVEL: ui.menu=1;ui.menu_sel=MI_CLICK_LEVEL;settings_click_level=2;break;
     case S_MENU_COUNTIN: ui.menu=1;ui.menu_sel=MI_COUNTIN;settings_countin=2;break;
@@ -1341,8 +1380,8 @@ static void setup(int s)
     case S_DRUM_SOUND_808: case S_DRUM_SOUND_909: case S_DRUM_MIX_909: case S_DRUM_HIT_909: case S_DRUM_HIT_FREE: case S_DRUM_HIT_LONG:
         drum(s==S_DRUM_SOUND_808?DK_808:DK_909);eng(ENGI_DRUM);TSEL->p[P_E0]=s==S_DRUM_SOUND_808?DK_808:DK_909;TSEL->engine=TSEL->eng_req;TSEL->preset=s==S_DRUM_SOUND_808?0:1;song.playing=0;
         ui.drum_sound=s==S_DRUM_SOUND_808?12:D9_SD;ui.lane=(uint8_t)drum_lane(drum_sound_note(TSEL,ui.drum_sound));ui.cursor=4;
-        drum_patch[song.sel].c[ui.drum_sound][0]=-12;drum_patch[song.sel].c[ui.drum_sound][1]=31;drum_patch[song.sel].c[ui.drum_sound][2]=16;drum_patch[song.sel].c[ui.drum_sound][3]=40;
-        if(s==S_DRUM_HIT_909 || s==S_DRUM_HIT_FREE || s==S_DRUM_HIT_LONG){recording_restore_note(TSEL,0,(recorded_note_t){27000,16384,38,100,(uint8_t)recording_owner(TSEL),4,7,s==S_DRUM_HIT_909});if(s==S_DRUM_HIT_LONG){recording[0].duration=65535;recording[0].owner|=224;recording[0].length=1;}ui.note_pick=1;ui.note_identity=recording[0];ui.note_generation=recording_generation;TSEL->step[4].flags|=SF_RECORDED;go_title("DRUM HIT");}
+        drum_patch_of(song.sel)->c[ui.drum_sound][0]=-12;drum_patch_of(song.sel)->c[ui.drum_sound][1]=31;drum_patch_of(song.sel)->c[ui.drum_sound][2]=16;drum_patch_of(song.sel)->c[ui.drum_sound][3]=40;
+        if(s==S_DRUM_HIT_909 || s==S_DRUM_HIT_FREE || s==S_DRUM_HIT_LONG){recording_restore_note(TSEL,0,(recorded_note_t){.on=27000, .duration=16384, .note=38, .vel=100, .owner=(uint8_t)recording_owner(TSEL), .step=4, .pitch=7, .length=s==S_DRUM_HIT_909});if(s==S_DRUM_HIT_LONG){recording[0].duration=65535;recording[0].owner|=224;recording[0].length=1;}ui.note_pick=1;ui.note_identity=recording[0];ui.note_generation=recording_generation;TSEL->step[4].flags|=SF_RECORDED;go_title("DRUM HIT");}
         else go_title(s==S_DRUM_MIX_909?"DRUM MIX":"DRUM SOUND");
         ui.hot_col=2;ui.hot_t=30;break;
     case S_DRUM_HIT_TOMS:                               /* KNOB 2 on TOM M: its hits filled, TOM L's and H's hollow, the lane MT */
@@ -1365,9 +1404,6 @@ static void setup(int s)
     case S_STAGE_UNUSED3: song.ntrk = 3; go_home(); track_select(1); break;
     case S_MIXER_UNUSED2: song.ntrk = 2; go_page(GR_TRK); trk[0].peak = 9000; break;
     case S_MENU_TRACKS: ui.menu = 1; ui.menu_sel = MI_TRACKS; break;
-    case S_STAGE_T1_REC: song.ntrk = 1; GLO_SELECT |= TRACKS_HIDE; song.sel = 0; demo_pat16(&trk[0], DEMO_ACID); song.rec = 1u; go_home(); break;
-    case S_MENU_AUTOSAVE_OFF: ui.menu=1;ui.menu_sel=MI_AUTOSAVE;settings_autosave=0;break;
-    case S_MENU_HOLD: ui.menu = 1; ui.menu_sel = MI_HOLD; settings_hold = 2; break;
 #if MELODEE_USB_AUDIO
     case S_MENU_USB: ui.menu = 1; ui.menu_sel = MI_USB; ua_off_want = UA_OFF_IN; break;   /* (OUT only) */
     case S_MENU_USB_STEREO: ui.menu = 1; ui.menu_sel = MI_USB_INPUT; ua_tracks_want = 0; break;
@@ -1496,9 +1532,9 @@ static void sweep_mpc_octaves(const char *out)
         char name[80];
         render_pixel = face; setup(S_HOME); pal(p);
         song.octave = 2; song.rec = song.rec_wait = 0; ui.msg_t = 0;
-        for (uint32_t k = 0; k < NTRK; k++) { trk[k].p[P_QUANT] = Q_MPC; trk[k].mpc_octave = oct[k]; }
+        for (uint32_t k = 0; k < NPART; k++) { trk[k].p[P_QUANT] = Q_MPC; trk[k].mpc_octave = oct[k]; }
         draw(-1);
-        for (uint32_t k = 0; k < NTRK; k++) {
+        for (uint32_t k = 0; k < NPART; k++) {
             snprintf(name, sizeof name, "%s%s/MPC bank %u octave", face ? "PIXEL " : "", UI_PALETTES[p].name, k);
             cur_name = name; song.sel = (uint8_t)k;
             nscr = npend = 0; ui_draw();
@@ -1548,7 +1584,7 @@ static void sweep_waiting_headers(const char *out)
         for (uint32_t end = 0; end < 3u; end++) {
             song.rec = song.rec_wait = 1u << song.sel;
             ui_draw();
-            if (end == 2u) song.sel = (song.sel + 1u) % NTRK;
+            if (end == 2u) song.sel = (song.sel + 1u) % NPART;
             else { song.rec_wait = 0; if (end) song.rec = 0; }
             nscr = npend = 0;
             ui_draw(); lint();
@@ -1561,6 +1597,47 @@ static void sweep_waiting_headers(const char *out)
     }
     render_pixel = previous_face;
 }
+
+#if MELODEE_USB_HOST
+/* USB HOST's ongoing state is the header's HOST tag: present in both faces and every palette while the port is a
+ * host (waiting or connected), clear of the battery, octave and page marks, gone with the state. */
+static void sweep_host_headers(void)
+{
+    int previous_face = render_pixel;
+    static const int scenes[] = {S_HOME, S_TEMPO, S_PATGRID, S_PEDAL_PHASER, S_PEDAL_CHORUS};
+    static uint16_t screen[240 * 240];
+    for (uint32_t face = 0; face < 2u; face++) for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++)
+    for (uint32_t s = 0; s < NELEM(scenes); s++) for (uint32_t run = 0; run < 2u; run++)
+    for (uint32_t rec = 0; rec < 2u; rec++) {
+        char name[96];
+        uint32_t seen = 0;
+        render_pixel = face;
+        setup(scenes[s]); pal(p);
+        song.octave = 2; song.batt_raw = 520;
+        song.rec = rec;
+        ui.msg_t = 0;
+        uh.on = 1; uh.run = (uint8_t)run;
+        snprintf(name, sizeof name, "%s%s/%s/usb_host%u_rec%u", face ? "PIXEL " : "", UI_PALETTES[p].name, S_NAME[scenes[s]], run, rec);
+        cur_name = name;
+        draw(-1); lint();
+        for (uint32_t i = 0; i < nscr; i++)
+            seen |= !strcmp(scr[i].s, "HOST") && scr[i].y0 >= 0 && scr[i].y1 <= H_HEAD;
+        if (!seen || toast_shown) { fprintf(rep, "MISSING %s: HOST tag in the header without a toast\n", name); nfind++; }
+        uh.on = uh.run = 0;                             /* the state ends: the incremental redraw equals a full one */
+        nscr = npend = 0;
+        ui_draw(); lint();
+        memcpy(screen, host_screen, sizeof screen);
+        ui.force = 1; ui_draw();
+        if (memcmp(screen, host_screen, sizeof screen)) {
+            fprintf(rep, "STALE %s: HOST tag end differs from full redraw\n", name); nfind++;
+        }
+        for (uint32_t i = 0; i < nscr; i++)
+            if (!strcmp(scr[i].s, "HOST")) { fprintf(rep, "STALE %s: HOST tag after the state ended\n", name); nfind++; break; }
+    }
+    uh.on = uh.run = 0;
+    render_pixel = previous_face;
+}
+#endif
 
 /* Lists must show their labels and complete enum values, including rows scrolled off the initial screen. */
 static void sweep_list_rows(void)
@@ -1847,7 +1924,7 @@ static void aud_page(const char *page, int playing)
         ui.force = 1; frame(); aud_frames(2);
         px = 0;
         for (j = 0; j < 48u; j++) {
-            for (i = 0; i < NTRK; i++) {
+            for (i = 0; i < NPART; i++) {
                 track_t *u = &trk[i];
                 uint32_t ul = step_pattern_len(u) ? step_pattern_len(u) : 1u, pu = seq_div_samples((uint32_t)u->p[P_SDIV]);
                 if (u->seq_pos >= 0x7FFFFFFFu) u->seq_pos = 0;
@@ -1965,6 +2042,46 @@ static void roll_cost(void)
             t_full / CLOCKS_PER_SEC / N * 1e6, (unsigned long long)(px_full / N), (unsigned long long)(bl_full / N));
 }
 
+/* New effect pictures and grouped lists have state beyond the default slot's
+ * column sweep: cover every key, family, shape and control endpoint. */
+static void fx_redesign_sweep(const char *out)
+{
+    char name[96], file[48];
+    for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++) {
+        for (uint32_t fx = 0; fx < PUNCH_NFX; fx++) for (uint32_t mode = 0; mode < 3; mode++) {
+            state();pal(p);go_home();ui.layer = LAYER_FX;ui.punch_view = (uint8_t)fx;
+            punch.req = mode ? (int8_t)fx : -1;punch.cur = punch.req;
+            punch_memory_failed = mode == 2;
+            snprintf(name, sizeof name, "%s%s/punch %u mode %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, fx, mode);
+            cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            if (p == 0 && mode == 1) {
+                snprintf(file, sizeof file, "punch_key_%02u", fx);
+                write_ppm(out, render_pixel ? "PIXEL" : "NIGHT", file);
+            }
+        }
+        for (uint32_t i = 1; i < NELEM(FX_ORDER); i++) {
+            state();pal(p);go_title("FX");fx_rack_row[0] = 0;vlist_open(ui.page, 0);vl.sel = FX_ORDER[i];
+            snprintf(name, sizeof name, "%s%s/FX browser %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, i);
+            cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            if (p == 0) {
+                snprintf(file, sizeof file, "fx_browser_%02u", i);
+                write_ppm(out, render_pixel ? "PIXEL" : "NIGHT", file);
+            }
+        }
+        for (uint32_t type = FX_REVERB; type < FX_COUNT; type++) {
+            if (type == FX_MIDIVERB) continue;          /* rack only */
+            for (uint32_t end = 0; end < 2; end++) {
+                state();pal(p);TSEL->p[P_FXTYPE] = (int16_t)type;TSEL->p[P_FXMIX] = 100;
+                TSEL->p[P_FXRATE] = type == FX_MIDIDELAY ? (end ? 9 : 0) : end ? 127 : 0;
+                TSEL->p[P_FXCHAR] = end ? 127 : 0;TSEL->p[P_FXTONE] = end ? 63 : -63;
+                go_title("FX 1");
+                snprintf(name, sizeof name, "%s%s/FX type %u endpoint %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, type, end);
+                cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            }
+        }
+    }
+    cur_name = 0;
+}
 static void designer_sweep(const char *out)
 {
     char name[96],file[64];
@@ -2090,6 +2207,7 @@ int main(int argc, char **argv)
             for (k = 0; k < UI_RENDER_SHOW; k++)    /* (the suite: NIGHT DAY CONTRAST; -DUI_RENDER_SHOW=8 all) */
                 if (!strcmp(UI_PALETTES[p].name, SHOW[k])) write_ppm(out, SHOW[k], S_NAME[s]);
         }
+    fx_redesign_sweep(out);
     render_pixel = 1;                               /* every screen again in Melodee Pixel (NIGHT) */
     for (s = 0; s < S_COUNT; s++) {
         char name[64];
@@ -2103,7 +2221,11 @@ int main(int argc, char **argv)
         lint();
         write_ppm(out, "PIXEL", S_NAME[s]);
     }
+    fx_redesign_sweep(out);
     sweep_waiting_headers(out);
+#if MELODEE_USB_HOST
+    sweep_host_headers();
+#endif
     sweep_screen_messages();
     sweep_mpc_octaves(out);
     sweep_list_rows();
@@ -2132,6 +2254,9 @@ int main(int argc, char **argv)
         if (fmp_charts - c0 != 96u) { fprintf(stderr, "ui_render: %u FM6 charts drawn of 96\n", fmp_charts - c0); return 1; }
     }
     sweep_waiting_headers(out);
+#if MELODEE_USB_HOST
+    sweep_host_headers();
+#endif
     sweep_screen_messages();
     sweep_list_rows();
     sweep_columns();

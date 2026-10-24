@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../firmware/src/scratch.h"
 
 #define MELODEE_ID "FM-1_900"
 #define MELODEE_OTA_DRYRUN 0
@@ -131,7 +132,13 @@ static int ota_prog(uint32_t off, const void *src, uint32_t n)
     return 0;
 }
 static int ota_fread(uint32_t off, void *dst, uint32_t n) { if(cleanup_read_error)return -1;memcpy(dst, nor + off, n); return 0; }
-static void ota_show(uint32_t step, int32_t code) { if (step == 9) last_code = code; }
+static void ota_show(uint32_t step, int32_t code)
+{
+    /* Progress may overwrite transient draw work. Neither staged package data
+     * nor the final 112-byte commit record may depend on that scratch. */
+    memset(&main_scratch, 0xA5, sizeof main_scratch);
+    if (step == 9) last_code = code;
+}
 static void ota_commit(const uint8_t *parm) { committed = 1; memcpy(committed_parm, parm, 112); }
 
 #include "../firmware/src/ota.c"
@@ -167,6 +174,8 @@ static int area_erased(void)
 
 static void reset_dev(void)
 {
+    memset(&main_scratch, 0xCD, sizeof main_scratch);
+    memset(OTA_SCRATCH, 0xDC, 0x800u);
     memset(nor, 0xFF, sizeof nor);
     memcpy(nor, logical + 0x400, 0x4000);                 /* device flash head = package flash.bin head */
     rx_full = 0; requests = 0; ident_replies = 0; committed = 0; last_code = 0;
@@ -289,40 +298,46 @@ int main(int argc, char **argv)
         bad += check("no 'success' -> -13, no commit, area clean", rc == -13 && !committed && area_erased());
     }
 
-    /* Optional local vendor package, never redistributed. Melodee's loader preserves
-     * the device's original 0..0x3FFF head; the official loader requires that match. */
     if (argc > 2) {
         f = fopen(argv[2], "rb");
-        if (!f) { perror(argv[2]); return 2; }
-        n = fread(raw, 1, 0x200000, f);
-        fclose(f);
-        free(logical);
-        logical = malloc(n);
-        for (i = 0; i < 20; i++) memcpy(logical + i * 47, raw + i * 48, 47);
-        memcpy(logical + 20 * 47, raw + 20 * 48, n - 20 * 48);
-        logical_len = n - 20;
-        uint8_t head[0x4000];
+        if (!f) { perror(argv[2]);return 2; }
+        n = fread(raw, 1, 0x200000, f);fclose(f);
+        free(logical);logical=malloc(n);
+        for (i=0;i<20;i++) memcpy(logical+i*47,raw+i*48,47);
+        memcpy(logical+940,raw+960,n-960);logical_len=n-20;
+        uint32_t body=ota_body_off();
         reset_dev();
-        memcpy(head, nor, sizeof head);
-        rc = ota_session();
-        bad += check("stock V15 stages and commits its official loader", rc == 0 && committed);
-        bad += check("stock return preserves head during staging", !memcmp(head, nor, sizeof head) && !bad_erase);
-        bad += check("stock return stages the exact official loader",
-                     !memcmp(nor + OTA_AREA + 32, logical + ota_body_off(), OTA_LDR_LEN));
-        bad += check("stock return uses the official loader identity",
-                     !memcmp(committed_parm + 8, "ota-FM-1_015", 12));
-        reset_dev();
-        nor[0x100] ^= 1;
-        rc = ota_session();
-        bad += check("stock return rejects a different device head",
-                     rc == -5 && !committed && area_erased());
-        reset_dev();
-        corrupt_at = logical + ota_body_off() + 100;
-        rc = ota_session();
-        bad += check("stock return rejects a damaged official loader",
-                     rc == -11 && !committed && area_erased());
+        uint8_t before[0x4000];memcpy(before,nor,sizeof before);
+        rc=ota_session();
+        bad+=check("pinned m-bootloader v1.2 stages and commits",rc==0 && committed);
+        bad+=check("boot staging never writes boot/app/user sectors",!bad_erase && !memcmp(before,nor,sizeof before));
+        bad+=check("boot installer is not retained as our rescue loader",!ota_staged());
+        /* A different writer with valid outer CRCs must still fail SHA-256. */
+        logical[body+80]^=1;
+        uint32_t len=ota_rd32(logical+body-32+8);
+        ota_wr16(logical+body-32+2,ota_crc16(logical+body,len,0));
+        ota_wr16(logical+body-32,ota_crc16(logical+body-30,30,0));
+        reset_dev();rc=ota_session();
+        bad+=check("changed writer with repaired CRCs fails SHA-256",rc==-7 && !committed && area_erased() && !bad_erase);
+        /* Restore the pinned image, then lose the host/withhold confirmation. */
+        for (i=0;i<20;i++) memcpy(logical+i*47,raw+i*48,47);
+        memcpy(logical+940,raw+960,n-960);
+        reset_dev();mute_after=5;rc=ota_session();
+        bad+=check("boot staging disconnect leaves no commit",rc<0 && !committed && area_erased() && !bad_erase);
+        reset_dev();rc=ota_session();uint32_t total=requests;
+        reset_dev();mute_after=total-1;rc=ota_session();
+        bad+=check("boot staging needs host confirmation",rc==-13 && !committed && area_erased());
+        /* Same SHA implementation must handle short and padding-boundary inputs. */
+        ota_sha256_t sh;uint8_t digest[32];
+        static const uint8_t abc[32]={0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
+            0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
+        ota_sha256_init(&sh);ota_sha256_update(&sh,(const uint8_t *)"a",1);ota_sha256_update(&sh,(const uint8_t *)"bc",2);ota_sha256_final(&sh,digest);
+        bad+=check("SHA-256 known vector with split updates",!memcmp(abc,digest,32));
+        static const uint8_t padded[32]={0x24,0x8d,0x6a,0x61,0xd2,0x06,0x38,0xb8,0xe5,0xc0,0x26,0x93,0x0c,0x3e,0x60,0x39,
+            0xa3,0x3c,0xe4,0x59,0x64,0xff,0x21,0x67,0xf6,0xec,0xed,0xd4,0x19,0xdb,0x06,0xc1};
+        ota_sha256_init(&sh);ota_sha256_update(&sh,(const uint8_t *)"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",56);ota_sha256_final(&sh,digest);
+        bad+=check("SHA-256 two-block padding vector",!memcmp(padded,digest,32));
     }
-
     printf("%s\n", bad ? "OTA TEST FAILED" : "ota test passed");
     return bad != 0;
 }

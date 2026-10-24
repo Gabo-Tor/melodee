@@ -12,7 +12,7 @@
 #define ICON_CELL 12
 
 /* the circled numeral of track k (filled: the selected one), 12 or 16 px: tracks have no colours */
-static uint32_t trk_icon(uint32_t k, int filled) { return (filled ? ICON_X_TRK1 : ICON_X_TRK1_O) + k % NTRK; }
+static uint32_t trk_icon(uint32_t k, int filled) { return (filled ? ICON_X_TRK1 : ICON_X_TRK1_O) + k % NPART; }
 
 /* icon id at size 12, 16 or 24 px (24: the header battery and USB; one missing: its 12 px cell),
  * fg on bg; returns its width */
@@ -174,10 +174,12 @@ static uint32_t param_icon(const param_desc_t *d, int32_t v)
         return ICON_DIVISION;                 /* arp RATE is a note division, not Hz */
     if (d->names == N_TRIO_MODE)
         return ICON_CUTOFF;                   /* TRIO's MODE is the filter type, not the arp mode */
+#if MELODEE_LEGACY_EXTRAS
     if (d->names == N_NOISE_MODE)
         return ICON_NOISE;                    /* NOISE's MODE is the source; its CLK the register clock */
     if (d == &NOISE_CLK)
         return ICON_RATE;
+#endif
 #if MELODEE_SLICE
     if (d->names == N_SLC_DIV)
         return ICON_SLICE;                    /* SLICE: DIV is the slicing, MODE the gate, REV the direction */

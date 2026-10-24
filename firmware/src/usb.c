@@ -17,7 +17,8 @@
  * Their endpoints are served from the TIMER5 ISR by elapsed time (ua_service,
  * main.c), nested in the render too; usb_poll never runs nested, so the two
  * never interleave. Either can be left out of the configuration (ua_off, the
- * menu's USB AUDIO); usb_replug makes the host see the change. The update
+ * menu's USB AUDIO); usb_replug makes the host see the change. MELODEE_USB_HOST=1 adds usb_host.c: the menu's
+ * USB HOST makes the port the host of a USB-MIDI controller (usb.up is 0 meanwhile). The update
  * loader leaves both off: MIDI only. */
 #include "../hal/fm1_usb.h"   /* registers; relative, so the loader and the host tests find it too */
 #ifndef MELODEE_CDC
@@ -28,6 +29,9 @@
 #endif
 #if MELODEE_USB_AUDIO && MELODEE_CDC
 #error "MELODEE_USB_AUDIO and MELODEE_CDC share EP2 / EP3: build one of them"
+#endif
+#ifndef MELODEE_USB_HOST
+#define MELODEE_USB_HOST 0                              /* melodee.c turns it on; the update loader never has it */
 #endif
 enum { S_FADDR = 0, S_POWER = 1, S_INTRTX1 = 2, S_INTRTX2 = 3, S_INTRRX1 = 4, S_INTRRX2 = 5, S_INTRUSB = 6,
        S_INTRTX1E = 7, S_INTRTX2E = 8, S_INTRRX1E = 9, S_INTRRX2E = 10, S_INTRUSBE = 11, S_FRAME1 = 12,
@@ -96,6 +100,8 @@ static uint8_t midi_in_source[MQ];                    /* 1 USB, 2 TRS */
 static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
 static volatile uint32_t mi_w, mi_r, mo_w, mo_r;
 static volatile uint8_t midi_in_overflow;               /* audio ISR discards a broken stream and releases notes */
+static volatile uint8_t midi_usb_lost;                  /* host session ended: audio ISR releases USB owners */
+static int usb_midi_out_ready(void);
 
 /* Firmware: raw TIMER4 ticks (wrap-safe differences). Parser-only host tests
  * retain their simulated millisecond clock. */
@@ -124,20 +130,35 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
     return 1;
 }
 
-static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
+static int midi_track_emit(uint32_t pkt)            /* from the audio ISR */
 {
-    if (usb.config && mo_w - mo_r < MQ) {
+    if (usb_midi_out_ready() && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
         RING_PUBLISH();
         mo_w++;
+        return 1;
     }
+    return 0;
 }
+static void midi_out_event(uint32_t pkt) { (void)midi_track_emit(pkt); }
 
 /* ------------------------------------------------------- descriptors --- */
 /* interfaces: 0 audio control, 1 MIDI streaming, then CDC's two, or duplex audio's three (usb_audio_desc.h).
  * bcdDevice: 3.00 MIDI, 3.01 with CDC, 3.30..3.37 with USB audio.
  * Each audio layout has its own revision (hosts cache descriptors per version). */
 #if MELODEE_USB_AUDIO
+#ifndef UA_TRACKS_MEMORY
+#define UA_TRACKS_MEMORY(bytes) resource_resize(RES_USB_TRACKS,bytes)
+#endif
+#ifndef UA_MEMORY_GUARD_OFF
+#ifdef FM1_IRQ_TARGET
+#define UA_MEMORY_GUARD_OFF() fm1_irq_off()
+#define UA_MEMORY_GUARD_ON() fm1_irq_on()
+#else
+#define UA_MEMORY_GUARD_OFF() ((void)0)
+#define UA_MEMORY_GUARD_ON() ((void)0)
+#endif
+#endif
 #include "usb_audio_stream.c"
 #define CFG_LEN 396
 static const uint8_t DEV_DESC[18] = {18, 1, 0x00, 0x02, 0xEF, 0x02, 0x01, 64, 0x09, 0x12, 0x01, 0x00, 0x30, 0x03,
@@ -822,9 +843,25 @@ static void ep3_tx(void)                                /* <= 63 bytes per packe
 }
 #endif
 
+#include "usb_host.c"                                   /* MELODEE_USB_HOST: the port as a MIDI host (menu USB HOST) */
+
+static int usb_midi_out_ready(void)
+{
+#if MELODEE_USB_HOST
+    if (uh.on) return uh.run && uh.out_mps;
+#endif
+    return usb.config != 0;
+}
+
 static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
+#if MELODEE_USB_HOST
+    if (uh.run) {                                       /* a host: one IN endpoint, nothing of the device side */
+        uh_poll();
+        return;
+    }
+#endif
     if (!usb.up)
         return;
     if (fm1_usb_sof_take()) {                           /* SOF pending: NOT a reliable "host is there" */
@@ -918,7 +955,11 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
 {
 #if MELODEE_USB_AUDIO
+    UA_MEMORY_GUARD_OFF();
     ua_reset();
+    int ready=ua_tracks_memory_prepare(ua_tracks&&!(ua_off&UA_OFF_IN));
+    UA_MEMORY_GUARD_ON();
+    if(!ready){usb.up=0;return;}
     ua_rate_pending = 0;
     ua_feature_pending = 0;
     ua_host_volume_reset();
@@ -946,6 +987,10 @@ static void usb_retry(uint32_t now_ms)
 {
     if (usb.up || usb.detached || now_ms - usb.retry_ms < 1000u)
         return;
+#if MELODEE_USB_HOST
+    if (uh.on)
+        return;                                         /* the port is a host: uh_task owns it */
+#endif
     usb.retry_ms = now_ms;
     usb.retries++;
     usb_start();
@@ -956,6 +1001,9 @@ static void usb_retry(uint32_t now_ms)
  * configuration afresh. usb.up = 0 first: TIMER5 (usb_poll, ua_service) leaves the SIE to this context. */
 static void usb_replug(uint32_t now_ms)
 {
+#if MELODEE_USB_HOST
+    if (uh.on) return;                                  /* device settings cannot detach an active host */
+#endif
     if (usb.detached)
         return;
     usb.up = 0;
@@ -986,10 +1034,22 @@ static void ua_tracks_set(int tracks, uint32_t now_ms)
 
 static int ua_off_apply(uint32_t now_ms)
 {
+#if MELODEE_USB_HOST
+    if (uh.on) return 0;                                /* apply device-mode settings after HOST is turned off */
+#endif
     if ((ua_off_want == ua_off && ua_tracks_want == ua_tracks) || now_ms - ua_off_ms < 600u)
         return 0;
+    UA_MEMORY_GUARD_OFF();
+    int extra=ua_tracks_want&&!(ua_off_want&UA_OFF_IN);
+    if(extra&&!ua_tracks_memory_prepare(1)){
+        ua_tracks_want=ua_tracks;ua_off_want=ua_off;
+        UA_MEMORY_GUARD_ON();return 2;
+    }
+    ua_reset();                         /* no old four-channel reader before release */
+    if(!extra)ua_tracks_memory_prepare(0);
     ua_off = ua_off_want;
     ua_tracks = ua_tracks_want;
+    UA_MEMORY_GUARD_ON();
     usb_replug(now_ms);
     return 1;
 }
@@ -1006,5 +1066,9 @@ static void usb_detach(void)
 {
     usb.detached = 1;
     usb.up = 0;
+#if MELODEE_USB_HOST
+    uh.run = 0;
+    uh.on = uh.want = 0;
+#endif
     fm1_usb_off();
 }

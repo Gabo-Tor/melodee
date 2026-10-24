@@ -169,6 +169,7 @@ web_tests() {                                     # the editor mock's tables mus
     if command -v node >/dev/null 2>&1; then
         step "web pages: editor protocol + native CZ patches, package builder, update protocol" node web/test_web.mjs
         step "installer UI: release selection, fetch races, cache and write lock" node web/test_installer.mjs
+        step "installer safety: tab locks, wake/leave guards, throttled MIDI, preflight and interrupted resumes" node web/test_install_safety.mjs
         step "TransitFM1: verified package, backup, loader isolation and resume" node web/test_transit.mjs
         step "web backup: capture, validation before writes, restore order" node web/test_backup.mjs
         step "stock restore: the unmodified official V15 file is the image, CHECK HEAD range" node web/test_stock_restore.mjs
@@ -193,10 +194,19 @@ powercut_tests() {
         build/host/boot-fixtures/old-stub.fwsc
 }
 ui_renders() {
-    build ui_render ui_render -O1 -w -DMELODEE_USB_AUDIO=1 -Ibuild/gen -Ifirmware/src -Itests || return
+    build ui_render ui_render -O1 -w -DMELODEE_USB_AUDIO=1 -DMELODEE_USB_HOST=1 -Ibuild/gen -Ifirmware/src -Itests || return
     mkdir -p build/ui_new/ppm build/ui_slot
     step "UI renders: layout lint (every screen and palette, every page, engine and column value), MONO gray, draw cost" \
         "$OUT/ui_render" build/ui_new build/ui_slot
+    build ui_render_whole ui_render -O1 -w -DMELODEE_USB_AUDIO=1 -DMELODEE_USB_HOST=1 -DMELODEE_CANVAS_ROWS=124 \
+        -Ibuild/gen -Ifirmware/src -Itests || return
+    # Fresh reference images avoid stale names from earlier versions; ui_new
+    # also contains generated manual assets which this check need not remove.
+    rm -rf build/ui_band_reference build/ui_band_slot
+    mkdir -p build/ui_band_reference/ppm build/ui_band_slot
+    step "UI canvas: whole-canvas reference" "$OUT/ui_render_whole" build/ui_band_reference build/ui_band_slot
+    step "UI canvas: exact band replay pixels" python3 tests/canvas_bands_compare.py build/ui_new build/ui_band_reference
+    step "UI canvas: exact rolling frames" python3 tests/canvas_bands_compare.py build/ui_slot build/ui_band_slot
     if [ $PIL = 1 ]; then
         python3 tests/ui_render.py build/ui_new build/ui_slot || fail "tests/ui_render.py"
         python3 tools/ui_mockcmp.py build/ui_new build/ui_mock || fail "tools/ui_mockcmp.py" # redesign parity (docs/design): a report, no gate yet
@@ -257,13 +267,22 @@ phys_ref() {
 # ------------------------------------------------------------------ tests ---
 # the longest first: they set the length of the run
 sound && t "FX performance: all effects, four-track mixer, shared send bus and ordered three-effect chains" fx_performance -O2 $FW -- "$OUT/fx_performance" full
-sound && t "FX: three-slot chains, reverb decay/density/rate conversion, smooth Tape, track ownership, dry bypass and frozen legacy storage" fx_test -O1 $FW
+sound && t "FX: remaining inserts, smooth Tape, track ownership, dry bypass and retired-effects RAM reclamation" fx_test -O1 $FW
+core && t "Retired Echo: reserved ID and reclaimed tanks; SLOOP Reverb and master punch controls" retired_fx_test -O1 $FW
+sound && t "Master audio punch: 27 effects, history, freeze, transitions and key ownership" punch_master_test -O1 $FW
+sound && t "SLOOP FX: compact stereo reverb, eight inserts, shared returns and controls" sloop_fx_test -O1 $FW
+core && t "MIDI inserts: native release tails, timed note repeats, ownership, UI and persistence" midi_insert_test -O1 $FW
+core && t "MIDI Track: USB notes, TRS routing, song/recording, cleanup, silent mixer and persistence" midi_track_test -O1 $FW
+core && t "MIDI Track: host output, reconnect cleanup and USB input loss" midi_track_host_test:midi_track_test -O1 -DMELODEE_USB_HOST=1 $FW
 core && t "EQ accelerator: register layout, isolated histories and bounded timeout" eq_hw_test
 core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
 
 if core; then
+    t "shared undo RAM: eight levels, audio priority and exhaustion" undo_memory_test -O1 $FW
     t "flash storage (A/B, torn writes)" storage_test
+    t "streamed banks: unpublished copies, page/header power cuts and readback" storage_stream_test
+    t "streamed projects: exact codec bytes, dirty hashes, rename, legacy import and track removal" project_stream_test -O1 $FW
     t "native FM6/CZ user presets, scrolling, migration and interrupted saves" fm6_preset_test -O1 $FW
     t "Prophet native slots, atomic saves, projects, undo and performance" prophet_integration_test -O1 $FW
     t "resource lifetimes, cache eviction, tails and capacity" resources_test -O2 $FW
@@ -296,8 +315,10 @@ if core; then
     t "TRS MIDI parser" midi_uart_test
     t "USB audio: routing, clock drift and stream recovery" usb_audio_test
     t "USB audio: endpoint lifecycle and packet ownership" usb_audio_driver_test
+    t "USB MIDI host: duplex I/O, enumeration, ACK ownership, back-pressure and recovery" usb_host_test -O1 -fsanitize=address,undefined
     run "USB descriptors: MIDI, CDC and audio configurations" python3 tests/usb_audio_desc_test.py
     run "resident audio: call graph and flash/RAM ABI boundaries" python3 tests/audio_ram_test.py
+    run "performance defaults: local/compiler agreement and explicit reference overrides" python3 tests/performance_defaults_test.py
     t "removed effects: old songs and motion, MIDI, physical input and dry output" no_effects_test -O1 $FW
     t "resident audio: four-track resource budget and removed buses" ram_audio_test -O2 $FW
     t "resident/cache undo: validated eight levels and bounded fallback" ui_resident_cache:ui_test -DMELODEE_RAM_AUDIO=1 -DMELODEE_CACHE_RAM=1 $FW
@@ -307,11 +328,8 @@ if core; then
     t "boot stub: CRCs, rescue keys, damaged staging and retry fallback" boot_stub_test -O2
     run "boot packages: constant entry sector and valid directory CRCs" python3 tests/boot_stub_pkg_test.py
     t "power cuts: every erase/page, resume and unchanged boot sector" loader_powercut_test -O2 -- powercut_tests
-    if [ -f FM-1_v15.fwsc ]; then
-        t "M-UPGRADE entry (Melodee and official V15 loaders)" ota_test -- "$OUT/ota_test" build/melodee.fwsc FM-1_v15.fwsc
-    else
-        t "M-UPGRADE entry (own loader)" ota_test -- "$OUT/ota_test" build/melodee.fwsc
-    fi
+    t "M-UPGRADE entry (own loader and pinned boot installer)" ota_test -DOWN_PKG=1 -- "$OUT/ota_test" build/melodee.fwsc web/m-bootloader/fm1-uboot.fwsc
+    t "installer crash report (read only)" installer_report_test
     t "update loader: other app -> this build" ldr_test -- old_to_new
     run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/install_test.py
     run "ROM USB recovery: backup, protected regions, interrupted writes and transport failures" python3 tests/recovery_test.py
@@ -330,12 +348,17 @@ if core && [ $TABLES = 1 ]; then
     t "32 pattern banks: chords, ties, independent loop switching, copy and persistence" pattern_test \
         -O1 -DMELODEE_USB_AUDIO=1 $FW
     t "compressed pattern pool: dense capacity, prepared switches and state-machine oracle" pattern_pool_test -O1 $FW
+    t "16 x 128 shared pool: old dense capacity, atomic exhaustion and switching" pattern_capacity_test -O1 $FW
     t "recording/performance tools and legacy migrations" performance_tools_test -O1 $FW
     t "USB/TRS clock, bend, sustain, ownership and panic recovery" midi_control_test -O1 $FW
     t "MIDI timing: quantized TRS/USB recording, audio timeline, tempo changes and timer wrap" midi_timing_test -O1 $FW
     t "MIDI recording: raw events, quantization at take end, independent releases, banks and capacity" recording_test \
         -O1 $FW
+    t "Recorded-note layout: legacy bytes, 64 owners and 128 steps without event growth" recorded_note_test -O2 $FW
+    t "Packed note RAM: frozen FBKK/FUN22 bytes across 168 workloads" recorded_note_wire_test -O1 $FW
+    t "16 x 128 recording core: positions, release queues, copies and pitch cache" recording_capacity_test -O1 -DMELODEE_RECORD_INDEX=1 $FW
     t "Recording scheduler: reference-state parity, cache invalidation and live lists" recording_scheduler_test -O1 $FW
+    t "Recording RAM: shared capture/deadline counters and mode handoffs" recording_runtime_test -O1 $FW
     run "Recording storage codec probe: lossless roundtrip and malformed data" python3 tools/recording_storage_probe.py
     t "Recording ownership: independent scanner, edits, duplicates, sparse/dense queries and rebuild cost" recording_index_test -O2 $FW
     t "Timestamped releases: rollover, retrigger, 1024 cancellations, edits and track isolation" recording_queue_test -O1 $FW
@@ -398,7 +421,6 @@ if sound && [ $TABLES = 1 ]; then
     t "paired FM6/Prophet voices: serial/concurrent sample equality and eight-voice allocation" dual_core_test \
         -O2 $FW -pthread
     t "audio: 1296 ordered engine assignments, releases, controls and concurrent PCM parity" audio_matrix_test -O2 $FW -pthread
-    t "Reverb inserts: private tanks, fallback and failed-worker drops" reverb_parallel_test -O2 $FW -pthread
     t "CZ-1: every knob changes a full tone; the dim ones leave INIT and factory tones bit for bit" cz1_knob_test -O2 $FW
     t "native fp32: independent numerical references, exact pitch, quiet signals and fractional envelopes" synth_fpu_test \
         -O2 $FW

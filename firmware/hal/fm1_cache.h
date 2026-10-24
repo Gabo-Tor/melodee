@@ -5,7 +5,7 @@
  * The other seven 4 KiB data ways map at 0x01F28000..0x01F2F000.
  * Boot only, IRQs off, CPU1 held, before any cache-bank allocation. Never
  * change this configuration at runtime or place code/stacks in cache RAM.
- * Disabled by default pending physical FM-1 validation. */
+ * Enabled by the shared performance defaults; boot failures exclude this bank. */
 #pragma once
 #include <stdint.h>
 #include "fm1_cc.h"

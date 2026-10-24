@@ -13,11 +13,11 @@ static recorded_note_t fixture_notes[RECORD_MAX];
 /* Stopped, disarmed, empty four-track project with the assigned engines. */
 static int fixture_tracks(uint32_t quant,const char *assignment)
 {
-    if(quant>1u || strlen(assignment)!=NTRK)return 0;
-    for(uint32_t k=0;k<NTRK;k++)if(assignment[k]<'0' || assignment[k]>'5')return 0;
+    if(quant>1u || strlen(assignment)!=NPART)return 0;
+    for(uint32_t k=0;k<NPART;k++)if(assignment[k]<'0' || assignment[k]>'5')return 0;
     ui_power_on();seq_stop();song.rec=song.rec_latch=0;recording_reset();
-    song.ntrk=NTRK; /* unused tracks would take no notes or mixer CPU */
-    for(uint32_t k=0;k<NTRK;k++){
+    song.ntrk=NPART; /* unused tracks would take no notes or mixer CPU */
+    for(uint32_t k=0;k<NPART;k++){
         track_t *t=&trk[k];uint32_t category=(uint32_t)(assignment[k]-'0');
         host_preset(t,cpu_engines[category],0);
         if(category>=4u)t->p[P_E0]=(int16_t)(category==4u?4:5);
@@ -37,7 +37,7 @@ static int make_fixture(uint32_t count,uint32_t quant,uint32_t spread,uint32_t t
     if(count!=64u && count!=256u && count!=RECORD_MAX)return 0;
     if(spread>1u || tails>1u || !fixture_tracks(quant,assignment))return 0;
     for(uint32_t i=0;i<count;i++){
-        uint32_t k=spread?i/(count/NTRK):0u,local=spread?i%(count/NTRK):i,cell=local%NSTEP,group=local/NSTEP;
+        uint32_t k=spread?i/(count/NPART):0u,local=spread?i%(count/NPART):i,cell=local%NSTEP,group=local/NSTEP;
         track_t *t=&trk[k];uint32_t category=(uint32_t)(assignment[k]-'0');
         uint32_t on=quant?0u:8192u+(local*1777u)%49152u;
         uint32_t round=!quant && on>=32768u,view=(cell+round)%NSTEP;
@@ -56,9 +56,9 @@ static int make_fixture(uint32_t count,uint32_t quant,uint32_t spread,uint32_t t
     project_capture(&proj_scratch);
     if(!bank_pack(fixture_raw,&proj_scratch,1) || !bank_valid(fixture_raw,sizeof fixture_raw))return 0;
     if(memcmp(proj_scratch.recording,fixture_notes,sizeof fixture_notes))return 0;
-    if(proj_scratch.parts!=NTRK || project_restore_runtime(&proj_scratch))return 0;
+    if(proj_scratch.parts!=NPART || project_restore_runtime(&proj_scratch))return 0;
     bank_restore(fixture_raw);
-    if(trk_n()!=NTRK)return 0;
+    if(trk_n()!=NPART)return 0;
     if(memcmp(recording,fixture_notes,sizeof fixture_notes))return 0;
     uint32_t active=0,owners=0;
     for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel){

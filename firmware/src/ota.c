@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Modifications Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Copyright (C) 2026 ChoralRoot FM-1 contributors
+ * Portions Copyright (C) 2026 Andre Rezemini (SLOOP ram branch)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* M-UPGRADE entry: "step 1 lite".
  *
@@ -31,6 +32,8 @@
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
 #define OTA_FRAME_MAX 640u                       /* 512-B response = 605 wire bytes */
+#define OTA_PARM_N 112u
+#include "ota_sha256.h"
 #ifndef OTA_SCRATCH                              /* 2 KiB of work space while staging (melodee.c: the project staging) */
 static uint8_t ota_scratch[0x800];
 #define OTA_SCRATCH ota_scratch
@@ -110,7 +113,9 @@ static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_
 }
 
 static uint8_t ota_msg[8 + 32], ota_wire[2 + 48];
-static uint8_t ota_dec[OTA_FRAME_MAX];           /* decoded host message */
+#include "scratch.h"
+#define ota_dec (main_scratch.dec)
+_Static_assert(sizeof ota_dec == OTA_FRAME_MAX, "OTA scratch holds a decoded frame");
 
 static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 32 */
 {
@@ -264,7 +269,8 @@ static int ota_ufw(uint8_t *hdr, uint32_t *fl_off, uint32_t *fl_len, uint32_t *o
 static int ota_stage(void)                       /* steps 1..6; 0 = host said success */
 {
     uint8_t *hdr = OTA_SCRATCH, *b = hdr + 0x400, *mine = b + 512;
-    uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official;
+    uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official, boot;
+    ota_sha256_t hash;
     int rc;
     /* 1. UFW header + entry list */
     ota_show(1, 0);
@@ -273,7 +279,7 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     /* Any partition installs here: the package's own loader decides (ldr_core.c: this Melodee's moves the
      * Prophet banks up before its app area, 0x93000, is written; an older one's ends at 0x89000). */
     (void)fl_len;
-    if (!fl_off || !ota_off)
+    if (!ota_off)
         return -3;
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Melodee's own (app area only, checks the chip key) */
@@ -287,9 +293,13 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     official = ota_rd16(b) == OTA_LDR_HCRC && ota_rd16(b + 2) == OTA_LDR_DCRC && len == OTA_LDR_LEN;
     for (i = 0x48, own = 0; i + 16u <= 0x48u + 64u && !own; i++)    /* first LZ4 literals: crt0_ldr.S */
         own = ota_memeq(b + i, (const uint8_t *)"FELUCCA-LOADER-1", 16) && ota_rd32(b + 0x20 + 4) <= 0x14000u;
-    if (!official && !own)
+    /* m-bootloader v1.2's FM-1 installer has no flash.bin. Accept only this
+     * pinned writer, checked with SHA-256 from flash before its head/commit.
+     * Keep the existing restrictions for all application update packages. */
+    boot = !fl_off && !fl_len && len == 0x4250u;
+    if ((!fl_off && !boot) || (!official && !own && !boot))
         return -7;
-    if (official) {                    /* the official loader writes the head: it must equal ours */
+    if (official && !boot) {            /* the official loader writes the head: it must equal ours */
         ota_show(2, 0);
         for (i = 0; i < 0x4000u; i += 512u) {
             if (ota_read(fl_off + i, b, 512) || ota_fread(i, mine, 512))
@@ -318,14 +328,26 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         }
         if (crc != c)
             return -11;
+        if (boot) ota_sha256_init(&hash);
         for (i = 0, crc = 0; i < len; i += n) {             /* read back from flash */
             n = len - i > 512u ? 512u : len - i;
             if (ota_fread(OTA_AREA + 32u + i, b, n))
                 return -11;
             crc = ota_crc16(b, n, crc);
+            if (boot) ota_sha256_update(&hash, b, n);
         }
         if (crc != c)
             return -11;
+        if (boot) {
+            /* Official release v1.2, source 22e2559 (Julius Vitkauskas, MIT).
+             * SHA-256 of ota.bin excluding its outer 32-byte JLFS header. */
+            static const uint8_t expected[32] = {
+                0x6b,0xb8,0xeb,0xd4,0x6c,0x4a,0xa5,0x0e,0x27,0x96,0xa0,0x95,0x49,0x6f,0xbe,0xd6,
+                0xef,0x67,0x6c,0x0b,0x11,0xf8,0x9e,0x43,0x9f,0x08,0x07,0x7f,0x44,0x4b,0xb9,0x2c
+            };
+            ota_sha256_final(&hash, mine);
+            if (!ota_memeq(mine, expected, sizeof expected)) return -7;
+        }
     }
     if (ota_stage_head(len))
         return -12;
@@ -347,8 +369,8 @@ static void ota_unstage(void)
 /* returns only when nothing was committed (refused, failed, or dry run) */
 static int ota_session(void)
 {
-    static uint8_t parm[112];
-    uint8_t back[112];
+    uint8_t *parm;
+    uint8_t back[OTA_PARM_N];
     uint32_t i;
     int rc;
     ota_deadline = ota_now_ms() + 120000u;          /* step 1 normally takes ~5 s; a stalled host gives up after 2 min */
@@ -358,8 +380,12 @@ static int ota_session(void)
         ota_show(9, rc);
         return rc;
     }
+    /* SLOOP PR #111 / d024b410: keep update parameters in staging RAM too.
+     * The header/body work is dead after ota_stage, so reuse its first bytes.
+     * This buffer stays separate from decoded replies and progress drawing. */
+    parm = OTA_SCRATCH;
     /* 5./7. UPDATA_PARM (update_mode_api_v2 layout), flash copy first */
-    for (i = 0; i < sizeof parm; i++)
+    for (i = 0; i < OTA_PARM_N; i++)
         parm[i] = 0;
     ota_wr16(parm + 2, 0x5A0Du);
     ota_wr16(parm + 4, 0x5A01u);
@@ -377,8 +403,8 @@ static int ota_session(void)
 #define MELODEE_OTA_RAMONLY 0                       /* 1: RAM record only; cold-boot recovery is the boot stub
                                                      * checking the commit marker, never this flash record. */
 #endif
-    if (!MELODEE_OTA_RAMONLY && (ota_prog(OTA_RES, parm, sizeof parm) || ota_fread(OTA_RES, back, sizeof back) ||
-        !ota_memeq(back, parm, sizeof parm))) {
+    if (!MELODEE_OTA_RAMONLY && (ota_prog(OTA_RES, parm, OTA_PARM_N) || ota_fread(OTA_RES, back, sizeof back) ||
+        !ota_memeq(back, parm, OTA_PARM_N))) {
         ota_unstage();
         ota_show(9, -14);
         return -14;

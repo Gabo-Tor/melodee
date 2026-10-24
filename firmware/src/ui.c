@@ -90,7 +90,14 @@ static void glo_select_set(uint32_t v) { GLO_SELECT = (uint8_t)((GLO_SELECT & ~0
 /* UNUSED TRACKS (the menu): HIDE in bit 5 of the same byte. SHOW (0): Stage and MIXER keep a greyed row for each
  * place not in use, saying "Add track"; HIDE: the tracks in use share the rows (one track: the wide card) */
 #define TRACKS_HIDE 32u
-static uint32_t stage_rows(void) { return GLO_SELECT & TRACKS_HIDE ? trk_n() : NTRK; }
+/* the four tracks Stage, MIXER, PATTERNS, SONG and SEQ's track keys show: the selected one's (1..4, or the MIDI-only
+ * 5..8); a row k of them is track trk_group() + k */
+static uint32_t trk_group(void) { return song.sel / NPART * NPART; }
+static uint32_t stage_rows(void)
+{
+    uint32_t g = trk_group(), n = trk_n() > g ? trk_n() - g : 0u;
+    return GLO_SELECT & TRACKS_HIDE ? (n < NPART ? n : NPART) : NPART;
+}
 
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
 
@@ -173,6 +180,7 @@ static struct {
     uint32_t ly_t0;              /* the layer button's press time | 1, LY_* bits (ui_layer.c layer_gesture) */
     uint8_t ly;                  /* the layer whose button is down (LAYER_*), 0 = none */
     uint8_t lock; /* double-tapped quick layer */
+    uint8_t punch_view;
     uint8_t layer;               /* the layer whose map is shown (LAYER_*), 0 = none */
     uint16_t pg_down;            /* page buttons down (panel ids) that act when let go */
     uint32_t layer_sig;          /* drawn-state cache of the map */
@@ -219,7 +227,7 @@ static uint32_t drum_hit_selected(void);
 static const page_t *cur_page(void) { return page_over ? page_over : &PAGES[ui.page]; }
 
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
-enum { LAYER_NONE, LAYER_RESERVED, LAYER_GLO, LAYER_SCL, LAYER_N };
+enum { LAYER_NONE, LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_N };
 static void draw_layer(void);
 static const char *layer_head(void);
 static uint32_t layer_leds(void);
@@ -258,9 +266,19 @@ static int native_page(uint32_t i, uint32_t fam)       /* page i: one of fam's n
 
 static int page_visible(uint32_t i)
 {
-    if (PAGES[i].fam == FAM_FX && PAGES[i].graph != GR_FXRACK)   /* a slot's page (its MIX first): while it holds an
-                                                                 * effect (the rack shows it either way) */
-        return (PAGES[i].scope == SC_GLOBAL ? song.g : TSEL->p)[PAGES[i].id[0] - 1u] != FX_OFF;
+    if (midi_track_only(TSEL)) {
+        if (trk_midi_slot(song.sel) && PAGES[i].graph == GR_BROWSE) return 0;   /* (tracks 5..8: no other sound) */
+        if (PAGES[i].fam == FAM_ENV || PAGES[i].fam == FAM_LFO) return 0;
+        if (PAGES[i].scope == SC_TRACK && PAGES[i].fam == FAM_EDIT) return 0;
+        if (PAGES[i].fam == FAM_FX && PAGES[i].scope == SC_TRACK && PAGES[i].graph != GR_FXRACK) return 0;
+        if (PAGES[i].scope == SC_ENGINE && PAGES[i].id[0] == P_E4) return 0;
+    }
+    if (PAGES[i].fam == FAM_FX && PAGES[i].graph != GR_FXRACK) {   /* a slot's page (its MIX first): while it holds
+                                                                     * an effect (the rack shows it either way); NOTE
+                                                                     * TAIL none: its row is all of it, KNOB 4 REL */
+        int16_t t = (PAGES[i].scope == SC_GLOBAL ? song.g : TSEL->p)[PAGES[i].id[0] - 1u];
+        return t != FX_OFF && t != FX_MIDIVERB;
+    }
     if (list_gone(i))
         return 0;
     if (PAGES[i].graph == GR_MOTION)                   /* MOTION: once there is motion (Kerem: an empty page; the one
@@ -538,6 +556,7 @@ static int fam_has(uint32_t fam, uint32_t page)         /* page: one the family'
 
 static void open_family(uint32_t fam)
 {
+    if (midi_track_only(TSEL) && (fam == FAM_ENV || fam == FAM_LFO)) return;
     if ((fam == FAM_ENV || fam == FAM_LFO) && native_titles(fam)) {   /* ENV / LFO of the Prophet, FM6, CZ-1 */
         uint8_t pg[NPAGES];
         uint32_t n = fam_pages(fam, pg), k;
@@ -638,28 +657,34 @@ typedef struct {
     uint32_t t_ms;               /* time of the last load (the editor's SETs after it belong to it) */
 } undo_t;
 #define UNDO_LV_MAX 8u
-_Static_assert(UNDO_LV_MAX * sizeof(undo_t) <= UI_CACHE_BYTES, "undo levels fit the cache RAM's UI part");
-#if MELODEE_RAM_AUDIO && MELODEE_CACHE_RAM
 /* Reserve the engine arena even when cache startup fails. Never borrow a live
  * audio allocation from the UI or use unvalidated cache memory. */
 #define UNDO_SRAM_LEVELS 1u
-#else
-#define UNDO_SRAM_LEVELS UNDO_LV_MAX
-#endif
 static undo_t undo_sram[UNDO_SRAM_LEVELS] __attribute__((section(".pool")));
 static undo_t *undo_lv = undo_sram;
 static uint8_t undo_nlv = UNDO_SRAM_LEVELS, undo_top, undo_cnt;   /* levels; undoable 0 .. top-1, redoable top .. cnt-1 */
-static undo_t *undo_last(void) { return &undo_lv[undo_top ? undo_top - 1u : 0u]; }
-#define undo (*undo_last())      /* the latest level (tests, the layers: undo.keep); none: level 0 */
-static void undo_clear(void) { undo_top = undo_cnt = 0; undo_lv[0].trk = undo_lv[0].keep = 0; }
-static void undo_levels(void)    /* the cache RAM's UI part once it is there (boot self-test passed) */
+static void undo_refresh(void)
 {
-    uint8_t *c = ui_cache();
-    if (c && undo_lv == undo_sram) {
-        undo_lv = (undo_t *)(void *)c;
-        undo_nlv = UNDO_LV_MAX;
-        undo_clear();
+    if(undo_lv!=undo_sram && (resource[RES_LOAD_UNDO].ptr!=undo_lv ||
+       resource[RES_LOAD_UNDO].size<(uint32_t)undo_nlv*sizeof(undo_t))){
+        undo_lv=undo_sram;undo_nlv=UNDO_SRAM_LEVELS;undo_top=undo_cnt=0;
     }
+}
+static undo_t *undo_last(void) { undo_refresh();return &undo_lv[undo_top ? undo_top - 1u : 0u]; }
+#define undo (*undo_last())      /* the latest level (tests, the layers: undo.keep); none: level 0 */
+static void undo_clear(void) {
+    resource_release(RES_LOAD_UNDO);undo_lv=undo_sram;undo_nlv=UNDO_SRAM_LEVELS;
+    undo_top = undo_cnt = 0; undo_lv[0].trk = undo_lv[0].keep = 0;
+}
+static void undo_levels(void)    /* bounded history, acquired before a load */
+{
+    undo_refresh();
+    uint32_t levels=undo_top<UNDO_LV_MAX?undo_top+1u:UNDO_LV_MAX;
+    if(levels<=undo_nlv)return;
+    undo_t *p=resource_resize(RES_LOAD_UNDO,levels*sizeof(undo_t));
+    if(!p)return; /* keep the existing depth; no voice/effect is displaced */
+    if(undo_lv==undo_sram && undo_top)memcpy(p,undo_sram,undo_top*sizeof(undo_t));
+    undo_lv=p;undo_nlv=(uint8_t)levels;
 }
 static uint8_t undo_depth;       /* loads nest (an engine jump loads its first preset): the outer one counts;
                                   * melodee_init / project_load raise it to take no copy at all */
@@ -672,10 +697,10 @@ static uint32_t track_sig(const track_t *t)      /* the sound (an FM6 track's pa
 {
     uint8_t id[5] = {t->eng_req, t->preset, (uint8_t)t->user, (uint8_t)(t->user>>8), t->user_native};
     uint32_t h = fnv(fnv(steps_sig(t), t->p, sizeof t->p), id, 3), k = trk_index(t);
-    h = fnv(h, fm6_patch[k], sizeof fm6_patch[k]); /* (a patch the editor sent between two loads) */
-    h = fnv(h, cz_patch[k].raw, CZ_BYTES);
+    h = fnv(h, fm6_patch_of(k), FP_SIZE + 1u);   /* (a patch the editor sent between two loads) */
+    h = fnv(h, cz_patch_of(k)->raw, CZ_BYTES);
     h = fnv(h,p5_patch_of(&trk[k]),sizeof(p5_patch_t));
-    h = fnv(h,&drum_patch[k],sizeof(drum_patch_t));
+    h = fnv(h,drum_patch_of(k),sizeof(drum_patch_t));
     for (uint32_t j = 0; j < motion.count; j++)
         if ((motion.event[j].place >> 6) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
     return h ^ ((motion.on >> k) & 1u);
@@ -695,7 +720,7 @@ static void momentary_restore(void)
     if(!momentary.active)return;
     uint32_t tr=momentary.track;fm1_irq_off();
     if(momentary.native==1){fm6_put_patch(tr,momentary.fm,0);memcpy(fm6_fn[tr],momentary.fn,FM6_NFN);fm6_on[tr]=momentary.on;}
-    else if(momentary.native==2)cz_patch[tr]=momentary.cz;
+    else if(momentary.native==2)(*cz_patch_of(tr))=momentary.cz;
     else if(momentary.native==3){p5_patch[tr]=momentary.p5;trk[tr].p[P_VOICE]=momentary.p5_voice;trk[tr].p[P_PRIO]=momentary.p5_prio;trk[tr].p[P_DETUNE]=momentary.p5_detune;trk[tr].p[P_ALLOC]=momentary.p5_alloc;}
     for(uint32_t i=0;i<momentary.count;i++)*momentary.ptr[i]=momentary.value[i];
     momentary.active=momentary.count=momentary.native=0;fm1_irq_on();ui.force=1;
@@ -714,18 +739,17 @@ static void momentary_take(uint32_t slot)
     if(!momentary.active){momentary.track=song.sel;momentary.active=1;}
     if(native && !momentary.native){
         uint32_t tr=song.sel;fm1_irq_off();momentary.native=(uint8_t)native;
-        memcpy(momentary.fm,fm6_patch[tr],sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];
-        momentary.cz=cz_patch[tr];momentary.p5=*p5_patch_of(TSEL);
+        memcpy(momentary.fm,fm6_patch_of(tr),sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];
+        momentary.cz=(*cz_patch_of(tr));momentary.p5=*p5_patch_of(TSEL);
         momentary.p5_voice=TSEL->p[P_VOICE];momentary.p5_prio=TSEL->p[P_PRIO];momentary.p5_detune=TSEL->p[P_DETUNE];momentary.p5_alloc=TSEL->p[P_ALLOC];fm1_irq_on();
     }
     if(!native){uint32_t i;for(i=0;i<momentary.count && momentary.ptr[i]!=vp;i++);
         if(i==momentary.count && i<P_COUNT+G_COUNT){momentary.ptr[i]=vp;momentary.value[i]=*vp;momentary.count++;}}
     ui.pg_down&=(uint16_t)~(1u<<panel.btn[B_LFO]);
 }
-static void load_begin(track_t *t, uint32_t what)
+static void load_begin_guarded(track_t *t, uint32_t what)
 {
     undo_t *u;
-    momentary_restore();
     uint32_t i = trk_index(t);
     if (undo_depth++)
         return;
@@ -757,18 +781,24 @@ static void load_begin(track_t *t, uint32_t what)
     u->user_native=t->user_native;
     memcpy(u->p, t->p, sizeof u->p);
     step_snapshot_save(u->step, t->step);
-    memcpy(u->fm6, fm6_patch[i], FP_SIZE);
-    u->cz = cz_patch[i];
+    memcpy(u->fm6, fm6_patch_of(i), FP_SIZE);
+    u->cz = (*cz_patch_of(i));
     u->p5 = *p5_patch_of(&trk[i]);
-    u->drum=drum_patch[i];
+    u->drum=(*drum_patch_of(i));
     u->pat = pat_sig[i];
     u->patn = pat_last[i];
     motion_snapshot_track(t, &u->motion_backup);
     if(!designer_on())motion_reset(t);
 }
-
-static void load_end(track_t *t)
+static void load_begin(track_t *t, uint32_t what)
 {
+    momentary_restore();
+    uint32_t f=motion_guard();load_begin_guarded(t,what);motion_unguard(f);
+}
+
+static void load_end_guarded(track_t *t)
+{
+    undo_refresh();
     if (--undo_depth || !undo_top)
         return;
     motion_rebase(t);
@@ -776,15 +806,24 @@ static void load_end(track_t *t)
     undo.keep = 1;
     undo.t_ms = fm1_ms;
 }
+static void load_end(track_t *t)
+{
+    uint32_t f=motion_guard();load_end_guarded(t);motion_unguard(f);
+}
 
 /* the editor's SET right after a load on the selected track (an audition: G_ENGSEL, then the patch's
  * values): part of that load, the copy from before it stays */
-static void load_extend(track_t *t)
+static void load_extend_guarded(track_t *t)
 {
+    undo_refresh();
     if (undo_top && undo.keep && undo.trk == trk_index(t) + 1u && fm1_ms - undo.t_ms < 1500u) {
         undo.after = track_sig(t);
         undo.t_ms = fm1_ms;
     }
+}
+static void load_extend(track_t *t)
+{
+    uint32_t f=motion_guard();load_extend_guarded(t);motion_unguard(f);
 }
 
 static int param_kept(uint32_t i);
@@ -806,8 +845,9 @@ static int recording_history(int redo)
 /* EDIT held (redo 0) / EDIT + OCT+ (redo 1): what a level's loads changed (what) and its copy change places, so its
  * redo is the same swap. The sound: engine, preset and its parameters (not param_kept); the pattern: the steps and LEN
  * DIV SWING GATE. The mix (LEVEL PAN MUTE) stays: no load changes it */
-static void undo_step(int redo)
+static void undo_step_guarded(int redo)
 {
+    undo_refresh();
     if(recording_history(redo))return;
     if(note_clear_history(redo))return;
     track_t *t;
@@ -829,7 +869,7 @@ static void undo_step(int redo)
         return;
     }
     u->motion_backup = current_motion;
-    fm1_irq_off();                                /* the audio ISR must not see half a sound */
+    /* Already guarded: audio cannot see half a sound. */
     if (u->what & UNDO_SOUND) {
         uint8_t e = t->eng_req, pr = t->preset, un=t->user_native;
         uint16_t us = t->user;
@@ -867,17 +907,16 @@ static void undo_step(int redo)
             step_snapshot_put(&u->step[i], &s);
         }
     }
-    fm1_irq_on();
     if (u->what & UNDO_SOUND) {                 /* FM6: the track's patch as it was (edited, a project's, a
                                                    * converted DIGITAL sound), preserved with the sound */
         uint32_t tr = trk_index(t);
         uint8_t v[FP_SIZE + 1u];
-        memcpy(v, fm6_patch[tr], FP_SIZE);
+        memcpy(v, fm6_patch_of(tr), FP_SIZE);
         fm6_set_patch(tr, u->fm6);
         memcpy(u->fm6, v, FP_SIZE);
-        {drum_patch_t dp=drum_patch[tr];drum_patch[tr]=u->drum;u->drum=dp;}
+        {drum_patch_t dp=(*drum_patch_of(tr));(*drum_patch_of(tr))=u->drum;u->drum=dp;}
         { p5_patch_t pp=*p5_patch_of(t);p5_patch[tr]=u->p5;u->p5=pp;p5_ready[tr]=1; }
-        { cz_patch_t cp = cz_patch[tr]; cz_patch[tr] = u->cz; u->cz = cp; cz_track_accept(t); }
+        { cz_patch_t cp = (*cz_patch_of(tr)); (*cz_patch_of(tr)) = u->cz; u->cz = cp; cz_track_accept(t); }
 
     }
     u->keep = 0;                                /* the next load copies the track as it is now */
@@ -889,8 +928,16 @@ static void undo_step(int redo)
     ui_say(redo ? "REDO " : "UNDO ", b);
     ui.force = 1;
 }
+static void undo_step(int redo)
+{
+    uint32_t f=motion_guard();undo_step_guarded(redo);motion_unguard(f);
+}
 static void undo_swap(void) { undo_step(0); }
-static void undo_seal(void) { if (undo_top) undo_lv[undo_top - 1u].keep = 0; }   /* the next load: a level of its own */
+static void undo_seal(void) {
+    uint32_t f=motion_guard();undo_refresh();
+    if (undo_top) undo_lv[undo_top - 1u].keep = 0;
+    motion_unguard(f);
+}   /* the next load: a level of its own */
 
 static void track_defaults_steps(track_t *t)
 {
@@ -918,7 +965,7 @@ static int scale_shared(uint32_t id) { return id == P_ROOT || id == P_SCALE || i
 static void scale_share(const track_t *from)
 {
     uint32_t k;
-    for (k = 0; k < NPART; k++) {
+    for (k = 0; k < NTRK; k++) {
         trk[k].p[P_ROOT] = from->p[P_ROOT];
         trk[k].p[P_SCALE] = from->p[P_SCALE];
         trk[k].p[P_QUANT] = from->p[P_QUANT];
@@ -945,13 +992,20 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     }
     pi %= e->npresets;
     t->preset = (uint8_t)pi;
-    memset(&drum_patch[t-trk],0,sizeof(drum_patch_t));
+    memset(drum_patch_of(t-trk),0,sizeof(drum_patch_t));
     for (i = 0; i < P_E0; i++)                        /* the rest of the sound to its defaults: a preset */
         if (!param_kept(i))                           /* sounds the same after any edit */
             t->p[i] = TP[i].def;
     const preset_t *pr = eng_preset(e, pi);
     for (i = 0; i < 8u; i++)
         t->p[P_E0 + i] = (int16_t)pr->e[i];
+    if (midi_track_only(t)) {
+        t->p[P_E0] = (int16_t)(trk_index(t) + 1u);
+        for (i = 0; i < FX_SLOTS; i++) {
+            t->p[P_FXTYPE + i * FX_PARAMS] = FX_OFF;
+            t->p[P_FXSEND + i] = 0;
+        }
+    }
     t->p[P_ATK] = pr->env[0];
     t->p[P_DEC] = pr->env[1];
     t->p[P_SUS] = pr->env[2];
@@ -969,6 +1023,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
  * its values or the new one with its own (voice.c engine_block), never one with the other's */
 static void engine_load_of(track_t *t, uint32_t ei, uint32_t pi)
 {
+    if (t >= &trk[NPART] && t < &trk[NTRK]) { ei = ENGI_MIDI; pi = 0; }   /* (tracks 5..8: MIDI Track only) */
     const engine_t *e = ENGINES[ei % NENGINES];
     uint32_t i;
     load_begin(t, UNDO_SOUND);

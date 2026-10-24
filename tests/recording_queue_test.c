@@ -7,7 +7,7 @@
 #endif
 static void queue_fixture(uint32_t count)
 {
-    timing_reset(0,24000000u);seq_stop();song.rec=0;
+    timing_reset(0,24000000u);seq_stop();song.rec=0;song.ntrk=NTRK;
     for(uint32_t tr=0;tr<NTRK;tr++){
         trk[tr].p[P_SLEN]=64;
         for(uint32_t s=0;s<NSTEP;s++){trk[tr].step[s].time=ST_NOTE;trk[tr].step[s].flags=SF_RECORDED;}
@@ -46,7 +46,7 @@ static int queue_invariants(void)
         for(uint32_t at=0;at<recording_heap_count[tr];at++){
             uint32_t i=RQ(tr,at);
             if(i>=RECORD_MAX || seen[i]++ || !recording_sounding(i) ||
-               (recording[i].owner&31u)/NPAT!=tr || (recording_heap_pos[i]&1023u)!=at ||
+               recorded_owner(&recording[i])/NPAT!=tr || (recording_heap_pos[i]&1023u)!=at ||
                (at && recording_before(i,RQ(tr,(at-1u)/2u))))return 0;
             uint32_t view=recording_heap_pos[i]>>10;
             watch[view]++;bits[view>>5]|=1u<<(view&31u);refs[recording_message[i]&127u]++;
@@ -113,9 +113,9 @@ static int changed_overview(void)
 }
 static int independent_tracks(void)
 {
-    queue_fixture(4);
+    queue_fixture(NTRK);
     for(uint32_t tr=0;tr<NTRK;tr++){
-        recorded_note_t r=recording[tr];recording_remove(TSEL,tr);r.owner=(uint8_t)(tr*NPAT);r.duration=(uint16_t)(tr+1u);
+        recorded_note_t r=recording[tr];recording_remove(TSEL,tr);recorded_set_owner(&r,tr*NPAT);r.duration=(uint16_t)(tr+1u);
         recording_restore_note(&trk[tr],tr,r);recording_clock[tr]=UINT32_MAX-tr;
         recording_fire(&trk[tr],tr,RECORD_UNIT,0);
     }
@@ -132,11 +132,11 @@ static void spread_fixture(const uint32_t share[NTRK])
     recording_reset();queue_fixture(0);
     for(uint32_t tr=0,i=0;tr<NTRK;tr++)for(uint32_t k=0;k<share[tr];k++,i++){
         recorded_note_t r={0};r.duration=(uint16_t)(1000u+(i*7919u)%50000u);r.note=(uint8_t)(i%128u);r.vel=100;
-        r.step=(uint8_t)(i%64u);r.owner=(uint8_t)recording_owner(&trk[tr]);
+        r.step=(uint8_t)(i%64u);recorded_set_owner(&r,recording_owner(&trk[tr]));
         recording_restore_note(&trk[tr],i,r);
     }
     recording_reindex();
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)recording_fire(&trk[(recording[i].owner&31u)/NPAT],i,RECORD_UNIT,0);
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)recording_fire(&trk[recorded_owner(&recording[i])/NPAT],i,RECORD_UNIT,0);
 }
 /* Each block releases exactly the events whose deadline it reached, through
  * every chunk boundary, and the store is whole again once all have ended. */
@@ -146,7 +146,7 @@ static int drains_in_order(void)
     for(uint32_t i=0;i<RECORD_MAX;i++)deadline[i]=recording_run[i].left;
     for(uint32_t block=0;block<60 && ok;block++)for(uint32_t tr=0;tr<NTRK && ok;tr++){
         recording_queue_tick(&trk[tr],997u);
-        for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel && (recording[i].owner&31u)/NPAT==tr &&
+        for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel && recorded_owner(&recording[i])/NPAT==tr &&
             recording_sounding(i)!=((int32_t)(deadline[i]-recording_clock[tr])>0))ok=0;
         ok=ok && queue_invariants();
     }
@@ -155,14 +155,14 @@ static int drains_in_order(void)
 }
 static int shared_chunks(void)
 {
-    static const uint32_t one[NTRK]={RECORD_MAX,0,0,0},even[NTRK]={256,256,256,256},tight[NTRK]={961,33,15,15};
+    static const uint32_t one[NTRK]={RECORD_MAX,0,0,0},even[NTRK]={[0 ... NTRK-1u]=RECORD_MAX/NTRK},tight[NTRK]={833,33,33,33,33,33,13,13};
     spread_fixture(one);
     int bad=check("1024 sounding notes on one track take its row and 31 shared chunks",
                   recording_heap_count[0]==RECORD_MAX && recording_heap_taken==31u && queue_invariants());
     bad+=check("one track's 1024 releases drain in deadline order across its chunks",drains_in_order());
     spread_fixture(even);
-    bad+=check("256 notes on each track take 7 shared chunks each",recording_heap_taken==28u && queue_invariants());
-    bad+=check("four tracks' releases drain in order and return every chunk",drains_in_order());
+    bad+=check("128 notes on each of eight tracks take 3 shared chunks each",recording_heap_taken==24u && queue_invariants());
+    bad+=check("eight tracks' releases drain in order and return every chunk",drains_in_order());
     spread_fixture(tight);
     bad+=check("the most chunk-hungry split of 1024 notes fits (31 shared chunks)",
                recording_heap_taken==31u && recording_heap_count[1]==33u && queue_invariants());
@@ -171,7 +171,7 @@ static int shared_chunks(void)
     for(uint32_t i=0;i<RECORD_MAX;i++)order[i]=(uint16_t)i;
     for(uint32_t i=RECORD_MAX;i-- > 1;){random=random*1664525u+1013904223u;uint32_t j=(random>>8)%(i+1u);uint16_t s=order[i];order[i]=order[j];order[j]=s;}
     for(uint32_t k=0;k<RECORD_MAX && ok;k++){
-        uint32_t i=order[k];recording_remove(&trk[(recording[i].owner&31u)/NPAT],i);
+        uint32_t i=order[k];recording_remove(&trk[recorded_owner(&recording[i])/NPAT],i);
         ok=queue_invariants();
     }
     bad+=check("random-order removals return every chunk to the free stack",ok && !recording_heap_taken &&
@@ -182,10 +182,10 @@ static int shared_chunks(void)
     for(uint32_t k=0;k<4096 && ok;k++){
         random=random*1664525u+1013904223u;
         uint32_t i=(random>>8)%RECORD_MAX,tr=(random>>20)%NTRK;
-        if(k%3u==0u){recording_flags[i]&=(uint8_t)~4u;recording_fire(&trk[(recording[i].owner&31u)/NPAT],i,RECORD_UNIT,k%500u);}
+        if(k%3u==0u){recording_flags[i]&=(uint8_t)~4u;recording_fire(&trk[recorded_owner(&recording[i])/NPAT],i,RECORD_UNIT,k%500u);}
         else{
-            recorded_note_t r=recording[i];recording_remove(&trk[(r.owner&31u)/NPAT],i);
-            r.owner=(uint8_t)recording_owner(&trk[tr]);r.duration=(uint16_t)(1000u+random%40000u);
+            recorded_note_t r=recording[i];recording_remove(&trk[recorded_owner(&r)/NPAT],i);
+            recorded_set_owner(&r,recording_owner(&trk[tr]));r.duration=(uint16_t)(1000u+random%40000u);
             recording_restore_note(&trk[tr],i,r);recording_fire(&trk[tr],i,RECORD_UNIT,0);
         }
         if(k%127u==0u)recording_reindex();

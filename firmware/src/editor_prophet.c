@@ -13,7 +13,7 @@ static void p5_accept_patch(uint32_t tr,const p5_patch_t *patch)
 static int ed_prophet_handle(uint32_t cmd,const uint8_t *a,uint32_t n)
 {
     if(cmd!=95u)return 0;
-    uint32_t op=n?a[0]:127u,tr=n>1u?a[1]:127u,rc=n<2u||tr>=NTRK||op>4u;
+    uint32_t op=n?a[0]:127u,tr=n>1u?a[1]:127u,rc=n<2u||tr>=NPART||op>4u;
     p5_patch_t patch;uint8_t frame[P5_FRAME_MAX];uint32_t size=0;
     if(!rc){
         if(op==0u){if(n!=2u)rc=1;else size=p5_patch_encode(p5_patch_of(&trk[tr]),frame,sizeof frame);}

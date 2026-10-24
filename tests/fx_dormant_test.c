@@ -86,9 +86,10 @@ static void trace(void)
     int32_t input[CTL],out[CTL*2];
     /* Insert, shared CHAIN and SPLIT. Other slots keep time/filter histories
      * audible long after zero input; Chorus must wait for its own exact proof. */
-    for(uint32_t mode=0;mode<3;mode++)for(uint32_t effect=FX_PHASER;effect<FX_COUNT;effect++){
+    for(uint32_t mode=0;mode<3;mode++)for(uint32_t effect=FX_PHASER;effect<FX_AUDIO_COUNT;effect++){
+        if(fx_retired(effect))continue;
         for(uint32_t id=0;id<RES_COUNT;id++)resource_release(id);
-        memset(fx_state,0,sizeof fx_state);memset(trk,0,sizeof trk);memset(&song,0,sizeof song);host_tracks_init();
+        memset(fx_state,0,sizeof fx_state);memset(trk,0,sizeof trk);trk_voices_bind();memset(&song,0,sizeof song);host_tracks_init();
         fx_bus_mix=0;song.g[G_FXMODE]=mode==2;fx_bus_select();fx_clear_all();
         for(uint32_t slot=0;slot<FX_SLOTS;slot++){
             uint32_t p=P_FXTYPE+slot*FX_PARAMS,g=G_MFXTYPE+slot*FX_PARAMS;

@@ -185,20 +185,22 @@ static void list_scale_pic(int32_t y, int32_t h)
 {
     static const uint8_t WHITE[7] = {0, 2, 4, 5, 7, 9, 11}, BLACK[5][2] = {{1, 0}, {3, 1}, {6, 3}, {8, 4}, {10, 5}};
     uint32_t mask = scale_mask(TSEL), root = (uint32_t)TSEL->p[P_ROOT] % 12u, i;
-    cv_begin(240, (uint32_t)h, T_BG);                   /* (on the background: no panel) */
-    for (i = 0; i < 7u; i++) {
-        uint32_t n = WHITE[i], on = (mask >> ((n + 12u - root) % 12u)) & 1u;
-        uint16_t c = n == root ? T_TEXT : on ? T_THEME : T_SURF;
-        cv_rrect(20 + 29 * (int32_t)i, 4, 27, h - 8, 4, c, T_BG);
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)h); band += CV_MAX / (240)) {
+        cv_begin_band(240,(uint32_t)h,T_BG,band);                   /* (on the background: no panel) */
+        for (i = 0; i < 7u; i++) {
+            uint32_t n = WHITE[i], on = (mask >> ((n + 12u - root) % 12u)) & 1u;
+            uint16_t c = n == root ? T_TEXT : on ? T_THEME : T_SURF;
+            cv_rrect(20 + 29 * (int32_t)i, 4, 27, h - 8, 4, c, T_BG);
+        }
+        for (i = 0; i < 5u; i++) {
+            uint32_t n = BLACK[i][0], on = (mask >> ((n + 12u - root) % 12u)) & 1u;
+            uint16_t c = n == root ? T_TEXT : on ? ux_mix(T_BG, T_THEME, 75) : T_BG;
+            int32_t x = 20 + 29 * BLACK[i][1] + 19;
+            cv_rrect(x, 4, 16, (h - 8) * 58 / 100, 3, T_LINE, T_BG);
+            cv_rrect(x + 1, 5, 14, (h - 8) * 58 / 100 - 2, 2, c, T_LINE);
+        }
+        cv_blit_band(0, (uint32_t)y);
     }
-    for (i = 0; i < 5u; i++) {
-        uint32_t n = BLACK[i][0], on = (mask >> ((n + 12u - root) % 12u)) & 1u;
-        uint16_t c = n == root ? T_TEXT : on ? ux_mix(T_BG, T_THEME, 75) : T_BG;
-        int32_t x = 20 + 29 * BLACK[i][1] + 19;
-        cv_rrect(x, 4, 16, (h - 8) * 58 / 100, 3, T_LINE, T_BG);
-        cv_rrect(x + 1, 5, 14, (h - 8) * 58 / 100 - 2, 2, c, T_LINE);
-    }
-    cv_blit(0, (uint32_t)y);
 }
 
 /* a row (large type, C: the lists, the menu, the slots, the sheets) at canvas row y: its name at the left and its value
@@ -243,25 +245,27 @@ static void list_rows(uint32_t n, uint32_t row, uint32_t first, uint32_t vis,
     uint16_t vc;
     for (top = 0; top < (int32_t)vis * LIST_ROW; ) {   /* in slices between rows */
         int32_t sh = (int32_t)vis * LIST_ROW - top <= 3 * LIST_ROW ? (int32_t)vis * LIST_ROW - top : 3 * LIST_ROW;
-        cv_begin(240, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        for (r = first; r < n && r < first + vis; r++) {
-            int32_t y = (int32_t)(r - first) * LIST_ROW;
-            if (y + LIST_ROW <= top || y >= top + sh)
-                continue;
-            {
-                int more = cap(r, lb, v, &vc);
-                row_draw(y, lb, v, vc, r == row, more, r);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (240)) {
+            cv_begin_band(240,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            for (r = first; r < n && r < first + vis; r++) {
+                int32_t y = (int32_t)(r - first) * LIST_ROW;
+                if (y + LIST_ROW <= top || y >= top + sh)
+                    continue;
+                {
+                    int more = cap(r, lb, v, &vc);
+                    row_draw(y, lb, v, vc, r == row, more, r);
+                }
             }
+            if (n > vis) {
+                int32_t th = (int32_t)vis * LIST_ROW * (int32_t)vis / (int32_t)n;
+                int32_t ty = (int32_t)((vis * LIST_ROW - (uint32_t)th) * first / (n - vis));
+                cv_rect(238, 0, 2, (int32_t)vis * LIST_ROW, T_LINE);
+                cv_rect(238, ty, 2, th, T_THEME);
+            }
+            cv_oy = 0;
+            cv_blit_band(0, (uint32_t)(LIST_Y0 + top));
         }
-        if (n > vis) {
-            int32_t th = (int32_t)vis * LIST_ROW * (int32_t)vis / (int32_t)n;
-            int32_t ty = (int32_t)((vis * LIST_ROW - (uint32_t)th) * first / (n - vis));
-            cv_rect(238, 0, 2, (int32_t)vis * LIST_ROW, T_LINE);
-            cv_rect(238, ty, 2, th, T_THEME);
-        }
-        cv_oy = 0;
-        cv_blit(0, (uint32_t)(LIST_Y0 + top));
         top += sh;
     }
 }

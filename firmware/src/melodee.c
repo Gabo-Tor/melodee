@@ -9,9 +9,6 @@
  * (core.h: the SLICE engine), MELODEE_ICONS (icons.c, the parameter icons; on by default),
  * MELODEE_OTA_RAMONLY (ota.c). */
 #include "build_options.h"      /* defaults shared with crt0.S */
-#ifndef MELODEE_CACHE_RAM
-#define MELODEE_CACHE_RAM 0     /* opt-in: seven data-cache ways as RAM; keep the full data cache for audio by default */
-#endif
 #ifndef MELODEE_CORE1_TEST
 #define MELODEE_CORE1_TEST 0    /* editor command 79 injects CPU1 failures (tools/core1_fault_test.py); never release */
 #endif
@@ -27,6 +24,10 @@
 #ifndef MELODEE_USB_AUDIO
 #define MELODEE_USB_AUDIO 1      /* Duplex USB audio (usb_audio.c): "Melodee" plays through the FM-1 and
                                   * records stereo master or four tracks; 16 / 24 bit, 44.1 kHz. Needs EP2 / EP3: no CDC */
+#endif
+#ifndef MELODEE_USB_HOST
+#define MELODEE_USB_HOST 1       /* USB MIDI host (usb_host.c): the menu's USB HOST turns the USB-C port into a host
+                                  * for a class compliant controller, alone or behind a powered hub. Off at every boot */
 #endif
 #ifndef MELODEE_CDC
 #define MELODEE_CDC !MELODEE_USB_AUDIO   /* USB CDC-ACM serial console */
@@ -114,6 +115,8 @@
 #define OTA_SCRATCH proj_wire_borrow()   /* the update entry stages in the project staging RAM */
 #include "ota.c"
 #include "ota_hw.c"
+#include "installer_report.c"
+#define INSTALLER_REPORT_FRAME installer_report_frame
 #include "editor.c"              /* web editor SysEx (needs the OTA SysEx plumbing) */
 #endif
 #if MELODEE_CDC

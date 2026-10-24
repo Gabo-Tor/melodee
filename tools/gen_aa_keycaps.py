@@ -18,7 +18,7 @@ LABELS = [("PRESETS", "PRESETS"), ("SELECT", "SELECT"), ("ALGO", "ALGO"), ("OCTD
           ("PLAY", "PLAY"), ("REC", "REC"), ("SAVE", "SAVE"), ("EDIT", "EDIT"), ("SEQ", "SEQ"), ("GLO", "GLO"),
           ("HOME", "HOME"), ("ARP", "ARP"), ("KEYS", "KEYS"), ("K1", "K1"), ("K2", "K2"), ("K3", "K3"), ("K4", "K4"),
           ("MUTE", "MUTE"), ("ARM", "ARM"), ("HOLD", "HOLD"), ("ON", "ON"), ("OFF", "OFF"),
-          ("K14", "K1-4"), ("SCL", "SCL")]
+          ("K14", "K1-4"), ("SCL", "SCL"), ("FX", "FX")]
 
 
 def main():

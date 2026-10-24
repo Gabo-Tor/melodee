@@ -89,7 +89,7 @@ static void name_open(uint32_t kind, uint32_t slot)
     nm.num = nm.key = nm.rep = 0;
     b[0] = 0;
     if(kind==NK_CZ_NAME){
-        memcpy(b,cz_patch[slot].raw+128,CZ_NAME_LEN);b[CZ_NAME_LEN]=0;
+        memcpy(b,cz_patch_of(slot)->raw+128,CZ_NAME_LEN);b[CZ_NAME_LEN]=0;
         for(uint32_t k=0;k<CZ_NAME_LEN;k++)if(b[k]<' ' || b[k]>'~')b[k]=' ';   /* (LCD custom characters) */
         for(uint32_t k=CZ_NAME_LEN;k && b[k-1]==' ';k--)b[k-1]=0;
         str_cpy(nm.ph,"CZ TONE",sizeof nm.ph);
@@ -106,7 +106,7 @@ static void name_open(uint32_t kind, uint32_t slot)
         else if (origin < UP_SLOTS)
             up_name(origin, b);
         else if(native_limit(e)){
-            if(e==ENGI_PROPHET)p5_patch_name(b,p5_patch_of(TSEL));else if(e==ENGI_FM6)fm6_name(b,fm6_patch[song.sel]);else {memcpy(b,cz_patch[song.sel].raw+128,16);b[16]=0;}
+            if(e==ENGI_PROPHET)p5_patch_name(b,p5_patch_of(TSEL));else if(e==ENGI_FM6)fm6_name(b,fm6_patch_of(song.sel));else {memcpy(b,cz_patch_of(song.sel)->raw+128,16);b[16]=0;}
         }
         else
             str_cpy(b, nm.ph, sizeof b);
@@ -244,7 +244,7 @@ static void name_ok(void)
     }
     switch (nm.kind) {
     case NK_CZ_NAME:
-        cz_compare_take(nm.slot);memset(cz_patch[nm.slot].raw+128,' ',CZ_NAME_LEN);memcpy(cz_patch[nm.slot].raw+128,b,str_len(b));
+        cz_compare_take(nm.slot);memset(cz_patch_of(nm.slot)->raw+128,' ',CZ_NAME_LEN);memcpy(cz_patch_of(nm.slot)->raw+128,b,str_len(b));
         ui_message("TONE NAMED");break;
     case NK_USER_SAVE:
         up_ui_named(2, nm.slot, b);

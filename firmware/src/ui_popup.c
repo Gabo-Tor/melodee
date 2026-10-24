@@ -25,6 +25,7 @@ enum { POP_NONE, POP_SHEET, POP_PICK, POP_LIST };
 #define POP_ROW 34
 #define POP_VIS 5
 #define POP_PICK_W 116                                  /* a picker: up to five names, 28 px each; two whole columns */
+#define POP_FX_W 166                                    /* the effects' picker: "Pedal phaser" whole */
 static struct {
     uint8_t on, n, sel, col;
     char title[24], sub[20];
@@ -374,7 +375,7 @@ static void sheet_input(int32_t k1, int32_t k2, uint32_t oct)
 /* Destination IDs stay stable; both picker styles show the current engine's parameter labels. */
 static const char *enum_name(const param_desc_t *d, int32_t v)
 {
-    return d->names == N_MDST ? mod_dst_name(TSEL, v) : d->names[v - d->min];
+    return d->names == N_MDST ? mod_dst_name(TSEL, v) : d->names[v];
 }
 /* knob c turned on a page: its picker when its value is a name from a long list; another knob: the picker goes.
  * Not on a screen of its own: SCALES is the scales' list itself (Kerem: the picker covered it) */
@@ -421,15 +422,18 @@ static void pick_poll(void)                             /* ST_KNOB_MS after the 
 /* Compact enum lists omit retired empty entries without changing stored IDs. */
 static int32_t enum_rows(const param_desc_t *d)
 {
-    int32_t count=0;for(int32_t v=d->min;v<=d->max;v++)count+=d->names[v-d->min][0]!=0;return count;
+    if(fx_names(d))return (int32_t)fx_order_n(d);       /* (the effects: in their families, params.c FX_ORDER) */
+    int32_t count=0;for(int32_t v=d->min;v<=d->max;v++)count+=d->names[v][0]!=0;return count;
 }
 static int32_t enum_rank(const param_desc_t *d,int32_t value)
 {
-    int32_t rank=0;for(int32_t v=d->min;v<value;v++)rank+=d->names[v-d->min][0]!=0;return rank;
+    if(fx_names(d))return (int32_t)fx_rank(value);
+    int32_t rank=0;for(int32_t v=d->min;v<value;v++)rank+=d->names[v][0]!=0;return rank;
 }
 static int32_t enum_value(const param_desc_t *d,int32_t rank)
 {
-    for(int32_t v=d->min;v<=d->max;v++)if(d->names[v-d->min][0] && !rank--)return v;return d->min;
+    if(fx_names(d))return FX_ORDER[clamp(rank,0,(int32_t)fx_order_n(d)-1)];
+    for(int32_t v=d->min;v<=d->max;v++)if(d->names[v][0] && !rank--)return v;return d->min;
 }
 static struct { uint8_t page, slot; int16_t sel; } vl;
 static const param_desc_t *vlist_desc(int16_t **vp) { return page_desc(&PAGES[vl.page], vl.slot, vp); }
@@ -442,11 +446,18 @@ static void vlist_open(uint8_t page, uint8_t slot)
     d = vlist_desc(&vp);
     if (!d || !vp)
         return;
-    vl.sel = *vp;
+    vl.sel = fx_names(d) && *vp == FX_OFF ? FX_ORDER[1] : *vp;   /* (an empty slot: the effects from the first) */
     pop.on = POP_LIST;
     ui.force = 1;
 }
-static void vlist_input(int32_t k2, uint32_t oct)
+/* KNOB 1 on the effects' list: the next family's (or the previous one's) first effect */
+static int32_t fxl_family_step(const param_desc_t *d, int32_t sel, int32_t k1)
+{
+    uint32_t nf = d->names == N_AUDIO_FX ? FXF_NOTES : FXF_NOTES + 1u;
+    int32_t f = clamp((int32_t)fx_family(sel) + (k1 > 0 ? 1 : -1), FXF_SPACE, (int32_t)nf - 1);
+    return f == (int32_t)fx_family(sel) ? sel : FX_ORDER[FX_FAM_FIRST[f]];
+}
+static void vlist_input(int32_t k1, int32_t k2, uint32_t oct)
 {
     int16_t *vp;
     const param_desc_t *d = vlist_desc(&vp);
@@ -454,13 +465,18 @@ static void vlist_input(int32_t k2, uint32_t oct)
         pop_close();
         return;
     }
+    if (k1 && fx_names(d))                              /* (the effects: KNOB 1 the family, KNOB 2 the effect) */
+        vl.sel = (int16_t)fxl_family_step(d, vl.sel, k1);
     if (k2)
-        vl.sel = (int16_t)enum_step(d,vl.sel,clamp(vl.sel + (k2 > 0 ? 1 : -1), d->min, d->max));
+        vl.sel = (int16_t)(fx_names(d) ? fx_step(d, vl.sel, k2 > 0 ? 1 : -1) :
+                           enum_step(d,vl.sel,clamp(vl.sel + (k2 > 0 ? 1 : -1), d->min, d->max)));
+    if (fx_names(d) && vl.sel == FX_OFF)                /* (the list holds effects only) */
+        vl.sel = FX_ORDER[1];
     if (oct & 1u) {
         pop_close();
     } else if (oct & 2u) {                              /* (its page edits it, as if it were shown) */
         uint8_t pg = ui.page;
-        int32_t steps = vl.sel - *vp;
+        int32_t steps = fx_names(d) ? (int32_t)fx_rank(vl.sel) - (int32_t)fx_rank(*vp) : vl.sel - *vp;
         ui.page = vl.page;
         if (steps)
             edit_param(vl.slot, steps);
@@ -485,27 +501,29 @@ static void pop_card(int32_t h, const char *title, const char *sub, uint32_t fir
     y0 = 238 - h;
     for (top = 0; top < h; ) {                          /* in slices between rows (a canvas holds 124 rows) */
         int32_t sh = h - top <= 124 ? h - top : th + (top + 124 - th) / POP_ROW * POP_ROW - top;
-        cv_begin(POP_W, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        cv_rrect(0, 0, POP_W, h, 10, T_LINE, T_BG);
-        cv_rrect(1, 1, POP_W - 2, h - 2, 9, T_SURF, T_LINE);
-        if (top == 0) {
-            int32_t sw = sub && sub[0] ? text_w(TY_LB, sub) + 12 : 0;
-            const aafont_t *f = ty_fit(TY_TX, title, POP_W - 20 - (th > POP_ROW ? 0 : sw));
-            cv_free_text(10, ty_y(POP_ROW / 2, f), f, title, T_TEXT, T_SURF, POP_W - 20 - (th > POP_ROW ? 0 : sw));
-            if (sw && th > POP_ROW)
-                cv_text_on(10, ty_y(POP_ROW + 4, TY_LB), TY_LB, sub, T_MID, T_SURF);
-            else if (sw)
-                cv_text_r(POP_W - 10, ty_y(POP_ROW / 2, TY_LB), TY_LB, sub, T_MID, T_SURF);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (POP_W)) {
+            cv_begin_band(POP_W,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            cv_rrect(0, 0, POP_W, h, 10, T_LINE, T_BG);
+            cv_rrect(1, 1, POP_W - 2, h - 2, 9, T_SURF, T_LINE);
+            if (top == 0) {
+                int32_t sw = sub && sub[0] ? text_w(TY_LB, sub) + 12 : 0;
+                const aafont_t *f = ty_fit(TY_TX, title, POP_W - 20 - (th > POP_ROW ? 0 : sw));
+                cv_free_text(10, ty_y(POP_ROW / 2, f), f, title, T_TEXT, T_SURF, POP_W - 20 - (th > POP_ROW ? 0 : sw));
+                if (sw && th > POP_ROW)
+                    cv_text_on(10, ty_y(POP_ROW + 4, TY_LB), TY_LB, sub, T_MID, T_SURF);
+                else if (sw)
+                    cv_text_r(POP_W - 10, ty_y(POP_ROW / 2, TY_LB), TY_LB, sub, T_MID, T_SURF);
+            }
+            for (i = first; i < first + vis; i++) {
+                int32_t y = th + (int32_t)(i - first) * POP_ROW;
+                if (y + POP_ROW <= top || y >= top + sh)
+                    continue;
+                row(i, y);
+            }
+            cv_oy = 0;
+            cv_blit_band(POP_X, (uint32_t)(y0 + top));
         }
-        for (i = first; i < first + vis; i++) {
-            int32_t y = th + (int32_t)(i - first) * POP_ROW;
-            if (y + POP_ROW <= top || y >= top + sh)
-                continue;
-            row(i, y);
-        }
-        cv_oy = 0;
-        cv_blit(POP_X, (uint32_t)(y0 + top));
         top += sh;
     }
 }
@@ -525,6 +543,75 @@ static void pop_row(int32_t y, const char *lb, const char *v, int on, int red, i
     tf = ty_fit(tf, lb, vx - 12);
     cv_free_text(12, ty_y(cy, tf), tf, lb, red ? T_REC : on ? T_TEXT : T_SEC, bg, vx - 12);
 }
+/* the effects' list (OCT+ on an empty slot, as the sound browser: README "FX rack"): under the header the slot, the
+ * family in its colour and the effect's place in it; the family's effects, the one picked a card with what its knobs
+ * are (KNOB 2 .. 4), the knobs' words in the family's colour */
+static const char *const FX_KNOB_WORDS[NELEM(FX_ORDER)] = {"", "SIZE DECAY TONE", "SIZE DAMP TONE", "RATE DEPTH",
+    "RATE DEPTH", "RATE DEPTH", "RATE DEPTH RESO", "RATE DEPTH RESO", "RATE DEPTH RESO", "DRIVE TONE SHAPE",
+    "BITS ALIAS", "RATE FOCUS", "RATE JITTER", "RATE BITE", "TIME DECAY", "REL"};
+#define FXL_H (240 - H_HEAD)
+static void fxl_draw(const param_desc_t *d)
+{
+    const page_t *pg = &PAGES[vl.page];
+    uint32_t sh = pg->scope == SC_GLOBAL, r = fx_rack_row[sh] % FX_SLOTS, f = fx_family(vl.sel), rank = fx_rank(vl.sel), i;
+    uint32_t a = FX_FAM_FIRST[f], b = FX_FAM_FIRST[f + 1u] < fx_order_n(d) ? FX_FAM_FIRST[f + 1u] : fx_order_n(d);
+    uint16_t fc = fx_fam_col(f), sc = T_KNOB(1);
+    uint32_t sig = (uint32_t)(vl.sel + 1) * 7919u + vl.page * 131u + r * 17u + ux.gen * 977u + ux.pal * 31u;
+    char t[16];
+    if (!ui.force && sig == pop.sig)
+        return;
+    if (ui.force) {                                     /* (the header as it is: draw_page dimmed it) */
+        ui.head_sig = ~0u;
+        draw_head();
+    }
+    pop.sig = sig;
+    for (uint32_t band = 0; band < FXL_H; band += CV_MAX / 240u) {
+        int32_t y = 34;
+        cv_begin_band(240, FXL_H, T_BG, band);
+        t[0] = (char)((sh ? 'A' : '1') + r);
+        t[1] = 0;
+        cv_rrect(4, 5, 22, 22, 5, sc, T_BG);            /* the slot, the family, "3/5" */
+        cv_text_c(15, ty_y(16, TY_LB), TY_LB, t, T_INK, sc);
+        cv_text_on(34, ty_y(16, TY_TX), TY_TX, FX_FAM_NAME[f], fc, T_BG);
+        fmt_int(t, (int32_t)(rank - a + 1u));
+        str_cpy(t + str_len(t), "/", 2);
+        fmt_int(t + str_len(t), (int32_t)(b - a));
+        cv_text_r(236, ty_y(16, TY_TX), TY_TX, t, T_MID, T_BG);
+        for (i = a; i < b; i++) {
+            list_words(t, N_FX[FX_ORDER[i]], sizeof t);
+            if (i != rank) {                            /* (the farther, the dimmer) */
+                cv_text_on(16, ty_y(y + 15, TY_TX), TY_TX, t, ux_mix(T_BG, fc, i + 1u == rank || i == rank + 1u ? 85 : 55), T_BG);
+                y += 30;
+                continue;
+            }
+            {
+                uint16_t bg = ux_mix(T_BG, fc, 22);
+                const char *w = FX_KNOB_WORDS[i];
+                int32_t x = 16;
+                cv_rrect(4, y, 230, 50, 8, bg, T_BG);
+                cv_rrect(236, y, 3, 50, 1, fc, T_BG);
+                cv_text_on(16, ty_y(y + 15, TY_TX), TY_TX, t, T_TEXT, bg);
+                while (*w) {                            /* the knobs' words, a dot between */
+                    uint32_t n = 0;
+                    while (w[n] && w[n] != ' ' && n + 1u < sizeof t) {
+                        t[n] = w[n];
+                        n++;
+                    }
+                    t[n] = 0;
+                    x = cv_text_on(x, ty_y(y + 36, TY_LB), TY_LB, t, fc, bg);
+                    w += n;
+                    if (*w == ' ') {
+                        w++;
+                        cv_disc(x + 6, y + 36, 3, fc, 0);
+                        x += 12;
+                    }
+                }
+                y += 52;
+            }
+        }
+        cv_blit_band(0, H_HEAD);
+    }
+}
 static const param_desc_t *vl_d;
 static int32_t vl_first, vl_now;
 static void vlist_row(uint32_t i, int32_t y)
@@ -543,6 +630,10 @@ static void vlist_draw(void)
     char b[20];
     if (!d || !vp || !d->names) {
         pop_close();
+        return;
+    }
+    if (fx_names(d)) {
+        fxl_draw(d);
         return;
     }
     n = enum_rows(d) < POP_VIS ? enum_rows(d) : POP_VIS;
@@ -598,24 +689,34 @@ static void pick_draw(void)
         return;
     pop.sig = sig;
     {
-    int32_t rows = enum_rows(d) < 5 ? enum_rows(d) : 5, h = 12 + rows * 28;
-    int32_t first = clamp(enum_rank(d,v) - 2, 0, enum_rows(d) - rows);   /* five names around it, the list's ends kept */
+    int32_t rows = enum_rows(d) < 5 ? enum_rows(d) : 5, h = 12 + rows * 28, now = enum_rank(d, v);
+    int32_t first = clamp(now - 2, 0, enum_rows(d) - rows);   /* five names around it, the list's ends kept */
+    int fx = fx_names(d);                               /* (the effects: wider, each its family's square, a rule
+                                                         * between families) */
+    int32_t pw = fx ? POP_FX_W : POP_PICK_W, tx = fx ? 26 : 10;
     x = CARD_X(pop.col < 3u ? pop.col : 2u);            /* its column and the next (the last: the two last), whole:
                                                          * a neighbour's value is under it entirely or not at all */
-    cv_begin(POP_PICK_W, (uint32_t)h, T_BG);
-    cv_rrect(0, 0, POP_PICK_W, h, 10, T_LINE, T_BG);
-    cv_rrect(1, 1, POP_PICK_W - 2, h - 2, 9, T_SURF, T_LINE);
-    for (i = 0; i < rows; i++) {
-        int32_t n = enum_value(d,first + i), y = 6 + i * 28, far = n - v > 1 || v - n > 1;
-        uint16_t bg = n == v ? ux_mix(T_SURF, T_THEME, 22) : T_SURF;
-        char b[16];
-        list_words(b, enum_name(d, n), sizeof b);
-        if (n == v)
-            cv_rrect(4, y, POP_PICK_W - 8, 26, 6, bg, T_SURF);
-        cv_free_text(10, ty_y(y + 13, ty_fit(TY_TX, b, POP_PICK_W - 18)), ty_fit(TY_TX, b, POP_PICK_W - 18), b,
-                     n == v ? T_THEME : far ? T_MID : T_SEC, bg, POP_PICK_W - 18);
+    for (uint32_t band = 0; band < (uint32_t)((uint32_t)h); band += CV_MAX / ((uint32_t)pw)) {
+        cv_begin_band((uint32_t)pw,(uint32_t)h,T_BG,band);
+        cv_rrect(0, 0, pw, h, 10, T_LINE, T_BG);
+        cv_rrect(1, 1, pw - 2, h - 2, 9, T_SURF, T_LINE);
+        for (i = 0; i < rows; i++) {
+            int32_t n = enum_value(d,first + i), y = 6 + i * 28, on = first + i == now, far = first + i - now > 1 || now - first - i > 1;
+            uint16_t hc = fx ? fx_fam_col(fx_family(n)) : T_THEME, bg = on ? ux_mix(T_SURF, hc, 22) : T_SURF;
+            char b[16];
+            list_words(b, enum_name(d, n), sizeof b);
+            if (on)
+                cv_rrect(4, y, pw - 8, 26, 6, bg, T_SURF);
+            if (fx) {
+                if (i && fx_family(n) != fx_family(enum_value(d, first + i - 1)))
+                    cv_rect(10, y - 2, pw - 20, 1, T_LIFT);
+                cv_rrect(10, y + 9, 9, 9, 2, hc, bg);
+            }
+            cv_free_text(tx, ty_y(y + 13, ty_fit(TY_TX, b, pw - tx - 8)), ty_fit(TY_TX, b, pw - tx - 8), b,
+                         on ? hc : far ? T_MID : T_SEC, bg, pw - tx - 8);
+        }
+        cv_blit_band((uint32_t)x, Y_LABEL + CARD_H + 2);
     }
-    cv_blit((uint32_t)x, Y_LABEL + CARD_H + 2);
     }
 }
 static void pop_draw(void)

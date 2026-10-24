@@ -94,16 +94,16 @@ static int motion_only(void)
         if(native){set_engine_of(t,ENGI_FM6);apply_preset_to(t,0);motion_set_event(t,0,MO_NATIVE,(int16_t)(MO_TAG_FM6<<8|50u));}
         motion_store_t before;motion_snapshot_track(t,&before);
         recorded_note_t notes[RECORD_MAX];memcpy(notes,recording,sizeof notes);
-        uint8_t patch[FP_SIZE];memcpy(patch,fm6_patch[0],sizeof patch);
+        uint8_t patch[FP_SIZE];memcpy(patch,fm6_patch_of(0),sizeof patch);
         undo_take_start();
-        if(native){uint8_t old[MO_NATIVE_N];motion_native_peek(t,old);fm6_patch[0][0]=80;fm6_patch[0][1]=81;motion_native_edited(t,old);}
+        if(native){uint8_t old[MO_NATIVE_N];motion_native_peek(t,old);fm6_patch_of(0)[0]=80;fm6_patch_of(0)[1]=81;motion_native_edited(t,old);}
         else motion_capture(t,P_LEVEL,77);
         seq_advance(500);motion_capture(t,P_PAN,17);rec_set(t,0);
         motion_store_t after;motion_snapshot_track(t,&after);
         bad+=check("motion-only take is undoable without changing notes",recording_history(0)&&!memcmp(notes,recording,sizeof notes));
         motion_store_t actual;motion_snapshot_track(t,&actual);
         bad+=check("motion undo restores overwritten points and removes all new lanes",!memcmp(&before,&actual,sizeof actual));
-        if(native)bad+=check("native motion undo restores the synth's base patch",!memcmp(patch,fm6_patch[0],sizeof patch));
+        if(native)bad+=check("native motion undo restores the synth's base patch",!memcmp(patch,fm6_patch_of(0),sizeof patch));
         bad+=check("motion-only redo restores every recorded lane",recording_history(1));motion_snapshot_track(t,&actual);
         bad+=check("motion redo reproduces the finished automation",!memcmp(&after,&actual,sizeof actual));
         seq_stop();
@@ -121,7 +121,7 @@ static int other_banks_and_memory(void)
     bad+=check("redo also preserves unrelated events after relocation",recording_history(1)&&!memcmp(&other,&recording[0],sizeof other)&&!recording[1].vel);
     seq_stop();
     undo_fixture(0,0);undo_take_start();input_on(TSEL,60,105);seq_advance(100);input_off(TSEL,60);rec_set(TSEL,0);
-    bad+=check("recording snapshot has one bounded allocation",resource[RES_RECORD_UNDO].size==sizeof(recording_undo_t)&&sizeof(recording_undo_t)<12u*1024u);
+    bad+=check("sparse recording snapshot keeps only its occupied slots",resource[RES_RECORD_UNDO].size<sizeof(recording_undo_t)-9000u&&recording_undo_state()->note_count==1u);
     recording_undo_clear();
     /* Fill all resource banks, then fail the first snapshot allocation. */
     memset(resource,0,sizeof resource);
@@ -219,9 +219,32 @@ static int latched_take(void)
         !memcmp(&previous, &actual, sizeof actual));
     seq_stop(); led_pos_init(); return bad;
 }
+static int sparse_storage(void)
+{
+    int bad=0;recorded_note_t source[RECORD_MAX],packed[RECORD_MAX];
+    memset(source,0,sizeof source);
+    for(uint32_t n=0;n<=RECORD_MAX;n++){
+        memcpy(packed,source,sizeof packed);uint32_t count=note_history_pack(packed);
+        note_history_expand(packed,count);
+        if(memcmp(packed,source,sizeof source)){bad+=check("all sparse/dense counts preserve every slot byte",0);break;}
+        if(n<RECORD_MAX){uint32_t at=n*37u%RECORD_MAX;source[at]=(recorded_note_t){.on=(uint16_t)n, .duration=65535u, .note=127, .vel=127, .owner=255, .step=255, .pitch=-24, .length=1, .extended=3};}
+    }
+    bad+=check("dense fallback and every sparse count round trip",!memcmp(packed,source,sizeof source));
+    undo_fixture(0,0);undo_take_start();input_on(TSEL,60,110);seq_advance(100);input_off(TSEL,60);seq_stop();
+    memcpy(source,recording,sizeof source);recording_undo_t *u=recording_undo_state();uint32_t size=resource[RES_RECORD_UNDO].size,signature=u->signature;
+    for(uint32_t b=0;b<RESOURCE_BANKS;b++)if(b!=RESOURCE_CACHE_BANK || RESOURCE_CACHE_AVAILABLE){
+        uint32_t bytes=(uint32_t)(resource_banks[b].end-resource_banks[b].start);
+        if((uintptr_t)u>=(uintptr_t)resource_banks[b].start&&(uintptr_t)u<(uintptr_t)resource_banks[b].end)bytes-=size;
+        resource_allocate(b,bytes);
+    }
+    bad+=check("failed sparse expansion preserves the take and its retryable undo",recording_undo_apply(0)==4&&!memcmp(source,recording,sizeof source)&&resource[RES_RECORD_UNDO].size==size&&recording_undo_state()->signature==signature);
+    for(uint32_t b=0;b<RESOURCE_BANKS;b++)resource_release(b);
+    bad+=check("sparse undo retries after working memory returns",recording_undo_apply(0)==1&&recording[0].vel==71);
+    led_pos_init();return bad;
+}
 
 int main(void)
 {
-    int bad=latched_take()+whole_take()+lifecycle()+motion_only()+other_banks_and_memory()+capacity_and_edit_order()+note_capacity();
+    int bad=latched_take()+whole_take()+lifecycle()+motion_only()+other_banks_and_memory()+capacity_and_edit_order()+note_capacity()+sparse_storage();
     printf("%s\n",bad?"RECORDING UNDO TEST FAILED":"Recording undo tests passed");return !!bad;
 }

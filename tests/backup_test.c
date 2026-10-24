@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The editor's full backup (editor_backup.c: LIST / GET / PUT) against simulated NOR flash:
- * CRC before any write, stale runtime copies, USB resets and timeouts, malformed objects, older
+ * CRC before publication, stale runtime copies, USB resets and timeouts, malformed objects, older
  * project formats, settings values and user preset banks kept byte for byte. */
 static unsigned char host_samples[3][0x14000];
 #define SMP_USER_XIP(k) host_samples[k]
@@ -57,7 +57,7 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
     }
     return na ? 0u : n;
 }
-static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));
+#define ed_transfer_buf (main_scratch.transfer)
 static void fm1_wdt_feed(void) {}
 static int ed_flash_stop(void) { return transport_busy(); }
 #include "../firmware/src/editor_backup.c"
@@ -72,7 +72,7 @@ static void reset(void)
 {
     memset(nor, 0xFF, sizeof nor);
     memset(&song, 0, sizeof song);
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&chain, 0, sizeof chain);
     chain_defaults(&chain_config);
     pattern_init();
@@ -170,18 +170,23 @@ static uint32_t get(uint32_t id, uint32_t off, uint32_t count)
     return rep[1];
 }
 
+/* Runtime archive data now lives in an unpublished flash copy, independent
+ * of the drawing canvas. Read through the same bounded source as GET. */
+static int runtime_bytes(uint8_t *out)
+{return st_read_range(ed_bk_stage.obj,ed_bk_stage.head.slot,0,out,BANK_STORE_SIZE);}
+
 static int full_pattern_archive(void)
 {
     int bad=0, ok=1; reset(); static uint8_t archive[BANK_STORE_SIZE], saved[BANK_STORE_SIZE];
-    for (uint32_t k=0; k<NTRK; k++) for (uint32_t b=0; b<NPAT; b++) {
+    for (uint32_t k=0; k<NPART; k++) for (uint32_t b=0; b<NPAT; b++) {
         track_t *t=&trk[k]; pattern_request(t,b); t->p[P_SLEN]=(int16_t)(16+b);
         t->step[3]=(step_t){{(uint8_t)(40+k*8+b),60,64,67},4,ST_NOTE,SF_ACCENT,100,0x81,0x80,(uint8_t)(20+b)};
         t->step[4]=(step_t){{0},0,ST_TIE}; motion_set_event(t,3,P_PAN,(int16_t)(k*8+b));
     }
     chain_config.count=1; chain_config.row[0]=(chain_row_t){0,2};
-    for (uint32_t k=0; k<NTRK; k++) chain_patterns[0][k]=(uint8_t)(k+1);
+    for (uint32_t k=0; k<NPART; k++) chain_patterns[0][k]=(uint8_t)(k+1);
     project_save_as(0,"CHORD BANKS");
-    uint32_t len,crc; list(0,&len,&crc); memcpy(archive,ED_BK_RAW,sizeof archive);
+    uint32_t len,crc; list(0,&len,&crc); runtime_bytes(archive);
     bad+=check("full bank archive contains all runtime banks with its verified CRC",len==sizeof archive && crc==st_crc32(archive,sizeof archive));
     for (uint32_t off=0; off<sizeof saved; off+=256u) {
         cv_begin(240,124,RGB(off&255u,20,30));cv_blit(0,24);
@@ -195,7 +200,7 @@ static int full_pattern_archive(void)
     bad+=check("full archive restores a saved slot through the A/B path",put_all(3,archive,sizeof archive,st_crc32(archive,sizeof archive))==0);
     pattern_init(); memset(&motion,0,sizeof motion); memset(proj_meta,0,sizeof proj_meta); memset(proj_slot,0,sizeof proj_slot);
     proj_fetch(1); project_load(1); ok=1;
-    for (uint32_t k=0; k<NTRK; k++) for (uint32_t b=0; b<NPAT; b++) {
+    for (uint32_t k=0; k<NPART; k++) for (uint32_t b=0; b<NPAT; b++) {
         track_t *t=&trk[k]; pattern_request(t,b);
         ok &= t->step[3].n==4 && t->step[3].note[0]==40+k*8+b && t->step[3].note[3]==67 &&
             t->step[4].time==ST_TIE && t->p[P_SLEN]==16+(int16_t)b && step_chance(&t->step[3])==20+b && motion_count(t)==1;
@@ -238,16 +243,16 @@ static int prophet_archive(void)
 static int expanded_recording_archive(void)
 {
     reset();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<NPAT;b++) {
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=0;b<NPAT;b++) {
         pattern_request(&trk[k],b);
         trk[k].step[3]=(step_t){{60},1,ST_NOTE,SF_RECORDED,100,0,0,0};
     }
-    for(uint32_t i=0;i<RECORD_MAX;i++)recording[i]=(recorded_note_t){(uint16_t)(i*61u),1234,60,100,(uint8_t)(i%32u),3};
+    for(uint32_t i=0;i<RECORD_MAX;i++)recording[i]=(recorded_note_t){.on=(uint16_t)(i*61u), .duration=1234, .note=60, .vel=100, .owner=(uint8_t)(i%32u), .step=3};
     recording_reindex();
     static recorded_note_t saved[RECORD_MAX];uint32_t at=0;for(uint32_t owner=0;owner<32;owner++)for(uint32_t i=0;i<RECORD_MAX;i++)if((recording[i].owner&31u)==owner)saved[at++]=recording[i];
     int ok=!project_save_as(0,"FULL TAKE");
     uint32_t len,crc;ok &= !list(0,&len,&crc);
-    static uint8_t archive[BANK_STORE_SIZE], readback[BANK_STORE_SIZE];memcpy(archive,ED_BK_RAW,sizeof archive);
+    static uint8_t archive[BANK_STORE_SIZE], readback[BANK_STORE_SIZE];runtime_bytes(archive);
     for(uint32_t off=0;off<sizeof readback;off+=256u){uint32_t n=sizeof readback-off>256u?256u:sizeof readback-off;ok &= !get(2,off,n) && ed_unpack7(rep+9u,rep_n-9u,readback+off,n)==n;}
     ok &= !memcmp(archive,readback,sizeof archive);
     ok &= !put_all(3,archive,sizeof archive,st_crc32(archive,sizeof archive));
@@ -258,6 +263,7 @@ static int expanded_recording_archive(void)
     bad+=check("expanded runtime archive restores every original timed note",ok);
     return bad;
 }
+#ifndef BACKUP_TEST_NO_MAIN
 int main(void)
 {
     int expanded_bad = expanded_recording_archive();
@@ -266,13 +272,14 @@ int main(void)
     uint32_t len = 0, crc = 0, before;
     static project_store_t st;
     static project_store_t v6;
+    static uint8_t bank_readback[BANK_STORE_SIZE];
     persist_t ps;
 
     reset();
     trk[0].step[0] = (step_t){{60}, 1, ST_NOTE, 0, 96, 0, 0};
     bad += check("LIST captures runtime and all 29 archive objects with CRC",
                  list(0, &len, &crc) == 0 && rep[2] == 29u && len == BANK_STORE_SIZE &&
-                 crc == st_crc32(ED_BK_RAW, len));
+                 crc == ed_bk_stage.head.crc && !st_stream_check(&ed_bk_stage));
     bad += check("an empty project slot lists as length 0", list(2, &len, &crc) == 0 && len == 0);
     bad += check("GET of the runtime copy", get(0, 0, 64) == 0);
     project_save(0);
@@ -395,7 +402,7 @@ int main(void)
     proj_pack(&st, &proj_scratch);
     bad += check("a bare FUN16 record restores into slot 3 (flash and RAM) as a bank",
                  put_all(4, &st, sizeof st, st_crc32(&st, sizeof st)) == 0 && project_used(2) &&
-                 !memcmp(&proj_slot[2], &st, sizeof st) && st_load(OBJ_BANK0 + 2, proj_wire_u.raw, sizeof proj_wire_u.raw) == BANK_STORE_SIZE);
+                 !memcmp(&proj_slot[2], &st, sizeof st) && st_load(OBJ_BANK0 + 2, bank_readback, sizeof bank_readback) == BANK_STORE_SIZE);
     {   /* a record of an older format: refused before anything is written (archives of before 1.0.0: 1.2) */
         static uint8_t old[3388];
         memset(old, 0, sizeof old);
@@ -466,8 +473,8 @@ int main(void)
         future.packed[0] = 55;memcpy(b.r[4].head,&future,160u);
         bad += check("a bank with a future record version restores byte for byte",
                      put_all(6, &b, sizeof b, st_crc32(&b, sizeof b)) == 0 &&
-                     st_load(OBJ_UPRESET0, &proj_wire, sizeof proj_wire) == (int)sizeof b &&
-                     !memcmp(&proj_wire, &b, sizeof b));
+                     st_load(OBJ_UPRESET0, &proj_wire_u, sizeof proj_wire_u) == (int)sizeof b &&
+                     !memcmp(&proj_wire_u, &b, sizeof b));
         b.nslot = 3;
         bad += check("a bank with the wrong slot count is refused", put_all(7, &b, sizeof b, st_crc32(&b, sizeof b)) == 2u);
     }
@@ -506,6 +513,17 @@ int main(void)
         bad+=check("lab preferences restore RAM without updating flash bookkeeping",
             !put_all(1,&original,sizeof original,st_crc32(&original,sizeof original)) &&
             settings_budget==VOICE_BUDGET_DEFAULT && erases==writes && !memcmp(&persist_saved,&saved,sizeof saved));
+        memset(&motion,0,sizeof motion);memset(motion_pattern,0,sizeof motion_pattern);
+        static uint8_t guarded[BANK_STORE_SIZE];
+        bad+=check("guarded runtime LIST captures without erasing flash",!list(0,&len,&crc)&&erases==writes);
+        int captured=1;
+        for(uint32_t off=0;off<BANK_STORE_SIZE;off+=256u){
+            uint32_t n=BANK_STORE_SIZE-off>256u?256u:BANK_STORE_SIZE-off;
+            captured &= !get(0,off,n)&&ed_unpack7(rep+9u,rep_n-9u,guarded+off,n)==n;
+        }
+        uint32_t guard_crc=st_crc32(guarded,sizeof guarded),guard_rc=put_all(0,guarded,sizeof guarded,crc);
+        bad+=check("guarded runtime archive restores and verifies without flash writes",
+            captured&&crc==guard_crc&&!guard_rc&&erases==writes);
         original.magic=0;
         bad+=check("lab preferences reject invalid data",put_all(1,&original,sizeof original,st_crc32(&original,sizeof original))==2);
         audio_lab_guard=0;
@@ -514,3 +532,5 @@ int main(void)
     printf("backup test %s\n", bad ? "FAILED" : "passed");
     return (bad + expanded_bad) != 0;
 }
+
+#endif

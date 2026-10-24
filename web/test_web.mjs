@@ -16,6 +16,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
+import {mockInstallSession,strip} from "./installer_test_helpers.mjs";
 import { logicalImage, productOf } from "./fm1pkg.js";
 import { MELODEE_LOADER, STOCK_LOADER, Updater, pack7, unpack7 } from "./fm1ota.js";
 
@@ -242,7 +243,7 @@ async function editorMock() {
   inp.onmidimessage = (e) => link.receive(e.data);
   const rq = async (r, o) => link.request(r, o);
   const info = E.parse[E.CMD.INFO](await rq(E.req.info()));
-  ok(info.nengines === 20 && info.engines[14] === "-" && info.engines[1] === "-" && info.engines[12] === "FM6" && info.engines[13] === "-"
+  ok(info.nengines === 22 && info.engines[20] === "-" && info.engines[21] === "MIDI Track" && info.engines[14] === "-" && info.engines[1] === "-" && info.engines[12] === "FM6" && info.engines[13] === "-"
  && info.engines[2] === "-" && info.engines[5] === "-" && info.engines[6] === "-" && info.engines[7] === "-" && info.engines[8] === "-" && info.engines[9] === "-" && info.engines[10] === "DRUM" && info.engines[11] === "-" && info.pcount === 124 && info.pe0 === 116 && info.engines[4] === "-",
     "editor: INFO");
   let descs = 0;
@@ -342,17 +343,17 @@ async function editorMock() {
   await rq(E.req.upErase(31));
   prefs = await E.readDevicePreferences(rq, info, names, prefs);
   ok(!prefs.favorites[info.namespace.general][31] && !E.devicePresetRows(info, names, prefs).some((r) => r.user), "editor: erased slot disappears and loses star");
-  {   /* the lists in the device's order (engines.c ENGINE_ORDER): FM6 second, DRUM last, "-" never; the numbers stay */
+  {   /* the lists in the device's order: FM6 second, MIDI Track last, "-" never; the numbers stay */
     const shown = E.engineOrder(info.engines).map((i) => info.engines[i]);
-    ok(shown.join() === "PROPHET,FM6,CZ-1,SID,DRUM" &&
-       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines).at(-1) === 10,
-       "editor: engines listed FM6 second, DRUM last (indices kept)");
+    ok(shown.join() === "PROPHET,FM6,CZ-1,SID,DRUM,MIDI Track" &&
+       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines).at(-1) === 21,
+       "editor: engines listed FM6 second, MIDI Track last (indices kept)");
     ok(E.engineOrder(["ANALOG", "X", "-", "DRUM", "FM6"]).join() === "0,4,3,1", "editor: an unknown engine follows the known ones");
     m.state.favorites[10][0] = m.state.favorites[12][0] = true;
     await rq(E.req.uiSet(3, 0));
     prefs = await E.readDevicePreferences(rq, info, names, prefs);
     const rows = E.devicePresetRows(info, names, prefs).filter((r) => !r.user), eng = [...new Set(rows.map((r) => r.engine))];
-    ok(eng[0] === 19 && eng[1] === 12 && eng[eng.length - 1] === 10, "editor: device presets in the device's engine order");
+    ok(eng[0] === 19 && eng[1] === 12 && eng[eng.length - 1] === 21, "editor: device presets in the device's engine order");
   }
   const none = await E.readDevicePreferences(() => { throw new Error("unexpected request"); }, { uiCaps: 0 }, []);
   ok(none === null, "editor: old firmware receives no unsupported preference requests");
@@ -430,6 +431,28 @@ async function editorMock() {
 async function editorSamplePresets() {
  const {rq,done}=attachMock();const info=E.parse[E.CMD.INFO](await rq(E.req.info()));
  ok([4,6,7,8,9,13,14].every(i=>info.engines[i]==="-" && !E.engineOrder(info.engines).includes(i)),"editor: SAMPLE, GRAIN and SLICE removed; other engine IDs kept");done();
+}
+
+async function editorMidiTrack() {
+  const {m,rq,done} = attachMock();
+  const C=E.CMD, info=E.parse[C.INFO](await rq(E.req.info()));
+  await rq(E.req.track(2)); await rq(E.req.set(1,20,21));
+  let dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.engine===21 && dump.p[info.pe0]===3, "MIDI Track: editor defaults output channel to track number");
+  const names=E.parse[C.NAMES](await rq(E.req.names(21)));
+  ok(names.names.length===1 && names.names[0]==="DEFAULT", "MIDI Track: one default factory preset");
+  await rq(E.req.set(0,info.pe0,16)); await rq(E.req.set(0,info.pe0+1,1));
+  const level=dump.p[0],pan=dump.p[39];
+  await rq(E.req.set(0,0,0)); await rq(E.req.trackParam(2,39,30));
+  await rq(E.req.trackMix(2,0,true));
+  await rq(E.req.set(0,96,8)); await rq(E.req.trackParam(2,108,127));
+  dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.p[0]===level && dump.p[39]===pan && dump.p[40]===1 && !dump.p[96] && !dump.p[108],
+    "MIDI Track: editor disables audio controls and FX while retaining mute");
+  await rq(E.req.project(1,0)); await rq(E.req.set(0,info.pe0,1)); await rq(E.req.project(0,0));
+  dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.engine===21 && dump.p[info.pe0]===16 && dump.p[info.pe0+1]===1, "MIDI Track: editor project round-trip retains routing");
+  done();
 }
 
 /* the mock's tables == the firmware's (build/host/desc.json from tests/descdump.c, written by run_tests.sh):
@@ -611,7 +634,7 @@ async function trackEffects() {
   try {
     const info=E.parse[E.CMD.INFO](await rq(E.req.info()));
     await rq(E.req.preset(12,0));
-    const fx=[1,80,30,71,6,95,55,65,8,105,88,99];
+    const fx=[1,80,30,71,9,95,55,65,7,105,88,99];
     for(let i=0;i<fx.length;i++)await rq(E.req.set(0,96+i,fx[i]));
     for(let i=0;i<3;i++)await rq(E.req.set(0,111+i,i?-20-i:24));
     const cap=(await E.capturePatch(rq,info,"DRY PATCH")).patch;
@@ -624,8 +647,26 @@ async function trackEffects() {
     const dump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
     ok(eq(dump.p.slice(96,108),fx),"FX: factory, user and librarian sound loads preserve all three track slots");
     ok(eq(dump.p.slice(111,114),[24,-21,-22]),"FX: sound loads preserve TONE");
+    for (const retired of [6]) {
+      for (const id of [96,100,104]) await rq(E.req.set(0,id,retired));
+      const retiredDump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
+      ok([96,100,104].every(id=>retiredDump.p[id]===0),`FX: retired type ${retired} maps to OFF in all track slots`);
+    }
     ok(eq(E.fmtValue({fmt:E.F.TONE},0),["Full",""]) && eq(E.fmtValue({fmt:E.F.TONE},24),["Thin 313","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},-39),["Dark 516","Hz"]) &&
        eq(E.fmtValue({fmt:E.F.TONE},63),["Thin 1280","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},1),["Thin 150","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},-63),["Dark 120","Hz"]),"FX: TONE formats Full, Dark / Thin and the cut's frequency");
+    for (const scope of [0,1]) {
+      const base=scope===0?96:27,third=scope===0?111:42;
+      const typeDesc=E.parse[E.CMD.DESC](await rq(E.req.desc(scope,base)));
+      ok(typeDesc.max===19 && (scope===0 || (!typeDesc.names[10] && !typeDesc.names[11])),"FX: new types retain MIDI-only slots in the shared rack enum");
+      ok(eq([12,13,14,15].map(v=>E.fmtValue(typeDesc,v)[0]),["DRIVE · SOFT","DRIVE · HARD","DRIVE · FOLD","DRIVE · FUZZ"]),"FX: every stored DRIVE shape has a distinct editor choice");
+      for (const [type,a,b,fmt] of [[8,"SIZE","DAMP",E.F.PCT],[12,"DRIVE","TONE",E.F.PCT],[16,"BITS","ALIAS",E.F.BITS],[17,"RATE","DEPTH",E.F.LFOHZ],[18,"RATE","DEPTH",E.F.LFOHZ],[19,"RATE","DEPTH",E.F.LFOHZ]]) {
+        await rq(E.req.set(scope,base,type));
+        const da=E.parse[E.CMD.DESC](await rq(E.req.desc(scope,base+2))),db=E.parse[E.CMD.DESC](await rq(E.req.desc(scope,base+3)));
+        ok(da.label===a && db.label===b && da.fmt===fmt,`FX: scope ${scope} type ${type} exposes its actual controls`);
+        if(type>=17){const fb=E.parse[E.CMD.DESC](await rq(E.req.desc(scope,third)));ok(fb.label==="RESO" && fb.fmt===E.F.BIPCT,"FX: swept pedals expose signed resonance");}
+      }
+      await rq(E.req.set(scope,base,0));
+    }
     const common={step:0,param:info.pe0+1,value:63},native={step:0,param:info.pe0+1,value:(3<<8)|80};
     await rq(E.req.motion(0,3,common));let m=E.parse[E.CMD.MOTION](await rq(E.req.motion(0,3,native)));
     ok(m.count===2,"motion: native and common events sharing an engine ID coexist");
@@ -727,7 +768,7 @@ async function editorLibrarian() {
   const ctx = { keys, engines: info.engines, firmware: info.version, pe0: info.pe0 };
   const pts = [cap, { ...bass, engineName: info.engines[bass.engine], tags: ["bass", "device"] }];
   const file = JSON.parse(JSON.stringify(E.libraryFile("library", pts, ctx)));
-  ok(file.format === "felucca-library" && file.version === 1 && file.pCount === info.pcount && file.paramLabels.length === info.pcount && file.paramLabels[81] === "CHRD" && file.paramLabels[82] === "VOIC" && file.paramLabels[83] === "DEG" && file.paramLabels.slice(92, 96).join() === "SYNC,TRIG,POL,SPRD" && file.engines.length === 20,
+  ok(file.format === "felucca-library" && file.version === 1 && file.pCount === info.pcount && file.paramLabels.length === info.pcount && file.paramLabels[81] === "CHRD" && file.paramLabels[82] === "VOIC" && file.paramLabels[83] === "DEG" && file.paramLabels.slice(92, 96).join() === "SYNC,TRIG,POL,SPRD" && file.engines.length === 22,
     "library file: versioned, with P_COUNT, labels and engines");
   const back = E.readLibraryFile(file, ctx);
   const oldKeys = keys.slice(); oldKeys[8] = "FX";
@@ -1531,8 +1572,8 @@ async function patternProtocol() {
 }
 async function stockRestore() {
   const installer = readFileSync(join(HERE, "index_pkg.html"), "utf8");
-  const script = installer.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"0.10",product:"FM-1_9010",pkg:{dual:"test.fwsc"}}));
+  const script = strip(readFileSync(join(HERE,"install/leave.js"),"utf8")) + `
+setupLeaving({getLanguage:()=>"en",isBusy:()=>writing,setBusy:on=>{writing=on;},log:()=>{}});`;
   const HEAD = {from:1024, to:1024 + 0x4000};
   // loader: the identity of the update loader the FM-1 is waiting in (false: running firmware);
   // button: "stock-go" (Return to official V15) or "go" (Install)
@@ -1547,6 +1588,7 @@ async function stockRestore() {
     const info = [...Buffer.from("MELODEE v1.4.0"),0,0,92,0,64,84,4,
       ...(supported ? [16,0x55,1,0,0x4d,motionVersion,64,1,0x42,backupVersion,backupCaps] : [])];
     const context = vm.createContext({
+      writing:false,
       navigator:{language:"en", requestMIDIAccess:async () => ({})},
       document:{documentElement:{}, querySelectorAll:() => [], getElementById:element,
         body:{append() {}}, createElement:() => ({click() { calls.push("save"); }, remove() {}})},
@@ -1580,7 +1622,8 @@ async function stockRestore() {
       },
       captureBackup:async () => { calls.push("backup"); if (backupError) throw new Error("Backup failed"); return {}; },
     });
-    vm.runInContext(script, context);
+    mockInstallSession(context);
+  vm.runInContext(script, context);
     await new Promise(resolve => setImmediate(resolve));
     element("stock-file").files = [{size:1,arrayBuffer:async () => Uint8Array.of(1).buffer}];
     await element("stock-file").listeners.change();
@@ -1601,7 +1644,7 @@ async function stockRestore() {
   ok(r.calls.includes("install") && !r.calls.includes("info") && !r.calls.includes("backup-open")
     && r.calls.some(c => c.includes("without creating a backup")) && r.label.includes("without backup") && r.unlocked,
     "stock: explicit skip bypasses backup protocol and confirms data loss");
-  ok(same(r.writes, [official]) && r.calls.filter(c => c.startsWith("fetch")).join() === "fetch test.fwsc"
+  ok(same(r.writes, [official]) && !r.calls.some(c => c.startsWith("fetch"))
     && !/buildStockRestorePackage|application-only/.test(installer),
     "stock: the unmodified official file goes only to the official loader, no Melodee loader is fetched");
   r = await run({skip:true, confirm:false});
@@ -1625,7 +1668,7 @@ async function stockRestore() {
     "stock: a failed backup never silently falls through to flashing");
   r = await run({skip:true, installError:fail("stopped", {lastRead:HEAD.from + 0x200})});
   ok(r.status.includes("CHECK HEAD") && r.status.includes("FAILED -5") && r.status.includes("report") && r.unlocked
-    && /RECOVERY\.md#return-to-stock-from-running-melodee"[^>]*data-t="stockHelp"/.test(installer),
+    && /RECOVERY\.md#return-to-stock-from-running-melodee"[^>]*data-leave-t="stockHelp"/.test(installer),
     "stock: a stop at CHECK HEAD is refused with the FAILED -5 notes, no other path");
   r = await run({skip:true, installError:fail("stopped", {lastRead:0x40})});
   ok(r.status.startsWith("Stopped.") && !r.status.includes("FAILED -5"), "stock: other step-1 stops keep the generic message");
@@ -1645,111 +1688,12 @@ async function stockRestore() {
     ok(!r.writes.length && !r.calls.includes("confirm") && r.status.includes(says) && r.unlocked,
       `stock: never resumes in ${other}`);
   }
-  r = await run({button:"go"});
-  ok(same(r.writes, [melodee]) && r.calls.includes("install"), "install: a running FM-1 gets Melodee through Melodee's loader only");
-  r = await run({button:"go", loader:MELODEE_LOADER});
-  ok(same(r.writes, [melodee]) && r.calls.includes("resume"), "install: resumes in Melodee's loader");
-  for (const [other, says] of [[STOCK_LOADER, "official update mode"], ["ota-FM-1_123", "ota-FM-1_123"]]) {
-    r = await run({button:"go", loader:other});
-    ok(!r.writes.length && r.status.includes(says), `install: never resumes in ${other}`);
-  }
-  r = await run({button:"go", installError:fail("wrongloader", {detail:STOCK_LOADER})});
-  ok(r.status.includes("official update mode"), "install: an official loader started by step 1 gets nothing");
 }
-async function installerBuilds() {
-  const installer = readFileSync(join(HERE, "index_pkg.html"), "utf8");
-  const script = installer.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"1.0.2",product:"FM-1_91002",
-      pkg:{dual:"melodee-1.0.2.fwsc"},
-      rc:{version:"1.4.0-rc.1",product:"FM-1_91040",commit:"a".repeat(40),
-        pkg:{dual:"melodee-1.4.0-rc.1.fwsc"}},
-      nightly:{version:"next-abcdef0",product:"FM-1_900",commit:"abcdef0123456789abcdef0123456789abcdef0123",builtAt:"2026-10-15T02:00:00Z",
-        pkg:{dual:"melodee-nightly.fwsc"}}}));
-  const ALL = ["dual", "rc-dual", "nightly-dual"];
-  const fetched = [], installed = [], elements = new Map();
-  const element = (id) => {
-    if (!elements.has(id)) elements.set(id, {checked:id === "build-dual", disabled:false, textContent:"", value:0, listeners:{}, options:[],
-      replaceChildren(...options) { this.options = options; this.value = options.find(o => o.selected)?.value || options[0]?.value || ""; },
-      addEventListener(k, fn) { this.listeners[k] = fn; }});
-    return elements.get(id);
-  };
-  const context = vm.createContext({
-    navigator:{language:"en", requestMIDIAccess:async () => ({})},
-    document:{documentElement:{}, querySelectorAll:() => [], getElementById:element, createElement:() => ({})},
-    window:{addEventListener() {}},
-    fetch:async (url) => { fetched.push(url); return {ok:true, arrayBuffer:async () => new Uint8Array(Buffer.from(url)).buffer}; },
-    productOf:(pkg) => /-rc\./.test(String.fromCharCode(...pkg)) ? "FM-1_91040" : /nightly/.test(String.fromCharCode(...pkg)) ? "FM-1_900" : "FM-1_91002", logicalImage:(pkg) => String.fromCharCode(...pkg),
-    MELODEE_LOADER, STOCK_LOADER,
-    Updater:class { async find() { return null; } async install(image, product, step, loader) { installed.push([image, product, loader]); } },
-  });
-  vm.runInContext(script, context);
-  await new Promise(resolve => setImmediate(resolve));
-  ok(fetched.join() === "melodee-1.0.2.fwsc" && element("status").textContent === "Melodee 1.0.2 (standard)"
-    && !element("go").disabled, "installer: dual-core stable firmware is the default");
-  await element("go").listeners.click();
-  ok(installed[0][0] === "melodee-1.0.2.fwsc" && installed[0][1] === "FM-1_91002" && installed[0][2] === MELODEE_LOADER,
-    "installer: stable installs its own package and identity, through Melodee's loader only");
-  for (const [kind, version, file, commit, product, tag] of [
-    ["nightly-dual", "next-abcdef0", "melodee-nightly.fwsc", "abcdef0123456789abcdef0123456789abcdef0123", "FM-1_900", "nightly"],
-    ["rc-dual", "1.4.0-rc.1", "melodee-1.4.0-rc.1.fwsc", "a".repeat(40), "FM-1_91040", "release candidate"],
-  ]) {
-    for (const k of ALL) element("build-" + k).checked = k === kind;
-    await element("build-" + kind).listeners.change();
-    ok(element("status").textContent === `Melodee ${version} (${tag})`, "installer: development channels report their own versions");
-    await element("go").listeners.click();
-    const [image, actualProduct] = installed.at(-1);
-    ok(image === file + "?commit=" + commit && actualProduct === product, "installer: development channels install their own package and identity");
-    for (const k of ALL) element("build-" + k).checked = k === "dual";
-    await element("build-dual").listeners.change();
-    await element("go").listeners.click();
-    ok(installed.at(-1)[1] === "FM-1_91002", "installer: returning to stable restores its identity");
-  }
-  ok(fetched.length === 3, "installer: each dual-core channel is fetched once");
-  ok(!element("nightly-options").hidden && element("nightly-info").textContent.includes("abcdef0"), "installer: nightly source and timestamp are visible");
-  ok(!element("rc-options").hidden && element("rc-version").textContent === "1.4.0-rc.1", "installer: RC version is visible");
-  ok(!/build-(?:rc-|nightly-)?single/.test(installer), "installer: no channel offers single-core firmware");
-}
-async function installerBuildRaces() {
-  const script = readFileSync(join(HERE, "index_pkg.html"), "utf8").match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"1.0.2",product:"FM-1_91002",pkg:{dual:"dual"}, releases:[
-      {version:"1.0.2",product:"FM-1_91002",pkg:{dual:"dual"}},
-      {version:"1.0.1",product:"FM-1_91001",pkg:{dual:"older"}},
-    ]}));
-  const elements = new Map(), pending = new Map(); let installDone, installed;
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, {checked:id === "build-dual",disabled:false,textContent:"",listeners:{}, options:[],
-      replaceChildren(...options) { this.options = options; this.value = options.find(o => o.selected)?.value || options[0]?.value || ""; },
-      addEventListener(k,fn) { this.listeners[k] = fn; }});
-    return elements.get(id);
-  };
-  const context = vm.createContext({navigator:{language:"en",requestMIDIAccess:async()=>({})},
-    document:{documentElement:{},querySelectorAll:()=>[],getElementById:element,createElement:()=>({})},window:{addEventListener(){}},
-    fetch:url=>new Promise(resolve=>pending.set(url,resolve)),
-    productOf:pkg=>String.fromCharCode(...pkg)==="older"?"FM-1_91001":"FM-1_91002",
-    logicalImage:pkg=>String.fromCharCode(...pkg), MELODEE_LOADER, STOCK_LOADER,
-    Updater:class { async find(){ return null; } async install(img){installed=img;await new Promise(resolve=>installDone=resolve);} }
-  });
-  const finish = url => pending.get(url)({ok:true,arrayBuffer:async()=>Uint8Array.from(Buffer.from(url)).buffer});
-  const tick = () => new Promise(resolve=>setImmediate(resolve));
-  vm.runInContext(script, context);
-  ok(element("advanced-installs").hidden && element("rc-options").hidden && element("nightly-options").hidden, "installer: unavailable RC/nightly channels and Advanced installs are hidden");
-  element("release").value="1.0.1";
-  element("release").listeners.change();
-  ok(element("go").disabled,"installer: Install is disabled while the selected package loads");
-  finish("older");await tick();finish("dual");await tick();
-  ok(element("status").textContent === "Melodee 1.0.1 (standard)","installer: a late download cannot replace the selected release");
-  const flash = element("go").listeners.click();await tick();
-  ok(installed === "older" && element("build-dual").disabled && element("release").disabled,
-    "installer: package and release selection are locked throughout writing");
-  await element("build-dual").listeners.change();
-  installDone();await flash;
-  ok(!element("build-dual").disabled && !element("release").disabled,"installer: selection unlocks after writing");
-}
+// Installer channel/race and real dialog tests live in test_installer.mjs and test_install_safety.mjs.
 await stockRestore();
-await installerBuilds();
-await installerBuildRaces();
 await patternProtocol();
 await editorMock();
+await editorMidiTrack();
 await editorSamplePresets();
 mockTables();
 await editorLibrarian();

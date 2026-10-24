@@ -42,6 +42,13 @@ REC + PLAY explicitly arms and starts in one gesture (or waits for the next
 pattern start if already playing), keeping recording active across loops.
 Holding REC opens the mixer.
 
+Take Taker pauses collection on **all tracks** while any track is actively
+recording. It continues collecting while a take waits for its loop boundary,
+then resumes as soon as the last active take finishes or is disarmed. A
+latched take keeps it paused across loops. Notes captured before the pause
+still retain their actual release lengths. Applying a Take Taker capture is
+also refused while any track records; saved patterns continue playing.
+
 Hold HOME to open the menu. The following device preferences also appear in
 the web editor's settings and survive power-off:
 

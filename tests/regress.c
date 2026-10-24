@@ -524,7 +524,7 @@ static int chk_retrigger_budget(char *msg, uint32_t n)
         voice_t *old = 0;
         host_tracks_init();
         for (p = 0; p < NPART; p++) {
-            memset(trk[p].v, 0, sizeof trk[p].v);
+            memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
             host_preset(&trk[p], p == 0 && round ? 5u : 0u, 0);
             trk[p].p[P_VOICE] = p >= 2u ? V_MONO : V_POLY;
             trk[p].p[P_AMODE] = 0;
@@ -568,7 +568,7 @@ static int chk_cap_mode_budget(char *msg, uint32_t n)
     for (round = 0; round < NELEM(MODE); round++) {
         host_tracks_init();
         for (p = 0; p < NPART; p++) {
-            memset(trk[p].v, 0, sizeof trk[p].v);
+            memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
             host_preset(&trk[p], HOST_SYNTH, 0);
             trk[p].p[P_VOICE] = p ? V_MONO : V_POLY;
             trk[p].p[P_AMODE] = 0;
@@ -619,7 +619,7 @@ static int chk_mode_budget(char *msg, uint32_t n)
         for (mode = V_MONO; mode <= V_UNISON; mode++) {
             host_tracks_init();
             for (p = 0; p < NPART; p++) {
-                memset(trk[p].v, 0, sizeof trk[p].v);
+                memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
                 host_preset(&trk[p], HOST_SYNTH, 0);
                 trk[p].p[P_VOICE] = V_MONO;
                 trk[p].p[P_AMODE] = 0;
@@ -646,7 +646,7 @@ static int chk_mode_budget(char *msg, uint32_t n)
 static void mode_release_reset(uint32_t engine, uint32_t mode)
 {
     uint32_t p;
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&song, 0, sizeof song);
     host_tracks_init();
     for (p = 0; p < NPART; p++) {
@@ -856,7 +856,7 @@ static int chk_hang(char *msg, uint32_t n)
             /* DX7 L4 may deliberately sustain after key-up (legacy DIGITAL conversions too).
              * This routing test needs terminating envelopes; sound/parity tests retain native L4. */
             if(trk[k].eng_req==ENGI_FM6) {
-                for(uint32_t op=0;op<6;op++)fm6_patch[k][op*FP_OP+FP_L1+3]=0;
+                for(uint32_t op=0;op<6;op++)fm6_patch_of(k)[op*FP_OP+FP_L1+3]=0;
                 fm6_pgen[k]++;
             }
             trk[k].p[P_VOICE] = (int16_t)rnd(4);
@@ -881,7 +881,7 @@ static int chk_hang(char *msg, uint32_t n)
                 fm1_in.notes = keys;
                 ev++;
             } else if (r == 9u) {
-                song.sel = (uint8_t)rnd(NTRK);     /* another track selected */
+                song.sel = (uint8_t)rnd(NPART);     /* another track selected */
             }
             blk();
         }
@@ -987,7 +987,7 @@ int main(int argc, char **argv)
     /* 1 + 2: the golden renders */
     g0 = nj;
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, eng_preset(ENGINES[e], pi)->name, sizeof s);
             snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
@@ -1032,7 +1032,7 @@ int main(int argc, char **argv)
     /* 3: CPU, one child at a time (the ns are for information; the instruction counts do not care) */
     c0 = nj;
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, eng_preset(ENGINES[e], pi)->name, sizeof s);
             snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
@@ -1212,7 +1212,7 @@ int main(int argc, char **argv)
     }
     printf("regress: CPU, one part with 8 notes held (VOICE 4), heaviest preset per engine (instructions / ns per sample):\n");
     for (e = 0; e < NENGINES; e++)
-        if (eng_ok(e))
+        if (eng_ok(e) && e != ENGI_MIDI)
             printf("regress:   %-8s %-14s %6.0f instr  %6.1f ns\n", ENGINES[e]->name, eng_preset(ENGINES[e], heavy_p[e])->name,
                    heavy[e], heavy_ns[e]);
     for (i = c1 - 3u; i < c1; i++)

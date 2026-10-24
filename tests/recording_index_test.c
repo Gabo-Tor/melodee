@@ -58,7 +58,7 @@ static recorded_note_t event(uint32_t owner)
 static void fixture(uint32_t count,uint32_t dense)
 {
     timing_reset(0,24000000u);seq_stop();song.rec=0;recording_reset();
-    for(uint32_t tr=0;tr<NTRK;tr++){
+    for(uint32_t tr=0;tr<NPART;tr++){
         trk[tr].pattern=0;trk[tr].p[P_SLEN]=64;
         for(uint32_t v=0;v<NSTEP;v++){
             step_t *s=&trk[tr].step[v];memset(s,0,sizeof *s);s->time=ST_NOTE;s->flags=SF_RECORDED;
@@ -76,14 +76,14 @@ static void fixture(uint32_t count,uint32_t dense)
 static void counts_match(void)
 {
 #if MELODEE_RECORD_INDEX
-    uint16_t count[NTRK*NPAT]={0};
+    uint16_t count[NPART*NPAT]={0};
     for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)count[recording[i].owner&31u]++;
     assert(!memcmp(count,recording_pitch_count,sizeof count));
 #endif
 }
 static void all_queries(void)
 {
-    for(uint32_t tr=0;tr<NTRK;tr++)for(uint32_t bank=0;bank<NPAT;bank++){
+    for(uint32_t tr=0;tr<NPART;tr++)for(uint32_t bank=0;bank<NPAT;bank++){
         track_t *t=&trk[tr];t->pattern=(uint8_t)bank;
         for(uint32_t len=1;len<=64;len+=7){
             t->p[P_SLEN]=(int16_t)len;
@@ -92,12 +92,22 @@ static void all_queries(void)
                 s->time=view%5u?ST_NOTE:ST_REST;s->flags=(uint8_t)(view%7u?SF_RECORDED:0u);
                 s->note[1]=(uint8_t)(rand_u()%128u);
                 assert(scanner(t,s,skip)==candidate(t,s,skip));
+                /* A caller may ask about a separate overview, whose pitches
+                 * are deliberately unrelated to the cached current cell. */
+                step_t alternate=*s;alternate.note[0]^=127u;alternate.note[1]^=63u;
+                assert(scanner(t,&alternate,skip)==candidate(t,&alternate,skip));
             }
         }
     }
 }
 static void parity(void)
 {
+    for(uint32_t note=0;note<128u;note++)for(uint32_t value=0;value<256u;value++){
+        uint32_t key=value|((value^255u)<<8)|(((value+1u)&255u)<<16)|(((value+127u)&255u)<<24),expected=0;
+        for(uint32_t k=0;k<4u;k++)if(((key>>(8u*k))&255u)==note)expected|=1u<<k;
+        for(uint32_t k=0;k<NLANE;k++)if(DRUM_LANE_NOTE[k]==note)expected|=1u<<(8u+k);
+        assert(recording_pitch_mask(note,key)==expected);
+    }
     fixture(RECORD_MAX,0);all_queries();
     /* Interleave capture/removal/replacement, original-to-rounded and wrapped
      * edits, live flags/time and LEN/bank changes. Query every pitch for the
@@ -151,10 +161,10 @@ static void benchmark(void)
         if(count>=64 && cost[0])assert(cost[1]<cost[0]*.25);
         if(count<4 && cost[0])assert(cost[1]-cost[0]<24.0);
         uint64_t start=instructions();
-        for(uint32_t k=0;k<1000;k++){recording_pitch_invalidate();recording_pitch_prepare(t);checksum+=recording_pitch[0][0][0];}
+        for(uint32_t k=0;k<1000;k++){recording_pitch_invalidate();recording_pitch_prepare(t);checksum+=recording_pitch[0][0];}
         printf("%u,full_rebuild,,%.1f\n",count,(double)(instructions()-start)/1000);
         start=instructions();
-        for(uint32_t k=0;k<1000;k++){recording_pitch_dirty[0][0]=1;recording_pitch_prepare(t);checksum+=recording_pitch[0][0][0];}
+        for(uint32_t k=0;k<1000;k++){recording_pitch_dirty[0][0]=1;recording_pitch_prepare(t);checksum+=recording_pitch[0][0];}
         printf("%u,cell_rebuild,,%.1f\n",count,(double)(instructions()-start)/1000);
         /* Existing release-queue overview polling, separate from synthesis,
          * onset dispatch and the new pitch query. No deadlines expire. */

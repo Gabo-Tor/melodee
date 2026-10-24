@@ -442,7 +442,7 @@ static int strum_storage(void)
     static project_store_t old;
     int bad=check("strum project serializes",proj_pack(&old,&proj_scratch));
     uint32_t src=68, dst=68;
-    for(uint32_t k=0;k<NTRK;k++) {
+    for(uint32_t k=0;k<NPART;k++) {
         memmove(old.raw+dst,old.raw+src,114);dst+=114;src+=116;
         uint32_t tail=8+2+NSTEP*8;
         memmove(old.raw+dst,old.raw+src,tail);dst+=tail;src+=tail;
@@ -463,7 +463,7 @@ static int strum_storage(void)
     persist_old=tmpl_old=0; template_save();
     static uint8_t blob[sizeof(tmpl_t)]; memcpy(blob,&tmpl,sizeof tmpl);
     src=dst=2*PROJ_GLOBALS+2;
-    for(uint32_t k=0;k<NTRK;k++) {
+    for(uint32_t k=0;k<NPART;k++) {
         uint32_t head=2+114*2;
         memmove(blob+dst,blob+src,head);dst+=head;src+=head+4;
         memmove(blob+dst,blob+src,16);dst+=16;src+=16;

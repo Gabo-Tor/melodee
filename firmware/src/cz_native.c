@@ -7,6 +7,7 @@
  * Chip envelope rate, phase functions and logarithmic DCA law follow the
  * independently documented uPD933 model by Devin Acker (MAME, BSD-3-Clause).
  * See docs/CZ1_SYSEX.md for sources and remaining calibration limits. */
+#include "performance_options.h"
 #include "x0x/fastmath.h"
 
 static const uint16_t CZ_AMP[128] = {
@@ -64,7 +65,7 @@ static float cz_native_env_tick(cz_native_env_t *e,const cz_native_def_t *d,uint
 static void cz_native_block(track_t *t)
 {
     cz_part_t *c=cz_part((uint32_t)(t-trk)%NTRK);
-    const uint8_t *b=cz_patch[(uint32_t)(t-trk)%NTRK].raw;
+    const uint8_t *b=cz_patch_of((uint32_t)(t-trk)%NTRK)->raw;
     if(c->native_valid && !memcmp(c->native_raw,b,128u))return;
     memcpy(c->native_raw,b,128u);c->native_valid=1;
     for(uint32_t l=0;l<2u;l++)for(uint32_t e=0;e<3u;e++){
@@ -124,9 +125,6 @@ static __attribute__((noinline)) float cz_native_wave(const cz_hw_pd_t *b,uint32
     float carrier=1.0f-(FM6_SIN[i]+(FM6_SIN[i+1u]-FM6_SIN[i])*f);
     return carrier*(1.0f-window*(1.0f/2048.0f))-1.0f;
 }
-#ifndef MELODEE_CZ_FAST
-#define MELODEE_CZ_FAST 1
-#endif
 #if MELODEE_CZ_FAST
 /* Window 4's upper half is exactly -1 for every sounding waveform. Wave 3
  * retains its earlier exact zero return. Phase/noise/DC/envelopes still run
@@ -182,7 +180,7 @@ static __attribute__((noinline)) uint32_t cz_native_inc(float note,int32_t fine)
 static __attribute__((noinline)) void cz_native_render(track_t *t,voice_t *v,int32_t *out,uint32_t n,const vmod_t *m)
 {
     if(!n)return;
-    const uint8_t *b=cz_patch[(uint32_t)(t-trk)%NTRK].raw;
+    const uint8_t *b=cz_patch_of((uint32_t)(t-trk)%NTRK)->raw;
     cz_voice_t *c=cz_voice(t,v);const cz_native_def_t (*defs)[3]=cz_part((uint32_t)(t-trk)%NTRK)->native_def;cz_hw_pd_t pd[2];
     uint32_t inc[2],ph[2]={v->ph[0],v->ph[1]},tg[2]={(uint32_t)v->s[0],(uint32_t)v->s[1]};
     float amp[2][2],step[2];
@@ -200,7 +198,13 @@ static __attribute__((noinline)) void cz_native_render(track_t *t,voice_t *v,int
         float depth=cz_native_env_tick(&c->native_eg[l][1],&defs[src][1],v->gate);
         uint32_t kfn=v->note>36u?v->note-36u:0u;
         float rate_scale=1.0f+(float)((b[16u+off]&15u)*kfn)*(1.0f/96.0f);
-        cz_native_env_scaled(&c->native_eg[l][2],&defs[src][2],v->gate,rate_scale);
+        uint32_t release = midi_verb[t-trk];
+        if (release && !v->gate) {
+            cz_native_env_t *eg = &c->native_eg[l][2];
+            eg->gate = 0; eg->stage = defs[src][2].end;
+            eg->level = fm_maxf(0.0f, eg->level - (127.0f * CTL * 10000.0f / FS) / (float)TIME_MS_X10[release]);
+            if (eg->level == 0.0f) eg->stage++;
+        } else cz_native_env_scaled(&c->native_eg[l][2],&defs[src][2],v->gate,rate_scale);
         /* Unheard envelopes keep advancing. Their stateless waveform,
          * amplitude and frequency preparation cannot affect next-note state. */
         if(!heard)continue;

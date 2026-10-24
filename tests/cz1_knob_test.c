@@ -71,16 +71,16 @@ static double knob(track_t *t, const uint8_t *base, uint32_t id, int *edits)
     double best = -999;
     *edits = 0;
     for (int side = 0; side < 2; side++) {
-        memcpy(cz_patch[0].raw, base, CZ_BYTES);
+        memcpy(cz_patch_of(0)->raw, base, CZ_BYTES);
         if (!cz_ed_put(0, id, (uint32_t)(side ? CZ_PD[id].max : CZ_PD[id].min), raw))
             continue;
         ++*edits;
-        memcpy(cz_patch[0].raw, raw, CZ_BYTES);
+        memcpy(cz_patch_of(0)->raw, raw, CZ_BYTES);
         render(t, out);
         double d = change_db();
         best = d > best ? d : best;
     }
-    memcpy(cz_patch[0].raw, base, CZ_BYTES);
+    memcpy(cz_patch_of(0)->raw, base, CZ_BYTES);
     return best;
 }
 
@@ -127,10 +127,10 @@ int main(void)
     host_preset(t, ENGI_CZ, 0);
     for (k = 0; k < 4u; k++)
         t->p[P_RESERVED33 + k] = 0;
-    cz_ed_decode(p, cz_patch[0].raw);
+    cz_ed_decode(p, cz_patch_of(0)->raw);
     rich_tone(p);
     lcz_sx_encode(p, base, 1);
-    memcpy(cz_patch[0].raw, base, CZ_BYTES);
+    memcpy(cz_patch_of(0)->raw, base, CZ_BYTES);
     render(t, ref);
     render(t, out);
     check("renders are deterministic", change_db() == -999);
@@ -156,7 +156,7 @@ int main(void)
             host_preset(t, ENGI_CZ, PRE[k]);
             for (uint32_t i = 0; i < 4u; i++)
                 t->p[P_RESERVED33 + i] = 0;
-            memcpy(base, cz_patch[0].raw, CZ_BYTES);
+            memcpy(base, cz_patch_of(0)->raw, CZ_BYTES);
         } else {                                         /* the full tone as LINE2, no vibrato DEPTH, END at 4 */
             rich_tone(p);
             p[LCZ_LINE] = 1;
@@ -165,7 +165,7 @@ int main(void)
                 p[LCZ_EBASE(e / 3u, e % 3u) + 16u] = 1, p[LCZ_EBASE(e / 3u, e % 3u) + 17u] = 3;
             memcpy(p + LCZ_NP, "  LINE2 SHORT   ", 16);
             lcz_sx_encode(p, base, 1);
-            memcpy(cz_patch[0].raw, base, CZ_BYTES);
+            memcpy(cz_patch_of(0)->raw, base, CZ_BYTES);
         }
         render(t, ref);
         for (id = 0; id < LCZ_NP; id++) {

@@ -197,7 +197,7 @@ and an optional autosave setting. The original release downloads included
 standard and single-core firmware; the current installer offers dual-core firmware only.
 
 - **Effects:** three inserts per track and a shared three-slot return, with independent
-  sends. Choose Phaser, Width, Formant, Tape, Spit, Echo, Room, Reverb or Chorus.
+  sends. Choose Phaser, Width, Formant, Tape, Spit, Room or Chorus; tracks also offer Note tail and Note echo.
   Effects save with projects and templates; sound changes preserve the track's effects.
 - **One-pass recording:** arm a track before PLAY to record from step zero, or arm it
   during playback to record at its next pattern start. Recording ends after one pass.
@@ -318,7 +318,8 @@ and patterns; settings represented by multiple patch bytes can use multiple even
   moving its playhead and turning most controls no longer resend the whole screen.
 - **More sound and performance:** dual-core rendering is on by default, DSP signal paths use the
   FM-1's native single-precision FPU. Modulation, stereo spread and screen sleep are included;
-  the retired hold/latch controls are gone; **FX** opens the selected track's new insert page.
+  **FX** opens the selected track's rack.
+  Track inserts also offer **Note tail** (envelope release) and **Note echo** (timed note repeats with velocity decay).
 - **808 and 909 kits:** both DRUM kits synthesize every voice in real time. The 909 kick, snare,
   toms, rim and clap use circuit models from
   [fm1-x0x](https://github.com/charlesvestal/fm1-x0x/tree/201e5c5c1ac056a028a006bd1eabb23ac1bb174d);
@@ -456,8 +457,21 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
 
 - **Five selectable instruments:** PROPHET, FM6, CZ-1, SID and DRUM, each with factory presets;
   DRUM contains synthesized 808 and 909 kits
-- **One to four tracks**, one instrument and sound per track: a new song starts with one, so the FM-1 can be a
-  single synth; add more when the song needs them. FM6 plays up to 16 voices; PROPHET plays up
+- **MIDI Track:** a USB MIDI engine with one **DEFAULT** preset. Its **CH** control (Stage KNOB 1,
+  EDIT 1 KNOB 1) selects output channel 1–16, initially the track number. Keys, scales, chords, arpeggios,
+  step sequences, recorded takes, pattern changes and SONG use the same musical paths as the instruments.
+  **TRS** (THRU, KNOB 2) additionally accepts routed TRS input while SYSTEM **MIDI** shows USB; with it off,
+  MIDI Track receives the input selected there. Synth tracks continue accepting both inputs. Incoming channel
+  controls are forwarded on the chosen output channel. Projects save Channel and TRS THRU for every track;
+  templates retain them for tracks 1–4.
+  With Menu > **USB HOST** on, the same MIDI tracks send to the first attached USB-MIDI device's output
+  endpoint (cable 0), directly or behind one externally powered hub. Output-only USB synths are supported;
+  the device must supply a MIDI 1.0 streaming interface. With HOST off, output goes to the computer as before.
+  Track level, pan, audio modulation, insert FX, note FX and FX sends are disabled; MIDI Track allocates no
+  audio voices or engine/FX working memory. Mute, solo, stop and sound/channel changes release outgoing notes.
+- **Up to eight tracks:** tracks 1–4 can use any instrument, including MIDI Track; tracks 5–8 are MIDI-only.
+  A blank song starts with four parts; Stage’s **Add track** adds the extra MIDI tracks when needed. Remove parts
+  to use the FM-1 as a single synth. FM6 plays up to 16 voices; PROPHET plays up
   to eight voices per track in the default dual-core build (five if CPU1 is unavailable or disabled).
   ALGORITHM selects the track on every page. Running several eight-voice Prophet tracks together
   has not yet been stress-tested on hardware
@@ -512,7 +526,8 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
   channels on the selected track. **DRUM** (10 by default, any channel or OFF) redirects its channel to the
   first DRUM track only within the chosen range; without a DRUM track, normal routing applies.
   The keys send on the track's channel; pitch bend, sustain, panic; clock from internal, USB or TRS;
-  GLO > SYSTEM KNOB 1 shows the USB or the TRS input's status (RX while it receives; both always play)
+  GLO > SYSTEM KNOB 1 shows the USB or the TRS input's status (RX while it receives; synths accept both;
+  MIDI Track follows this selection and its TRS THRU option).
   Local PLAY uses the internal tempo until the selected input sends Start, Continue or Stop. Clock
   pulses alone do not take over. Changing the clock source clears this transport selection.
 - **Web:** editor for every parameter (with a 6-operator FM patch editor), step grid, mixer,
@@ -574,13 +589,15 @@ Thanks to [@aroum](https://github.com/aroum) for the detailed feedback in
   covers the step edits first
   When editing synth steps, SCL and EDIT use the editing controls below instead.
 - **FX** opens the track's three insert pages; SELECT moves between the slots.
-- **Tracks:** a new song has one track. On Stage, hold OCT+ for the sheet: **Add track** adds the next one (up to
-  four) with its own starting sound and empty patterns, selects it and opens the sound browser on it (OCT− keeps
-  the starting sound). **Remove track** removes the selected track after a question, stopped only: the tracks after
+- **Tracks:** a blank song starts with four parts. On Stage, hold OCT+ for the sheet: **Add track** adds the next
+  track, up to eight, with empty patterns and selects it. Tracks 1–4 open the sound browser (OCT− keeps the starting
+  sound); tracks 5–8 open their MIDI channel controls, initially channels 5–8. **Remove track** removes the selected track after a question, stopped only: the tracks after
   it move down a place with their sounds, patterns, song sections, motion and recordings. Stage, MIXER, PATTERNS,
-  SONG and GLO show the tracks in use; with one, Stage shows its sound across the screen in large type. Projects and
-  the template keep their number of tracks; projects from before keep all four
-- PLAY starts and stops all four tracks; REC arms or disarms the selected track without starting the
+  SONG and GLO show the group of four containing the selected track. ALGORITHM cycles through every track; with
+  SEQ held, **D#** switches between groups and the four track keys select within that group. With one track, Stage
+  shows its sound across the screen in large type. Projects keep every track’s settings and patterns. Templates
+  keep the track count and the first four parts’ settings; extra MIDI tracks start with their default settings
+- PLAY starts and stops all tracks; REC arms or disarms the selected track without starting the
   transport. While playing, REC waits for that track's next pattern start and keeps recording
   across loops until tapped again or playback stops. STOP leaves the track armed for the next start.
   SEQ + pattern-key shortcuts arm one pass and automatically disarm at its end. While stopped and armed, the first
@@ -651,20 +668,23 @@ its motion, copying over a pattern in use or the one playing (the header says **
 breathes); STOP does them at once. Live edits (a note, a hit, ERASE, a motion lane) stay immediate. While playing, each
 track changes at its own loop end. Selecting the active pattern cancels a queued change. STOP applies pending choices.
 
-**SEQ > PATTERNS** (or hold SEQ) shows the four tracks' eight patterns at once: the one playing in the track's colour
+**SEQ > PATTERNS** (or hold SEQ) shows the selected group’s eight patterns per track: the one playing in the track's colour
 (with how far it has played), the one waiting outlined, the others holding notes raised; under it, the song's rows
-around the one playing (no song yet: the jam's). **KNOB 1–4** pick tracks 1–4's patterns; SELECT goes on to SONG.
+around the one playing (no song yet: the jam's). **KNOB 1–4** pick that group’s patterns; SELECT goes on to SONG.
 **OCT+** opens the selected track's pattern's sheet: **Copy to…** frames the place it goes on the track's row (the
 first empty one), any knob moves the frame, OCT+ copies there (over a pattern in use it asks first) and OCT- cancels;
 **Delete pattern** asks, then empties the pattern, its notes and automation (hold EDIT to undo).
 
 On **SEQ > SONG**, KNOB 1 chooses the section, KNOB 2 the track, KNOB 3 that track's pattern and
-KNOB 4 the section's repeats. **Jam to song:** from PLAY on, every loop of track 1 logs the four tracks'
+KNOB 4 the section's repeats. **Jam to song:** from PLAY on, every loop of track 1 logs all tracks’
 patterns as a section (the same patterns again: a repeat), so switching patterns while you jam writes a song;
 hold **REC** on SONG to turn the logged jam into the arrangement (over a song with sections: confirm).
-PLAY runs the arrangement; sections change all four tracks
+PLAY runs the arrangement; sections change all tracks
 at track 1's loop boundary and the final section stops. STOP returns to the patterns selected before
-SONG. Project saves and complete backups include all 32 banks and the arrangement.
+SONG. Project saves and complete backups include every bank and the arrangement (up to 64 banks). Songs using only
+tracks 1–4 keep the existing FBKK format. Songs with tracks 5–8 use FBKL, storing programmed steps in the same flash
+slots. If a song is too dense to fit, **PROJECT FULL** refuses the save and preserves the previous saved copy. All
+banks can be filled in working memory; a fully dense eight-track song exceeds a saved project’s capacity.
 
 ### Note editing
 
@@ -741,49 +761,63 @@ replaces that event. **RECORDING FULL** leaves existing recordings intact; clear
 recorded steps makes space for new takes. Notes held longer than 128
 nominal steps are capped at that duration.
 
-Each track has **three serial FX inserts**, all usable together, including repeated
-effect types. Press **FX** and turn **SELECT** between **FX 1**, **FX 2** and **FX 3**.
-KNOB 1 chooses **OFF, PHASER, WIDTH, FORMANT, TAPE, SPIT, ECHO, ROOM, REVERB, CHORUS**;
-KNOB 2 sets **MIX**; KNOB 3 sets rate (Echo's time / Room's and Reverb's size);
-KNOB 4 sets depth, focus, jitter, bite, repeats or decay.
-The page follows `docs/design`: four rings, a track-colour picture, the normal
-name picker, OCT+ sound actions and OCT- back to Stage. FX settings belong to
-the track and save with projects and templates. Loading or saving a preset,
-changing engines, Init sound and sound undo preserve the track's effects.
+Each track has **three FX insert slots**. Press **FX** for the rack; KNOB 2 selects
+its row, KNOB 1 the effect, and KNOB 4 its amount. OCT+ opens an effect's controls;
+SELECT visits occupied slots and the shared rack. Audio choices are **Phaser,
+Width, Formant, Tape, Spit, Room, Reverb, Chorus, Drive, Crush, Flanger,
+Pedal phaser and Pedal chorus**. Track slots also offer **Note tail**
+(envelope release) and **Note echo** (note repeats with tempo divisions and
+velocity decay). The MIDI effects are available only on individual tracks.
+The picker groups effects into Space, Motion, Dirt, Colour and Notes. OCT+ on
+an empty slot opens the effect browser: KNOB 1 selects a family, KNOB 2 an
+effect, and OCT+ confirms. Note tail has its single REL control on the rack;
+Note echo has LEVEL, TIME and DECAY on its page.
 
-Phaser sweeps four all-pass sections per side. Width processes the left side
-and keeps the right dry; collapsing it to mono changes its tone. Formant jumps
-among five vowel shapes. Tape drifts two parallel crossover filters, smoothly
-changes the middle band's polarity, and rolls off the top. JITTER increases the
-movement without abrupt filter or phase switches. Its stereo filters run in
-one software pass with no delay buffer. Spit abruptly retunes a resonant
-band-pass and saturates it. Echo is a short, reduced-rate delay (10–370 ms,
-8 KiB per slot); Room keeps its small damped four-comb character (2 KiB).
-Reverb adds a diffused stereo eight-delay feedback tank with input and output
-allpasses (4 KiB per slot). Its **DEPTH** knob increases the wet body and extends
-the tail, from a short space to a deeper wash, with subtle delay drift for
-fuller diffusion and a softly bounded wet return. **MIX** sets the balance and
-**SIZE** sets the reflection spacing. Filter FX, Echo and Room run at **11.025 kHz**; Reverb runs at **5.5125 kHz**. Synths and the dry path stay at **44.1 kHz**.
-Reverb uses an inexpensive averaging input filter and interpolates the wet
-return; the rate conversion needs no additional buffer. Turning MIX to zero or
-selecting OFF fades to dry and releases the time-effect buffer. An allocation
-failure bypasses only that slot and shows MEMORY FULL; bypass and re-enable to retry.
+Phaser sweeps all-pass sections, Width processes the left side with the right
+dry, Formant makes vowel shapes, Tape drifts smooth crossover filters, and Spit
+retunes a resonant saturated band. These filters require no audio delay buffer.
+**Room** retains its damped four-comb sound at 11.025 kHz and **2 KiB per slot**;
+its controls are MIX, SIZE, DECAY and TONE. **Chorus** uses two modulated stereo
+taps at 44.1 kHz and **2 KiB per slot**, with MIX, RATE and DEPTH controls.
+OFF / MIX 0 fades to dry and frees their buffer. A failed allocation leaves the
+slot dry and shows MEMORY FULL; switch it off and on to retry.
 
-Chorus adds two smoothly modulated stereo delay taps at full **44.1 kHz**, using
-**2 KiB per slot** and integer sample processing. **RATE** sets the modulation
-speed, **DEPTH** sets pitch movement, and **MIX** blends the delayed signal with
-dry audio (start near 50%). Its delay is centred at 5.8 ms with up to +/-2.9 ms
-of movement. It has no feedback or extra filters; OFF / MIX 0 releases its buffer.
-For several tracks, use one Chorus in the shared send chain to save processing.
+**Shared** opens three shared audio slots, with CHAIN or SPLIT routing and a
+RETURN level. In CHAIN, each track's SEND feeds the three slots in series. In
+SPLIT, each shared slot has its own track send. Effects, routing and send levels
+save with projects and templates; sound changes preserve them. Four mono USB
+stems include each track's inserts; the stereo master includes the shared return.
 
-SELECT also visits **FX SEND** and **SEND FX 1–3**. SEND is the selected track's post-volume, post-pan amount into one shared stereo chain; RETURN blends that chain into the main output. Set a shared TYPE (for example REVERB), then raise SEND on the tracks that should feed it. Shared MIX defaults fully wet. **FX SEND > MODE** chooses **CHAIN** (the default) or **SPLIT** (separate sends). SPLIT exposes **FX SENDS > SEND 1–3** for each track: each global slot receives its own mix of tracks and its return joins the dry output. SEND 1 shares the existing SEND level; SEND 2 and SEND 3 are remembered when returning to CHAIN. The routing choice and send levels are saved in projects and the boot template; older projects load as CHAIN. Changing MODE fades the return before resetting the global effect tails. Switching the shared chain off fades its return to silence. The three track inserts remain available, and preset changes keep SEND. One shared Reverb uses 4 KiB regardless of the number of sending tracks. Its processing uses CPU1 when available; CPU0 prepares the dry output, then joins before the final limiter. Four mono USB stems remain individual tracks; the stereo master includes the shared return.
+**SLOOP master punch FX and REVERB are available.** Hold FX and press any of
+its 27 keys for loops, reverse, tape stop, half speed, filter sweeps, crush,
+aliasing, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan,
+freeze, mono or fade. Double-tap FX to lock the layer; tap it again to close.
+Release the effect key to restore dry audio. KNOB 1 browses the key reference.
+The effects process the complete stereo master, including shared returns and
+USB stereo capture. They do not alter notes or instrument patches.
 
-Old FX/slicer sends, IDs, motion and key assignments remain inert. Previous
-FUN16 projects, FBKK banks, TPLF templates and old user presets load with the new
-FX off. FUN17 projects and TPLG templates retain their original effect in slot 1,
-with slots 2 and 3 off. FUN18 projects and TPLH templates preserve all three inserts. New FUN19 projects and TPLI templates also store SEND and the shared return, with the shared chain off for older music. Eight-byte packed steps keep the project and bank extents unchanged. Four mono USB
-recording stems include the complete chain, averaged after
-pan; Width therefore has the same mono tradeoff on a stem.
+SLOOP's **REVERB** replaces Echoverb at effect ID 8, with SIZE (decay), DAMP
+and TONE in track/shared racks. It has a mono input and a stereo return at
+44.1 kHz, using 19,396 bytes per active slot. Echoverb's DSP and 60,340-byte
+allocation are removed. Existing ID 8 slots now play the new reverb; the other
+effect IDs and routing stay intact. FREEZE uses this reverb in the optional
+punch allocation, with no second tank.
+
+The racks also offer SLOOP-style **DRIVE**, **CRUSH**, **FLANGER**,
+**PEDAL PHASER** and **PEDAL CHORUS**. DRIVE exposes DRIVE, TONE and SHAPE
+(SOFT, HARD, FOLD or FUZZ) with unity output level; CRUSH has BITS and ALIAS
+with bit-depth and sample-rate readouts and a fixed protective low-pass.
+The swept effects expose RATE, DEPTH and signed RESO. They preserve stereo,
+process equal mono input once until stereo arrives, and run on both inserts
+and CHAIN/SPLIT shared returns. Shared swept returns exclude the pedal's dry
+half. The existing PHASER/CHORUS remain distinct choices: the normal CHORUS is
+cheaper in host instruction measurements, while PEDAL CHORUS offers feedback.
+
+Buffered punches request 64 KiB while in use. MEMORY FULL / FX MEMORY indicates
+insufficient working memory. Hold FX briefly before reverse/rewind so the
+optional history contains past audio. See [implementation and key map](docs/SLOOP_PUNCH_FX.md).
+Audio Echo ID 6 stays retired and loads OFF. Note tail and Note echo remain note
+inserts. The old FX RATE fidelity setting is removed.
 
 With **CLK TRS** or **CLK USB**, musical timing follows MIDI clock pulses directly, so tempo
 changes do not shift the pattern. DIV sets the pattern's step length, while TEMPO QNT independently
@@ -973,7 +1007,7 @@ octave stays independent. The default program map is E: MIDI 100–115,
 F: 116–127 then 0–3, G: 4–19, H: 20–35. Banks A–D and banks for absent tracks are silent.
 Use the MPC's default pad map and enable Pad MIDI Out (Always, or Empty for empty pads).
 WHITE and ALL map incoming MIDI as the keys, without the octave buttons.
-ROOT, SCL, QNT and DEG are shared by all four tracks; TRN stays per track. DRUM tracks automatically
+ROOT, SCL, QNT and DEG are shared by all tracks; TRN stays per track. DRUM tracks automatically
 use the finger-drumming layout below in their assigned bank. Drum pads ignore bank octave, ROOT, TRN
 and DEG so each pad keeps its sound; the native keys retain their chromatic drum map and octave.
 Other kits and slices keep their own pitches. Controllers retain their MIDI channel routing;

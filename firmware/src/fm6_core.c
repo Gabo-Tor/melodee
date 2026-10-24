@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+#include "performance_options.h"
 /* FM6 core: six-operator FM that renders DX7 voices with native fp32 signal arithmetic.
  *
  * The synthesis is Dexed's (Pascal Gauthier; on MSFA by Raph Levien, Google), restated in C: ENGINE (the FM6
@@ -20,9 +21,6 @@
 
 #include "x0x/fastmath.h"
 
-#ifndef MELODEE_FM6_FAST
-#define MELODEE_FM6_FAST 1
-#endif
 
 /* the 155-byte patch: 6 x 21 operator bytes (the sixth operator first), then the voice */
 enum {
@@ -280,6 +278,12 @@ static __attribute__((noinline,section(".dsp_text"))) int32_t fm6_eg_step(fm6_eg
 
 static inline __attribute__((always_inline)) int32_t fm6_eg_step_run(fm6_eg_t *e, const uint8_t *op, int32_t ol, int32_t rs, int down)
 {
+#if MELODEE_FM6_FAST
+    /* Sustained and finished operators have no state transition. Avoid the
+     * far RAM call, while static holds still consume their exact samples. */
+    if (e->ix >= 3u && !e->hold && (e->ix >= 4u || down))
+        return e->level;
+#endif
     int32_t (*volatile run)(fm6_eg_t *, const uint8_t *, int32_t, int32_t, int) = fm6_eg_step;
     return run(e, op, ol, rs, down);
 }
@@ -349,6 +353,7 @@ typedef struct fm6_voice {                               /* a voice; operators i
     uint8_t down, sub, note, vel, eng, loop, fbs, quiet, played;
     uint8_t frozen;                                      /* stopped as by Dexed's panic: not kept running */
     uint8_t still;                                       /* over and at rest: 1 only time goes on, 2 nothing matters */
+    uint8_t midi_release;                                /* uses the former alignment byte; restore native R4 on bypass */
     int32_t spb;                                         /* the bend and tune it was at rest with */
 } fm6_voice_t;
 #define FM6_SILENT 1638400                               /* an envelope level no engine renders (MARK I: -96 dB) */

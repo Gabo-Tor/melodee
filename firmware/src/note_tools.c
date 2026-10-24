@@ -3,12 +3,13 @@
 /* Fractional manual edits and range transforms use the existing precise event
  * format. One bounded snapshot makes conversion, move and copy atomic/undoable. */
 typedef struct {
-    recorded_note_t notes[RECORD_MAX];
     step_t steps[NSTEP];
     uint32_t generation, pattern_gen, signature;
     motion_store_t motion;
     uint8_t valid, redo, track, cursor, len, clear;
     uint8_t slen;                /* LEN to swap in too (a doubled pattern), 0 = LEN stays */
+    uint16_t note_count;
+    recorded_note_t notes[RECORD_MAX]; /* variable allocation tail */
 } note_transaction_t;
 static note_transaction_t *note_transaction_ptr;
 #define note_transaction (*note_transaction_ptr)
@@ -23,34 +24,43 @@ static int32_t note_snap(int32_t value,int32_t delta,uint32_t quantum)
 static void note_duration(recorded_note_t *r,uint32_t duration)
 {
     uint32_t exp=0;while(duration>65535u&&exp<7u){duration>>=1;exp++;}
-    r->duration=(uint16_t)duration;r->owner=(r->owner&31u)|(exp<<5);
+    r->duration=(uint16_t)duration;recorded_set_exponent(r,exp);
 }
 static void note_onset(recorded_note_t *r,int32_t shift,uint32_t len,uint32_t quantum)
 {
-    int32_t position=(r->step&63u)*RECORD_UNIT+r->on+shift;
+    int32_t position=recorded_step(r)*RECORD_UNIT+r->on+shift;
     /* Quantize grids are powers of two that divide a step; zero means move. */
     if(quantum)position=(position+(int32_t)quantum/2)&~((int32_t)quantum-1);
     int32_t loop=(int32_t)(len*RECORD_UNIT);position%=loop;if(position<0)position+=loop;
     uint32_t actual=(uint32_t)position/RECORD_UNIT;
     r->on=(uint16_t)((uint32_t)position%RECORD_UNIT);
     uint32_t rounded=r->on>=RECORD_UNIT/2u;
-    r->step=(uint8_t)(actual|(rounded?64u:0u)|(rounded&&actual+1u==len&&actual?128u:0u));
+    recorded_set_step(r,actual,rounded,rounded&&actual+1u==len&&actual);
 }
 static int note_transaction_begin_track(track_t *t)
 {
-    note_transaction_ptr=resource_get(RES_NOTE_HISTORY,sizeof(note_transaction_t));
+    recording_prune(t);
+    uint32_t count=note_history_count(-1);
+    note_transaction_ptr=resource_get(RES_NOTE_HISTORY,__builtin_offsetof(note_transaction_t,notes)+note_history_bytes(count));
     if(!note_transaction_ptr){ui_message("NO EDIT MEMORY");return 0;}
 
-    recording_prune(t);
-    memcpy(note_transaction.notes,recording,sizeof recording);
+    note_transaction.note_count=(uint16_t)count;note_history_capture(note_transaction.notes,count,-1);
     memcpy(note_transaction.steps,t->step,sizeof note_transaction.steps);
     note_transaction.track=(uint8_t)trk_index(t);note_transaction.pattern_gen=t->pattern_gen;
     note_transaction.cursor=ui.cursor;note_transaction.len=(uint8_t)step_pattern_len(t);
     note_transaction.valid=1;note_transaction.redo=note_transaction.clear=note_transaction.slen=0;return 1;
 }
 static int note_transaction_begin(void){return note_transaction_begin_track(TSEL);}
+static void note_transaction_pack(void)
+{
+    if(note_transaction.note_count==RECORD_MAX){
+        note_transaction.note_count=(uint16_t)note_history_pack(note_transaction.notes);
+        resource_resize(RES_NOTE_HISTORY,__builtin_offsetof(note_transaction_t,notes)+note_history_bytes(note_transaction.note_count));
+    }
+}
 static void note_transaction_end(void)
 {
+    note_transaction_pack();
     note_transaction.generation=recording_generation;note_transaction.signature=steps_sig(&trk[note_transaction.track]);
     step_history_clear();ui.force=1;
 }
@@ -67,12 +77,16 @@ static int note_tools_history(int redo)
     if(note_transaction.pattern_gen!=t->pattern_gen||note_transaction.len!=step_pattern_len(t)||
        note_transaction.generation!=recording_generation||note_transaction.signature!=steps_sig(t)||
        (song.playing&&rec_on(t)))return 0;
+    fm1_irq_off();
+    note_transaction_t *grown=resource_resize(RES_NOTE_HISTORY,sizeof *grown);
+    if(!grown){fm1_irq_on();ui_message("NO EDIT MEMORY");return 1;}
+    note_transaction_ptr=grown;note_history_expand(note_transaction.notes,note_transaction.note_count);note_transaction.note_count=RECORD_MAX;
     if(note_transaction.clear){
         motion_store_t current;motion_snapshot_track(t,&current);
-        if(motion_replace_track(t,&note_transaction.motion)){ui_message("MOTION FULL");return 1;}
+        if(motion_replace_track(t,&note_transaction.motion)){note_transaction_pack();fm1_irq_on();ui_message("MOTION FULL");return 1;}
         note_transaction.motion=current;
     }
-    fm1_irq_off();recording_stop(t);
+    recording_stop(t);
     note_swap(recording,note_transaction.notes,sizeof recording);
     note_swap(t->step,note_transaction.steps,sizeof note_transaction.steps);
     if(note_transaction.slen){uint8_t len=(uint8_t)t->p[P_SLEN];t->p[P_SLEN]=note_transaction.slen;note_transaction.slen=len;note_transaction.len=(uint8_t)step_pattern_len(t);}
@@ -106,7 +120,7 @@ static int note_convert(uint32_t start)
     step_delete(TSEL,start);memcpy(&TSEL->step[start],&source,sizeof source);TSEL->step[start].flags|=SF_RECORDED;
     for(uint32_t j=0,i=0;j<count;j++){
         while(recording[i].vel)i++;
-        recorded_note_t r={0};r.note=nn[j];r.vel=vv[j];r.owner=(uint8_t)recording_owner(TSEL);r.step=(uint8_t)start;r.length=drum_track(TSEL)?1u:0u;
+        recorded_note_t r={0};r.note=nn[j];r.vel=vv[j];recorded_set_owner(&r,recording_owner(TSEL));recorded_set_step(&r,start,0,0);recorded_set_gate(&r,drum_track(TSEL));
         note_duration(&r,n*RECORD_UNIT);recording_restore_note(TSEL,i,r);i++;
     }
     cursor_set((int32_t)start);ui.note_pick=0;notes_selected(TSEL);return 1;
@@ -115,7 +129,7 @@ static void note_rebuild_all(void)
 {
     for(uint32_t i=0;i<NSTEP;i++)if(TSEL->step[i].flags&SF_RECORDED)step_delete(TSEL,i);
     for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i]){
-        if((recording[i].step&63u)>=step_pattern_len(TSEL))continue;
+        if(recorded_step(&recording[i])>=step_pattern_len(TSEL))continue;
         uint32_t view=recording_view(TSEL,&recording[i]);TSEL->step[view].time=ST_NOTE;TSEL->step[view].flags|=SF_RECORDED;
     }
     for(uint32_t i=0;i<NSTEP;i++)if(TSEL->step[i].flags&SF_RECORDED)notes_rebuild(TSEL,i);
@@ -127,15 +141,15 @@ static void note_manual_length(int32_t delta,uint32_t quantum)
     uint32_t at=notes_manual_start(TSEL);if(at>=NSTEP){ui_message("SELECT A NOTE");return;}
     fm1_irq_off();if(!note_transaction_begin()){fm1_irq_on();return;}
     if(!note_convert(at)){note_transaction.valid=0;fm1_irq_on();return;}
-    for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i])if((recording[i].step&63u)==at){
-        uint32_t duration=recording[i].duration*(1u<<(recording[i].owner>>5));
+    for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i])if(recorded_step(&recording[i])==at){
+        uint32_t duration=recording[i].duration*(1u<<(recorded_exponent(&recording[i])));
         note_duration(&recording[i],(uint32_t)clamp(note_snap((int32_t)duration,delta,quantum),(int32_t)quantum,128*RECORD_UNIT));
     }
     recording_generation++;ui.note_pick=0;notes_selected(TSEL);note_transaction_end();fm1_irq_on();
 }
 /* Fine moves and range transforms snap to quarter-step boundaries. A range's
  * offsets stay intact; copy shifts a duplicate. */
-static int bulk_note_has(uint32_t i) { return bulk.on==2u ? (bulk.notes[i/8u]>>(i%8u))&1u : bulk_has(recording[i].step&63u); }
+static int bulk_note_has(uint32_t i) { return bulk.on==2u ? (bulk.notes[i/8u]>>(i%8u))&1u : bulk_has(recorded_step(&recording[i])); }
 static void notes_bulk_delete(void)
 {
     if(chain_busy()||live_rec_sel()){ui_message("STOP TO EDIT");return;}
@@ -178,20 +192,28 @@ static void note_transform(int32_t delta,uint32_t quantum,int mode)
     uint8_t selected[RECORD_MAX/8u];memset(selected,0,sizeof selected);
     uint32_t reference=RECORD_MAX;
     for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i])if(note_transform_has(i,chosen)){
-        selected[i/8u]|=(uint8_t)(1u<<(i%8u));if(reference==RECORD_MAX || (recording[i].step&63u)*RECORD_UNIT+recording[i].on<(recording[reference].step&63u)*RECORD_UNIT+recording[reference].on)reference=i;
+        selected[i/8u]|=(uint8_t)(1u<<(i%8u));if(reference==RECORD_MAX || recorded_step(&recording[i])*RECORD_UNIT+recording[i].on<recorded_step(&recording[reference])*RECORD_UNIT+recording[reference].on)reference=i;
     }
     if(reference==RECORD_MAX){note_transaction.valid=0;fm1_irq_on();return;}
     /* Only probability and slide survive overview rebuilding. */
     uint16_t metadata[NSTEP];
     for(uint32_t k=0;k<len;k++)metadata[k]=TSEL->step[k].probability|((uint16_t)TSEL->step[k].flags<<8);
-    int32_t position=(recording[reference].step&63u)*RECORD_UNIT+recording[reference].on;
+    int32_t position=recorded_step(&recording[reference])*RECORD_UNIT+recording[reference].on;
     int32_t shift=note_snap(position,delta,quantum)-position;
     /* A move never overwrites a separate manual note; restore the conversion
      * too if any destination is occupied. */
     for(uint32_t i=0;i<RECORD_MAX;i++)if(selected[i/8u]&(1u<<(i%8u))){recorded_note_t r;note_assign(&r,&recording[i]);note_onset(&r,shift,len,quantize?quantum:0);uint32_t view=recording_view(TSEL,&r);
         if(!(TSEL->step[view].flags&SF_RECORDED)){uint32_t source=recording_view(TSEL,&recording[i]);metadata[view]=TSEL->step[source].probability|((uint16_t)TSEL->step[source].flags<<8);}
         if(notes_manual_occupied(TSEL,view)){
-        memcpy(recording,note_transaction.notes,sizeof recording);memcpy(TSEL->step,note_transaction.steps,sizeof note_transaction.steps);recording_reindex();cursor_set(note_transaction.cursor);ui.note_pick=0;note_transaction.valid=0;fm1_irq_on();ui_message("STEP OCCUPIED");return;}}
+        /* Restore a sparse snapshot directly: rollback never needs a larger
+         * allocation, including when the working arena is now exhausted. */
+        uint32_t n=0,count=note_transaction.note_count;const uint8_t *map=(const uint8_t *)note_transaction.notes+count*sizeof(recorded_note_t);
+        for(uint32_t j=0;j<RECORD_MAX;j++){
+            if(count==RECORD_MAX)recording[j]=note_transaction.notes[j];
+            else if(map[j/8u]&(1u<<(j%8u)))recording[j]=note_transaction.notes[n++];
+            else memset(&recording[j],0,sizeof recording[j]);
+        }
+        memcpy(TSEL->step,note_transaction.steps,sizeof note_transaction.steps);recording_reindex();cursor_set(note_transaction.cursor);ui.note_pick=0;note_transaction.valid=0;fm1_irq_on();ui_message("STEP OCCUPIED");return;}}
     uint32_t focus=RECORD_MAX;
     uint8_t moved[RECORD_MAX/8u];memset(moved,0,sizeof moved);
     for(uint32_t i=0;i<RECORD_MAX;i++)if(selected[i/8u]&(1u<<(i%8u))){recorded_note_t r=recording_snapshot(i);note_onset(&r,shift,len,quantize?quantum:0);uint32_t dest=i;
@@ -201,7 +223,7 @@ static void note_transform(int32_t delta,uint32_t quantum,int mode)
     }
     note_rebuild_all();
     for(uint32_t k=0;k<len;k++)if(TSEL->step[k].flags&SF_RECORDED){TSEL->step[k].probability=(uint8_t)metadata[k];TSEL->step[k].flags|=(metadata[k]>>8)&SF_SLIDE;}
-    if(focus<RECORD_MAX){cursor_set(recording[focus].step&63u);ui.note_pick=(uint16_t)(focus+1u);note_assign(&ui.note_identity,&recording[focus]);ui.note_generation=recording_generation;}
+    if(focus<RECORD_MAX){cursor_set(recorded_step(&recording[focus]));ui.note_pick=(uint16_t)(focus+1u);note_assign(&ui.note_identity,&recording[focus]);ui.note_generation=recording_generation;}
     if(bulk.on){bulk.on=2;memcpy(bulk.notes,moved,sizeof moved);bulk.generation=recording_generation;}note_transaction_end();fm1_irq_on();ui_message(quantize?"NOTES QUANTIZED":copy?"Copying..":"Moving..");
 }
 static void note_move_snapped(int32_t delta,uint32_t quantum,int copy){note_transform(delta,quantum,copy);}

@@ -30,18 +30,18 @@ static int take_valid(const take_spec_t *s)
     /* Overdub bases keep at most one note per cell on every armed track. */
     if (s->base != 0u && s->base != 64u && s->base != 256u) return 0;
     if (s->base == 256u && s->mask != 15u) return 0;
-    return strlen(s->assignment) == NTRK;
+    return strlen(s->assignment) == NPART;
 }
 static int take_restore(const uint8_t *raw)
 {
     if (!bank_valid(raw, BANK_STORE_SIZE) || project_restore_runtime(&proj_scratch)) return 0;
     bank_restore(raw);
-    return trk_n() == NTRK;
+    return trk_n() == NPART;
 }
 static int take_pack(uint8_t *raw)
 {
     recording_reindex(); project_capture(&proj_scratch);
-    return proj_scratch.parts == NTRK && bank_pack(raw, &proj_scratch, 1) && bank_valid(raw, BANK_STORE_SIZE);
+    return proj_scratch.parts == NPART && bank_pack(raw, &proj_scratch, 1) && bank_valid(raw, BANK_STORE_SIZE);
 }
 /* The runner's common sound setup zeroes these after loading presets. */
 static int take_base(const take_spec_t *s)
@@ -49,7 +49,7 @@ static int take_base(const take_spec_t *s)
     if (!take_valid(s)) return 0;
     if (s->base ? !make_fixture(s->base, s->quant, s->mask == 15u, 0, s->assignment) : !fixture_tracks(s->quant, s->assignment))
         return 0;
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         track_t *t = &trk[k];
         t->p[P_ALLOC] = t->p[P_GLIDE] = t->p[P_CHRD] = t->p[P_TRANS] = t->p[P_SPRD] = 0;
     }
@@ -70,8 +70,8 @@ static int take_prepare(const take_spec_t *s, const uint8_t *raw, uint32_t count
 static uint32_t take_drum(const take_spec_t *s, uint32_t k) { return s->assignment[k] >= '4'; }
 static void take_plan(const take_spec_t *s)
 {
-    uint32_t tracks[NTRK], nt = 0, n = 0;
-    for (uint32_t k = 0; k < NTRK; k++) if (s->mask & (1u << k)) tracks[nt++] = k;
+    uint32_t tracks[NPART], nt = 0, n = 0;
+    for (uint32_t k = 0; k < NPART; k++) if (s->mask & (1u << k)) tracks[nt++] = k;
     uint32_t per = s->notes / nt;
     for (uint32_t j = 0; j < nt; j++) for (uint32_t k = 0; k < per; k++) {
         /* The first note starts the stopped, armed transport at step zero. */
@@ -126,7 +126,7 @@ static int take_simulate(const take_spec_t *s, const uint8_t *raw, uint32_t seed
 {
     if (!take_prepare(s, raw, countin)) return 0;
     take_plan(s);
-    for (uint32_t k = 0; k < NTRK; k++) if (s->mask & (1u << k)) {
+    for (uint32_t k = 0; k < NPART; k++) if (s->mask & (1u << k)) {
         rec_set(&trk[k], 1);
         if (s->latch) song.rec_latch |= (uint8_t)(1u << k);
     }
@@ -143,7 +143,7 @@ static int take_simulate(const take_spec_t *s, const uint8_t *raw, uint32_t seed
     if (!song.playing || song.rec != s->mask) return 0;   /* the take must still be in its pass */
     for (uint32_t i = 0; i < 8u; i++) events_block(CTL);
     if (s->latch) {
-        for (uint32_t k = 0; k < NTRK; k++) if (s->mask & (1u << k)) rec_set(&trk[k], 0);
+        for (uint32_t k = 0; k < NPART; k++) if (s->mask & (1u << k)) rec_set(&trk[k], 0);
     } else {
         for (pos = 0; song.rec && pos < loop; pos += CTL) events_block(CTL);
     }
@@ -176,7 +176,7 @@ static void take_print(FILE *f, const char *tag, const uint8_t *raw)
                 r->step & 63u, r->step >> 6, r->on, r->duration, r->owner >> 5, r->note, r->vel, r->pitch, r->length);
     }
     /* Overview of the active banks; the fractional gate byte is timing. */
-    for (uint32_t k = 0; k < NTRK; k++) for (uint32_t i = 0; i < NSTEP; i++) {
+    for (uint32_t k = 0; k < NPART; k++) for (uint32_t i = 0; i < NSTEP; i++) {
         const step_t *s = &trk[k].step[i];
         uint8_t notes[4] = {0};
         for (uint32_t j = 0; j < s->n && j < 4u; j++) notes[j] = s->note[j];

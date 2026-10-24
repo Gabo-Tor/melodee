@@ -77,11 +77,11 @@ static void test_editing_tools(void)
     btn_down(B_LFO);turn(EN_K1,-4);int16_t kept=TSEL->p[param];press(B_OCTUP);
     fm1_in.buttons&=~(1u<<panel.btn[B_LFO]);frame();assert(TSEL->p[param]==kept && song.octave==0);
     set_engine_of(TSEL,ENGI_FM6);TSEL->engine=TSEL->eng_req;page_named("ALGO");
-    uint8_t patch[FP_SIZE+1];memcpy(patch,fm6_patch[0],sizeof patch);
-    btn_down(B_LFO);turn(EN_K1,1);assert(momentary.active);fm1_in.buttons=0;frame();assert(!memcmp(patch,fm6_patch[0],sizeof patch));
+    uint8_t patch[FP_SIZE+1];memcpy(patch,fm6_patch_of(0),sizeof patch);
+    btn_down(B_LFO);turn(EN_K1,1);assert(momentary.active);fm1_in.buttons=0;frame();assert(!memcmp(patch,fm6_patch_of(0),sizeof patch));
     set_engine_of(TSEL,ENGI_CZ);TSEL->engine=TSEL->eng_req;
     page_named("CZ LINE");
-    cz_patch_t cz=cz_patch[0];btn_down(B_LFO);turn(EN_K1,1);assert(momentary.active);fm1_in.buttons=0;frame();assert(!memcmp(&cz,cz_patch,sizeof cz));
+    cz_patch_t cz=(*cz_patch_of(0));btn_down(B_LFO);turn(EN_K1,1);assert(momentary.active);fm1_in.buttons=0;frame();assert(!memcmp(&cz,cz_patch,sizeof cz));
     set_engine_of(TSEL,ENGI_PROPHET);TSEL->engine=TSEL->eng_req;page_named("P5 FILTER");
     p5_patch_t p5=*p5_patch_of(TSEL);TSEL->p[P_PRIO]=2;btn_down(B_LFO);turn(EN_K1,-1);assert(momentary.active);fm1_in.buttons=0;frame();
     assert(!memcmp(&p5,p5_patch_of(TSEL),sizeof p5) && TSEL->p[P_PRIO]==2);
@@ -108,7 +108,7 @@ static void test_compatibility(void)
     assert(settings_import(&p,sizeof p));assert(settings_click==2 && !settings_click_level && settings_countin==2 && settings_preview && settings_chord_add);
     p.zoom=1;assert(settings_import(&p,sizeof p));assert(!settings_click && settings_click_level==1 && !settings_countin && !settings_preview && !settings_chord_add);
     project_t q,back;project_store_t current;project_capture(&q);q.t[0].p[P_E4]=53;
-    for(uint32_t t=0;t<NTRK;t++)q.t[t].p[P_RESERVED35]=77;   /* delay sends and their automation (a FUN16's are kept) */
+    for(uint32_t t=0;t<NPART;t++)q.t[t].p[P_RESERVED35]=77;   /* delay sends and their automation (a FUN16's are kept) */
     q.g[G_RESERVED25]=3;q.g[G_RESERVED26]=9;q.g[G_RESERVED4]=2;q.motion.count=1;q.motion.event[0]=(motion_event_t){0,P_RESERVED35,100};q.sum=proj_sum(&q);
     assert(proj_pack(&current,&q));
     assert(proj_import(&back,&current,PROJ_STORE_SIZE) && back.t[1].p[P_RESERVED35]==77 && back.g[G_RESERVED25]==3 && back.g[G_RESERVED26]==9 &&

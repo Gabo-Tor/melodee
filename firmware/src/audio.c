@@ -97,7 +97,7 @@ static void shed_voice(void)
     if (best) {
         voice_kill(best);
         shed_count++;
-        shed_part[((uintptr_t)best - (uintptr_t)trk) / sizeof(track_t)]++;
+        shed_part[voice_part(best) % NPART]++;
         return;
     }
     for (p = 0; p < NPART; p++) {
@@ -115,7 +115,7 @@ static void shed_voice(void)
     if (best) {
         voice_kill(best);
         shed_count++;
-        shed_part[((uintptr_t)best - (uintptr_t)trk) / sizeof(track_t)]++;
+        shed_part[voice_part(best) % NPART]++;
     }
 }
 

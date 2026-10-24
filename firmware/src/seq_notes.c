@@ -10,7 +10,7 @@ static void note_assign(recorded_note_t *dest,const recorded_note_t *source)
 }
 static int notes_in_step(const track_t *t, uint32_t i)
 {
-    return i < RECORD_MAX && recording_active(t, i) && (recording[i].step & 63u) == ui.cursor;
+    return i < RECORD_MAX && recording_active(t, i) && recorded_step(&recording[i]) == ui.cursor;
 }
 static int notes_before(uint32_t a, uint32_t b)
 {
@@ -38,6 +38,17 @@ static uint32_t notes_selected(const track_t *t)
     }
     if (chosen < RECORD_MAX) note_assign(&ui.note_identity,&recording[chosen]);
     return chosen;
+}
+/* Shared by note preview and the drum editor, including undo preview. */
+static uint32_t drum_hit_selected(void)
+{
+    uint32_t selected=ui.note_pick?ui.note_pick-1u:RECORD_MAX, first=RECORD_MAX;
+    for(uint32_t i=recording_head[recording_owner(TSEL)];i<RECORD_MAX;i=recording_next[i]){
+        if(!recording_active(TSEL,i) || recording_view(TSEL,&recording[i])!=ui.cursor || drum_sound_of(TSEL,recording[i].note)!=ui.drum_sound%drum_sound_count(TSEL))continue;
+        if(i==selected)return i;
+        if(first==RECORD_MAX || recording[i].on<recording[first].on)first=i;
+    }
+    return first;
 }
 static uint32_t notes_rank(const track_t *t, uint32_t chosen, uint32_t *count)
 {
@@ -169,7 +180,7 @@ static void notes_preview(void)
     if(pg->scope==SC_DRUMHIT)chosen=drum_hit_selected();
     int32_t pitch=0;uint32_t gate=0;
     if(chosen<RECORD_MAX) { const recorded_note_t *r=&recording[chosen];nn[count]=r->note;vv[count++]=r->vel;
-        if(drum_track(TSEL)){pitch=r->pitch;if(r->length)gate=(uint32_t)(((uint64_t)r->duration<<(r->owner>>5))*seq_div_samples(TSEL->p[P_SDIV])/RECORD_UNIT);}
+        if(drum_track(TSEL)){pitch=r->pitch;if(recorded_gate(r))gate=(uint32_t)(((uint64_t)r->duration<<(recorded_exponent(r)))*seq_div_samples(TSEL->p[P_SDIV])/RECORD_UNIT);}
     }
     else {
         uint32_t at=step_note_start(TSEL,ui.cursor);

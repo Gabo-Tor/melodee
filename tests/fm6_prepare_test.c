@@ -93,6 +93,34 @@ static __attribute__((noinline)) void plan_candidate(fm6_voice_t *s, const int32
 
 static uint32_t random_state = 0x5783492u;
 static uint32_t next_u(void) { random_state = random_state * 1664525u + 1013904223u; return random_state; }
+/* Compare the wrapper against the unchanged envelope body, including holds
+ * on sustained stages, release transitions, and completed operators. */
+static void envelope_parity(void)
+{
+    uint8_t op[FP_OP] = {0};
+    uint32_t cases = 0;
+    for (uint32_t ix = 0; ix <= 4; ix++) for (int down = 0; down < 2; down++)
+        for (uint32_t rate = 0; rate < 100; rate += 3)
+            for (uint32_t level = 0; level < 100; level += 7) {
+                for (uint32_t k = 0; k < 4; k++) {
+                    op[FP_R1+k] = (uint8_t)((rate+k*7)%100);
+                    op[FP_L1+k] = (uint8_t)((level+k*11)%100);
+                }
+                fm6_eg_t a = {0}, b;
+                a.level = (int32_t)(next_u() % (17u<<24));
+                fm6_eg_go(&a, op, 2000, 3, ix);
+                /* Exercise exact hold expiry, including on ix 3 while down. */
+                if (level % 3 == 0) a.hold = (int32_t)(level+1);
+                b = a;
+                for (uint32_t tick = 0; tick < 160; tick++) {
+                    int32_t original = (fm6_eg_step)(&a, op, 2000, 3, down);
+                    int32_t fast = fm6_eg_step(&b, op, 2000, 3, down);
+                    assert(original == fast && !memcmp(&a, &b, sizeof a));
+                    cases++;
+                }
+            }
+    printf("FM6 envelope wrapper: %u hold, sustain, release and completion transitions exact\n", cases);
+}
 static void parity(void)
 {
     fm6_voice_t a={0},b={0}; int32_t lv[6];
@@ -149,4 +177,4 @@ static void benchmark(void)
         if(cost[0]) assert(cost[1] < cost[0]*(mode<2?.85:1.04));
     }
 }
-int main(int argc,char **argv) { parity(); if(argc==1)benchmark(); return 0; }
+int main(int argc,char **argv) { envelope_parity(); parity(); if(argc==1)benchmark(); return 0; }

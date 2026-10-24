@@ -12,10 +12,13 @@ static void dense(pattern_t *p)
 {
     for (uint32_t i=0;i<NSTEP;i++) {
         step_t *s=&p->step[i];
-        for(uint32_t n=0;n<4;n++)s->note[n]=(uint8_t)(random_word()>>24);
-        s->n=(uint8_t)(random_word()%5u);s->time=(uint8_t)(random_word()%3u);
-        s->flags=(uint8_t)(random_word()%8u);s->vel=(uint8_t)(random_word()>>24);
-        s->hit=(uint8_t)(random_word()>>24);s->acc=(uint8_t)(random_word()>>24);s->probability=(uint8_t)(random_word()>>24);
+        /* any step the device makes: 7-bit notes and velocity, chance up to 101, no n on a rest or tie
+         * (the pool's packing, step_packed_put) and accents a step can hold */
+        for(uint32_t n=0;n<4;n++)s->note[n]=(uint8_t)(random_word()>>25);
+        s->time=(uint8_t)(random_word()%3u);s->n=(uint8_t)(s->time==ST_NOTE?random_word()%5u:0u);
+        s->flags=(uint8_t)(random_word()%8u);s->vel=(uint8_t)(random_word()>>25);
+        s->hit=(uint8_t)(random_word()>>24);s->acc=(uint8_t)(random_word()>>24);s->probability=(uint8_t)(random_word()%102u);
+        if(s->hit)s->acc&=s->hit;else if(s->time==ST_REST)s->acc=0;
     }
     p->timing[0]=(int16_t)(1u+random_word()%NSTEP);p->timing[1]=2;p->timing[2]=7;p->timing[3]=90;
 }
@@ -83,7 +86,11 @@ static void codecs_and_mutations(void)
             uint32_t at=(random_word()>>9)%NSTEP;
             if(action==2)dense(&p);
             else if(action==3)p.step[at]=(step_t){{0},0,ST_REST};
-            else{p.step[at].note[3]^=31u;p.step[at].time=(uint8_t)(random_word()%3u);}
+            else{                                   /* (a rest or tie as the device makes it: no n, no gate) */
+                step_t *s=&p.step[at];s->note[3]^=31u;s->time=(uint8_t)(random_word()%3u);
+                if(s->time!=ST_NOTE)s->n=0;
+                if(!s->hit && s->time==ST_REST)s->acc=0;
+            }
             pattern_prepare(k,bank); /* publication must invalidate a prepared destination */
             model[k][bank]=p;pattern_write(k,bank,&p);
         }

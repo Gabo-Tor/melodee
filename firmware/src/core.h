@@ -2,11 +2,13 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* MELODEE core types: tracks, voices, engines, parameters.
- * Up to four tracks (all four to start with: song.ntrk), each a synth part: its own engine, preset, parameters, voices and
- * 64-step pattern. The parts share one budget of VBUDGET units of sounding voices (voice.c). Drums are the DRUM
- * engine (synthesized 808 on the General MIDI map) on any part.
+ * Up to eight tracks (all four parts to start with: song.ntrk). Tracks 1..4 are synth parts: their own engine, preset,
+ * parameters, voices and 64-step patterns. The parts share one budget of VBUDGET units of sounding voices (voice.c).
+ * Drums are the DRUM engine (synthesized 808 on the General MIDI map) on any part. Tracks 5..8 are MIDI-only: always
+ * the MIDI Track engine, sequenced like the parts, never rendered or mixed (NMIDI).
  * Sections: sizes, parameters, voices and engines, tracks and the song, system. */
 #include <stdint.h>
+#include "performance_options.h"
 #include "tuning.h"
 #include "audio_profile.h"
 #include "wire_bits.h"
@@ -15,9 +17,6 @@
 #define NVOICE 16                /* voice slots per part (FM6 plays Dexed's 16) */
 #define NPOLY 8                  /* the voices of an engine without its own cap (its per-voice state: engines.c eng_state) */
 #define NPART 4                  /* synth parts: tracks 1..4 */
-#ifndef MELODEE_RAM_AUDIO
-#define MELODEE_RAM_AUDIO 0       /* resident audio profile: full audio graph executes in SRAM */
-#endif
 #ifndef VBUDGET
 #define VBUDGET (MELODEE_RAM_AUDIO ? 18u : 16u) /* shared weighted voices; RAM profile uses 18 with CPU1 online
                                                  * at 360 MHz (voice.c voice_budget: scaled with a kept 320) */
@@ -29,9 +28,30 @@
 #ifndef MELODEE_AUDIO_BENCH
 #define MELODEE_AUDIO_BENCH 0 /* laboratory fixed-voice admission bypass; never a release default */
 #endif
-#define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
+#ifndef NMIDI
+#define NMIDI 4                  /* MIDI-only tracks: tracks 5..8, the MIDI Track engine and no audio */
+#endif
+#define NTRK (NPART + NMIDI)     /* tracks: the parts, then the MIDI-only ones (a project's first NPART on its FUN wire) */
+/* Shared with engine-buffer placement: the queued recorder needs one runtime
+ * counter per event, while the reference countdown implementation needs two. */
+#ifndef MELODEE_RECORD_CURSOR
+#define MELODEE_RECORD_CURSOR 1
+#endif
+#ifndef MELODEE_RECORD_QUEUE
+#define MELODEE_RECORD_QUEUE MELODEE_RECORD_CURSOR
+#endif
+#if MELODEE_RECORD_QUEUE && !MELODEE_RECORD_CURSOR
+#error "The release queue requires the ordered onset cursor"
+#endif
+/* Host capacity fixtures can exercise the larger identifier space before a
+ * new project schema and the device UI enable it in shipping builds. */
+#ifndef NSTEP
 #define NSTEP 64
+#endif
+#ifndef NPAT
 #define NPAT 8u
+#endif
+_Static_assert(NSTEP <= 128u && NTRK * NPAT <= 64u, "recorded-note identifiers");
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
 /* SLICE retired. Keep its stored engine number reserved. */
 #ifdef MELODEE_SLICE
@@ -50,13 +70,14 @@
 #define ENGI_PROPHET 19u /* 16..18 reserved: historical preset namespaces */
 #define USER_GENERAL 16u
 #define USER_NATIVE_P5 20u
-#define NENGINES 20               /* 13 SLICE and 14 OBXF reserved; 15 native CZ-1 */
+#define ENGI_MIDI 21u            /* 20 reserved for the Prophet user-preset namespace */
+#define NENGINES 22               /* append engines without reusing preset namespaces */
 #define USER_NATIVE_FM 17u
 #define USER_NATIVE_CZ 18u
 #define USER_NONE 65535u
 #define ENGI_ANALOG 0u           /* retired in 1.2: never selectable (eng_ok), its stored sounds play silent */
 #define ENGI_DIGITAL 1u          /* retired: never selectable (eng_ok), its stored sounds play silent */
-#define NENG_SHOWN (NENGINES - 8u - !MELODEE_SLICE - 6u * !MELODEE_LEGACY_EXTRAS)   /* the engines one can pick: PRESETS, the EDIT
+#define NENG_SHOWN (6u + MELODEE_SLICE + 6u * MELODEE_LEGACY_EXTRAS)   /* the engines one can pick: PRESETS, the EDIT
                                                 * layer, the editor, in the display order of engines.c ENGINE_ORDER */
 #define ENGI_SLICE 13u           /* reserved without MELODEE_SLICE: never selectable (eng_ok) */
 #ifdef SMP_USER_SLOTS
@@ -71,7 +92,8 @@ enum {
     F_INT, F_PCT, F_BIPCT, F_TIME, F_LFOHZ, F_CUTOFF, F_DB, F_SEMI, F_ENUM, F_BPM, F_NOTE,
     F_ONOFF, F_OCT, F_STEPS,
     F_OFS, F_FMNOTE, F_FMFRQ,   /* FM6's pages: 0 at the middle of the range, the DX7 break point, an operator's frequency */
-    F_TONE                      /* an FX slot's TONE: DARK (a high cut) .. FULL .. THIN (a low cut), fx_tone_hz */
+    F_TONE,                     /* an FX slot's TONE: DARK (a high cut) .. FULL .. THIN (a low cut), fx_tone_hz */
+    F_BITS, F_ALIAS             /* CRUSH's bits and the rate of its held samples */
 };
 
 typedef struct {
@@ -120,11 +142,19 @@ enum {                          /* per-track parameters */
 };
 #define FX_SLOTS 3u
 #define FX_PARAMS 4u
+/* Append-only effect IDs; shared pickers leave MIDI-only IDs empty. */
+enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_AUDIO_COUNT, FX_MIDIVERB = FX_AUDIO_COUNT, FX_MIDIDELAY, FX_SOFT, FX_HARD, FX_FOLD, FX_FUZZ, FX_CRUSH, FX_FLANGER, FX_PEDAL_PHASER, FX_PEDAL_CHORUS, FX_COUNT };
+/* Slot 6 stays retired. Slot 8 is the SLOOP reverb replacement. */
+static int fx_retired(int32_t type) { return type == FX_ECHO; }
+static int fx_sloop_type(int32_t t){return t>=FX_SOFT && t<=FX_PEDAL_CHORUS;}
+static int fx_sloop_swept(int32_t t){return t>=FX_FLANGER && t<=FX_PEDAL_CHORUS;}
+static int fx_third_control(int32_t t){return fx_sloop_swept(t) || t==FX_ROOM || t==FX_REVERB;}
+static int fx_is_midi(int32_t type) { return type == FX_MIDIVERB || type == FX_MIDIDELAY; }
 #define FX_CHAIN_COUNT (NPART+1u)
 #define FX_STATE_COUNT (FX_CHAIN_COUNT*FX_SLOTS)
 #define FX_TONE_MAX 63
 static int param_fx_tone(uint32_t id) { return id>=P_FXTONE && id<=P_FX3TONE; }
-static int fx_has_tone(int32_t type) { return type>=6 && type<=8; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
+static int fx_has_tone(int32_t type) { return type==FX_ROOM || type==FX_REVERB; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
 static int param_fx(uint32_t id) { return (id>=P_FXTYPE && id<=P_FX3CHAR) || param_fx_tone(id); }
 /* TONE -63..63 -> the cut it sets (Hz), 0 = FULL (none but the effect's own floor, fx_floor_hz): below 0 a high cut,
  * 2640 Hz at -1 down to 120 Hz at -63; above 0 a low cut, 150 Hz at 1 up to 1280 Hz at 63 (squared: fine steps where
@@ -138,7 +168,9 @@ static int32_t fx_tone_hz(int32_t v)
 /* the low cut ECHO (100 Hz), ROOM and REVERB (150 Hz) keep at FULL and under a high cut: what enters them never booms */
 #define FX_FLOOR_ECHO 100
 #define FX_FLOOR_SPACE 150
-static int32_t fx_floor_hz(int32_t type) { return type == 6 ? FX_FLOOR_ECHO : FX_FLOOR_SPACE; }
+static int32_t fx_floor_hz(int32_t type) {
+    return type==FX_REVERB ? 0 : FX_FLOOR_SPACE;
+}
 static int32_t fx_low_cut_hz(int32_t type, int32_t v)   /* an ECHO / ROOM / REVERB slot's low cut at TONE v */
 {
     int32_t f = fx_floor_hz(type), t = v > 0 ? fx_tone_hz(v) : 0;
@@ -195,6 +227,8 @@ static void params_by_count(int16_t *out, const int16_t *in, uint32_t np, const 
         out[i] = i < nc ? in[i] : def[i];
     for (i = 0; i < 8u; i++)
         out[P_E0 + i] = in[nc + i];
+    for (i = 0; i < FX_SLOTS; i++)
+        if (fx_retired(out[P_FXTYPE + i * FX_PARAMS])) out[P_FXTYPE + i * FX_PARAMS] = FX_OFF;
 }
 
 /* engine indices the stores name (engines.c ENGINES[]: append-only) */
@@ -227,7 +261,11 @@ typedef struct {
     int32_t fine;                /* unison detune: phase increment * (1 + fine / 4096) */
     int32_t scale_fine;          /* note-on snapshot: scale pitch below 1/16 semitone */
     uint32_t ph[3];
-    int32_t s[8];                /* engine state (filters, envs) */
+#if MELODEE_LEGACY_EXTRAS
+    int32_t s[8];                /* retired VOICE/NOISE also use slots 6 and 7 */
+#else
+    int32_t s[6];                /* current engines: slots 0..5, including drum gates */
+#endif
     uint32_t age;
     uint8_t mvel;                /* mod.c: the note-on velocity (before UNISON scaling) and RAND of the note */
     int16_t mrnd;
@@ -313,13 +351,11 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #define SF_RECORDED 4u                         /* step is a view of timed notes, played by recording.c */
 #define RECORD_MAX 1024u
 #define RECORD_UNIT 65536u                     /* fractional onset within its swung step; duration uses an exponent */
-/* owner: bank/track in low 5 bits, duration exponent in high 3. step: actual index in
- * low 6 bits, overview rounded forward in bit 6, wrapped to zero in bit 7. */
-typedef struct { uint16_t on, duration; uint8_t note, vel, owner, step; int8_t pitch; uint8_t length; } recorded_note_t;
-_Static_assert(sizeof(recorded_note_t) == 10u, "timed note layout");
+#include "recorded_note.h"
 /* Sound offsets: semitones, decay and voice character; zero preserves the factory kit. */
 typedef struct { int8_t c[16][4]; } drum_patch_t;
-static drum_patch_t drum_patch[NTRK];
+static drum_patch_t drum_patch[NPART], drum_patch_none;   /* the parts'; a MIDI-only track's: none (never heard) */
+static drum_patch_t *drum_patch_of(uint32_t k) { return k < NPART ? &drum_patch[k] : &drum_patch_none; }
 static int drum_patch_valid(const drum_patch_t *p)
 {
     for(uint32_t i=0;i<16;i++)if(p->c[i][0]<-24 || p->c[i][0]>24 || p->c[i][1]<-64 || p->c[i][1]>63 || p->c[i][2]<-64 || p->c[i][2]>63 || p->c[i][3]<0)return 0;
@@ -388,7 +424,7 @@ typedef struct track {
     int8_t mpc_octave;           /* MPC bank's input octave, -3..3; independent of song.octave */
     uint16_t user;                /* user preset slot + 1 the sound came from (UI), 0 = none */
     uint8_t user_native;         /* legacy project origin only; new presets use the shared bank */
-    voice_t v[NVOICE];
+    voice_t *v;                  /* NVOICE voices: the part's (part_voice), a MIDI-only track the silent midi_voice */
     /* LFO */
     uint32_t lfo_ph;
     int32_t lfo_val;             /* Q15 */
@@ -458,7 +494,7 @@ typedef struct {
     uint8_t rec_wait, rec_pass;   /* waiting for loop zero, or recording since pattern start */
     uint8_t rec_latch;           /* explicit REC stays armed across pattern ends: bit per track */
     uint8_t sel;                 /* selected track 0..trk_n()-1: keys, pages, editor */
-    uint8_t ntrk;                /* tracks in use: 1..ntrk play, the rest wait empty and silent (0: all NTRK) */
+    uint8_t ntrk;                /* tracks in use: 1..ntrk play, the rest wait empty and silent (0: the NPART parts) */
     int8_t octave;
     uint32_t tick;               /* sub-blocks since play */
     uint32_t cpu_q8;             /* audio ISR load, 1/256 */
@@ -466,15 +502,35 @@ typedef struct {
     int32_t batt_raw;            /* smoothed ADC ch3 (battery divider), 0 = not read yet */
 } song_t;
 
-static track_t trk[NTRK];        /* the instrument: four parts */
+static track_t trk[NTRK];        /* the instrument: four parts, then the MIDI-only tracks */
+static voice_t part_voice[NPART][NVOICE];
+static voice_t midi_voice[NVOICE];   /* shared by the MIDI-only tracks: never started (their notes go out as MIDI) */
+static void trk_voices_bind(void)    /* boot, and a host fixture after clearing trk: every voice silent */
+{
+    memset(part_voice, 0, sizeof part_voice);
+    memset(midi_voice, 0, sizeof midi_voice);
+    for (uint32_t k = 0; k < NTRK; k++) trk[k].v = k < NPART ? part_voice[k] : midi_voice;
+}
+/* the part a voice belongs to (NPART: none, midi_voice) */
+static inline uint32_t voice_part(const voice_t *v)
+{
+    uintptr_t d = (uintptr_t)v - (uintptr_t)part_voice;
+    return (uintptr_t)v >= (uintptr_t)part_voice && d < sizeof part_voice ? (uint32_t)(d / sizeof part_voice[0]) : NPART;
+}
 static song_t song;
+/* Audio-owner snapshot of the insert release override; zero keeps the sound's envelope. */
+static uint8_t midi_verb[NTRK];
 #define TSEL (&trk[song.sel])    /* the selected track */
 
 static int32_t input_octave(const track_t *t)
 { return t->p[P_QUANT] == Q_MPC ? t->mpc_octave : song.octave; }
 /* The tracks in use: 1..trk_n(), always from track 1 (it clocks the song). The others keep their structs, sound and
  * play nothing (voice.c trk_note_on), are drawn nowhere and get a fresh sound when added (project.c track_add) */
-static inline uint32_t trk_n(void) { return song.ntrk - 1u < NTRK ? song.ntrk : NTRK; }
+static inline uint32_t trk_n(void) { return song.ntrk - 1u < NTRK ? song.ntrk : NPART; }
+/* the parts in use: the tracks the audio renders and mixes (a MIDI-only track never sounds) */
+static inline uint32_t trk_parts(void) { uint32_t n = trk_n(); return n < NPART ? n : NPART; }
+/* track k can only be a MIDI Track (tracks 5..8) */
+static inline int trk_midi_slot(uint32_t k) { return k >= NPART && k < NTRK; }
 
 #include "microtonal.h"
 

@@ -106,7 +106,7 @@ static void prophet_numerics(void)
     p5_patch_t patch;p5_patch_init(&patch);uint8_t values[55];memcpy(values,patch.raw,55);
     values[P5_DECAY_AMP]=127;values[P5_SUSTAIN_AMP]=0;
     p5_env_t env={.value=0.002f,.stage=2};float before=env.value;
-    p5_env_tick(&env,1,patch.raw,P5_ATTACK_AMP,P5_DECAY_AMP,P5_SUSTAIN_AMP,P5_RELEASE_AMP,0,values,0);
+    p5_env_tick(&env,1,patch.raw,P5_ATTACK_AMP,P5_DECAY_AMP,P5_SUSTAIN_AMP,P5_RELEASE_AMP,0,values,0,0);
     assert(env.value>0 && env.value<before && before-env.value<1e-6f);
     printf("fp32 Prophet: double filter error %.3g; sub-PCM filter/envelope state preserved\n",max_error);
 }

@@ -48,7 +48,7 @@ static __attribute__((noinline)) int capture_reference(track_t *t, uint32_t note
     if (recording_sounding(free)) recording_end(&trk[(recording[free].owner & 31u) / NPAT], free);
     recording_unlink(free);
     recorded_note_t *r = &recording[free];
-    *r = (recorded_note_t){(uint16_t)on, 1, (uint8_t)note, (uint8_t)vel, (uint8_t)owner, (uint8_t)(actual | (step != actual ? 64u : 0u) | (step == 0u && actual ? 128u : 0u))};
+    *r = (recorded_note_t){.on=(uint16_t)on, .duration=1, .note=(uint8_t)note, .vel=(uint8_t)vel, .owner=(uint8_t)owner, .step=(uint8_t)(actual | (step != actual ? 64u : 0u) | (step == 0u && actual ? 128u : 0u))};
     recording_insert(t, free);
     memset(&recording_run[free], 0, sizeof recording_run[free]);
     recording_flags[free] = 13;
@@ -91,7 +91,7 @@ static uint64_t state_hash(int rc)
     uint32_t generation = recording_generation; uint8_t full = recording_full;
     MIX(generation); MIX(full); MIX(recording_tracks); MIX(recording_undo_active); MIX(recording_undo_skip);
     MIX(recording_undo_lost); MIX(trk); MIX(song); MIX(resource);
-    for (uint32_t k=0;k<NTRK;k++) for (uint32_t b=0;b<NPAT;b++) {
+    for (uint32_t k=0;k<NPART;k++) for (uint32_t b=0;b<NPAT;b++) {
         pattern_t p; pattern_read(k,b,&p); MIX(p);
     }
     for (uint32_t b = 0; b < RESOURCE_BANKS; b++) mix(resource_banks[b].start, (size_t)(resource_banks[b].end - resource_banks[b].start));
@@ -106,7 +106,7 @@ static void set_cell(uint32_t k, uint32_t bank, uint32_t i, step_t s)
 }
 static void stale(void)
 {
-    uint32_t k = rnd(NTRK), bank = rnd(NPAT), i = rnd(NSTEP);
+    uint32_t k = rnd(NPART), bank = rnd(NPAT), i = rnd(NSTEP);
     step_t s = pattern_step(k, bank, i);
     switch (rnd(3)) {
     case 0: s.time = ST_REST; break;
@@ -168,10 +168,10 @@ static void scenario(uint32_t seed, int impl, uint64_t *out)
     recording_reindex();
     for (uint32_t i = fresh ? 0u : rnd(48); i; i--) stale();
     seq_stop(); song.rec = song.rec_latch = 0; settings_countin = 0;
-    for (uint32_t k = 0; k < NTRK; k++) if (rnd(3)) { rec_set(&trk[k], 1); if (rnd(2)) song.rec_latch |= (uint8_t)(1u << k); }
+    for (uint32_t k = 0; k < NPART; k++) if (rnd(3)) { rec_set(&trk[k], 1); if (rnd(2)) song.rec_latch |= (uint8_t)(1u << k); }
     seq_start(); seq_advance(0);
     for (uint32_t o = 0; o < OPS; o++) {
-        track_t *t = &trk[rnd(NTRK)];
+        track_t *t = &trk[rnd(NPART)];
         uint32_t note = pool[rnd(sizeof pool)], op = rnd(10), rc = 0;
         if (op < 6) {
             uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u;

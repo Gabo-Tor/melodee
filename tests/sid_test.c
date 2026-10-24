@@ -107,7 +107,7 @@ static voice_t *V;
 static vmod_t M;
 static void direct(uint32_t preset, uint32_t note)
 {
-    memset(trk, 0, sizeof trk); host_tracks_init(); host_preset(&trk[0], 3, preset);
+    memset(trk, 0, sizeof trk);trk_voices_bind(); host_tracks_init(); host_preset(&trk[0], 3, preset);
     T = &trk[0]; V = &T->v[0];
     memset(V, 0, sizeof *V);
     V->vel = 127; V->gate = V->active = 1;
@@ -150,7 +150,7 @@ static uint32_t chord_up(const uint8_t *c, uint32_t n, uint32_t cur)
 }
 static void fresh(uint32_t preset)
 {
-    memset(trk, 0, sizeof trk); host_tracks_init(); host_preset(&trk[0], 3, preset); T = &trk[0];
+    memset(trk, 0, sizeof trk);trk_voices_bind(); host_tracks_init(); host_preset(&trk[0], 3, preset); T = &trk[0];
     T->p[P_RESERVED33] = T->p[P_RESERVED34] = T->p[P_RESERVED35] = T->p[P_RESERVED36] = 0;
 }
 

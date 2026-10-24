@@ -25,7 +25,7 @@ static uint64_t job_instructions(void)
 static int32_t out[CTL];
 static void measure(uint32_t engine,uint32_t variant,uint32_t feature,uint32_t note)
 {
-    memset(trk,0,sizeof trk);eng_state_reset();host_tracks_init();
+    memset(trk,0,sizeof trk);trk_voices_bind();eng_state_reset();host_tracks_init();
     track_t *t=&trk[0];host_preset(t,engine,0);t->p[P_VOICE]=V_MONO;t->p[P_ALLOC]=1;
     t->p[P_LD_PIT]=t->p[P_ED_PIT]=0;t->p[P_SUS]=127;
     uint32_t id;
@@ -42,7 +42,7 @@ static void measure(uint32_t engine,uint32_t variant,uint32_t feature,uint32_t n
         for(uint32_t k=0;k<6;k++)p[k*FP_OP+FP_OL]=(uint8_t)(feature?90:k?0:90);
         fm6_put_patch(0,p,1);fm6_fn[0][FN_ENGINE]=0;
     }else if(engine==ENGI_CZ){
-        id=AP_CZ;cz_patch[0].raw[0]=(uint8_t)variant;
+        id=AP_CZ;cz_patch_of(0)->raw[0]=(uint8_t)variant;
     }else if(engine==3){id=AP_SID;t->p[P_E0]=(int16_t)variant;t->p[P_E2]=(int16_t)(feature?6:1);}
     else {t->p[P_E0]=(int16_t)(variant?DK_909:DK_808);id=variant?AP_909:AP_808;}
     trk_note_on(t,note,110);audio_batch_active=1;

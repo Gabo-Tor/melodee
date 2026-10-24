@@ -75,6 +75,7 @@ static void mock_write(uint32_t r, uint32_t v)
 #define MELODEE_USB_AUDIO 1
 #define MELODEE_CDC 0
 #define MELODEE_OTA 0
+#include "usb_audio_memory.h"
 #include "../firmware/src/usb.c"
 
 static void frame(uint16_t n)
@@ -281,7 +282,7 @@ static void volume_controls(void)
      * volume nor mute may alter the synth master or the four recorded stems. */
     for (uint32_t channels = 2; channels <= 4; channels += 2)
     for (uint32_t alt = 1; alt <= 2; alt++) {
-        ua_host_volume_reset(); ua_reset(); ua_cap_channels = (uint8_t)channels;
+        ua_host_volume_reset(); ua_reset(); ua_cap_channels = (uint8_t)channels;assert(ua_tracks_memory_prepare(channels==4u));
         ua.play_alt = ua.cap_alt = (uint8_t)alt;
         ua.pw = 800;
         for (uint32_t i = 0; i < UA_RING; i++) { ua.play[2*i] = 2000; ua.play[2*i+1] = -2000; }
@@ -302,7 +303,7 @@ static void volume_controls(void)
                     assert(sample >= 0 && sample <= 2000 && sample - previous <= 16 && previous - sample <= 16);
                     previous = sample;
                     for (uint32_t ch = 0; ch < channels; ch++)
-                        assert(ua.cap[(at+i)*channels+ch] == (channels == 4 ? stems[i*4+ch] : ch ? -1000 : 1000));
+                        assert((ch<2u?ua.cap[(at+i)*2u+ch]:ua_track_extra[(at+i)*2u+ch-2u]) == (channels == 4 ? stems[i*4+ch] : ch ? -1000 : 1000));
                 }
             }
             assert(previous == (phase == 1 ? 0 : (2000 * 16423) >> 15));
@@ -317,7 +318,7 @@ static void volume_controls(void)
     common[S_INTRUSB] = 4; usb_poll();
     assert(!ua_feature_pending && !usb.config && !ua_host_mute && !ua_host_volume_q8 && ua_host_gain_q15 == 32768);
     setup(0xA1, 0x81, 0x200, 0x0502, 2); assert(ep0_command == 0x60);
-    usb.config = 1; ua_cap_channels = 4;
+    usb.config = 1; ua_cap_channels = 4;assert(ua_tracks_memory_prepare(1));
     puts("USB host volume/mute: EP0 ranges, validation/reset, smooth PCM16/24 playback, stereo/stem capture isolation: OK");
 }
 
@@ -338,7 +339,7 @@ static void capture_pipeline(void)
         assert(ua_set_interface(3, alt) && ua_set_interface(UA_IF_CAP, alt));
         for (uint32_t i = 0; i < UA_RING; i++)
             for (uint32_t ch = 0; ch < ua_cap_channels; ch++)
-                ua.cap[i * ua_cap_channels + ch] = (int16_t)(1000 * (ch + 1));
+                (ch<2u?ua.cap:ua_track_extra)[i*2u+(ch%2u)] = (int16_t)(1000 * (ch + 1));
         ua.cw = 800;
         checked_sends = 0;
         for (uint32_t packet = 0; packet < 6; packet++) {
@@ -566,7 +567,7 @@ int main(void)
 {
     uint32_t count;
     uint8_t previous[UA_PACKET];
-    ua_tracks = ua_tracks_want = 1; ua_cap_channels = 4;
+    ua_tracks = ua_tracks_want = 1; ua_cap_channels = 4;assert(ua_tracks_memory_prepare(1));
     usb.up = usb.config = 1;
     common[S_INTRRX1E] = 2;                    /* MIDI endpoint must survive */
     ua_hw_stop();
@@ -657,11 +658,16 @@ int main(void)
     usb_start(); usb.config = 1;
     assert(ua_cap_channels == 2 && !ua_tracks);
     assert(ua_set_interface(UA_IF_CAP, 2) && ep_cnt[2] == 264);
+    assert(!ua_track_extra&&!ua_test_memory_bytes);
     ua.cw = 700; ua.cap[0] = 12345;
     const uint8_t *device;
     uint16_t device_len;
     assert(get_desc(0x100, &device, &device_len));
     uint16_t stereo_revision = (uint16_t)(device[12] | device[13] << 8);
+    /* Failure must leave an already running stereo stream intact. */
+    ua_test_memory_limit=0;ua_tracks_set(1,19000);
+    assert(ua_off_apply(19600)==2&&usb.up&&usb.config&&ua.cap_alt==2&&ua.cw==700&&ua.cap[0]==12345&&!ua_tracks_want&&!ua_track_extra);
+    ua_test_memory_limit=4096;
     ua_tracks_set(1, 20000); ua_tracks_set(1, 20300);
     assert((device[12] | device[13] << 8) == stereo_revision);
     assert(!ua_off_apply(20599) && ua_cap_channels == 2);
@@ -669,6 +675,7 @@ int main(void)
     usb_retry(21600); usb.config = 1;
     assert(!ua.cap_alt && ua.cw == ua.cr);
     assert(ua_cap_channels == 4 && ua_set_interface(UA_IF_CAP, 2) && ep_cnt[2] == 528);
+    assert(ua_track_extra&&ua_test_memory_bytes==4096u);
     assert(get_desc(0x100, &device, &device_len));
     assert((device[12] | device[13] << 8) != stereo_revision);
     for (uint32_t i = 0; i < ep_cnt[2]; i++) assert(!((uint8_t *)ep_tadr[2])[i]);
@@ -677,9 +684,11 @@ int main(void)
     ua_tracks_set(0, 23000); assert(ua_off_apply(23600));
     usb_retry(24600); usb.config = 1;
     assert(ua_cap_channels == 2 && ua_set_interface(UA_IF_CAP, 1) && ep_cnt[2] == 176);
+    assert(!ua_track_extra&&!ua_test_memory_bytes);
     assert(get_desc(0x100, &device, &device_len));
     assert((device[12] | device[13] << 8) == stereo_revision);
     capture_pipeline();
+    assert(ua_test_memory.before==0x51a7beefu&&ua_test_memory.after==0xa17e5afeu);
     puts("USB input mode: stereo default, debounced live re-enumeration, no stale packets: OK");
     return 0;
 }

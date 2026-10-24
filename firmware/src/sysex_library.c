@@ -48,6 +48,8 @@ static int sysex_stage(uint32_t e, const uint8_t *raw, uint32_t count, uint32_t 
     return 1;
 }
 static void sysex_cancel(void) { if(fm6_rx_ready==2u)fm6_rx_ready=0;sx_import.count = 0; bulk_clear(); ui_message("IMPORT CANCELLED"); }
+/* project.c wire_take: a job needs the scratch a staged 32-voice frame lives in */
+static int sysex_cancel_staged(void) { if (fm6_rx_ready != 2u) return 0; sysex_cancel(); return 1; }
 static void sysex_commit(void)
 {
     if (!sx_import.count) return;

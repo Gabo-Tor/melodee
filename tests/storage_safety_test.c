@@ -51,7 +51,7 @@ int main(void)
     reset(); st_save(OBJ_NATIVEFM0, old, sizeof old); st_save(OBJ_CZBANK0, old, sizeof old); native_cache_reset();
     bad += check("live access protects unreadable FM or CZ banks", native_old(ENGI_FM6, 72) && native_old(ENGI_CZ, 144) && same_object(OBJ_NATIVEFM0, old, sizeof old) && same_object(OBJ_CZBANK0, old, sizeof old));
     before = erases;
-    bad += check("native direct saves cannot erase old banks", native_put(ENGI_FM6, 72, FM6_INIT) == 2 && native_put(ENGI_CZ, 144, cz_patch[0].raw) == 2 && erases == before);
+    bad += check("native direct saves cannot erase old banks", native_put(ENGI_FM6, 72, FM6_INIT) == 2 && native_put(ENGI_CZ, 144, cz_patch_of(0)->raw) == 2 && erases == before);
     sysex_stage(ENGI_FM6, FM6_INIT, 1, FM6_PACKED);ui.uslot=72;sysex_choose();
     bad += check("incoming patch waits for old-bank confirmation", ui.confirm == CF_IMPORT && sx_import.count == 1 && same_object(OBJ_NATIVEFM0, old, sizeof old));
     preset_old_allow(1); sysex_commit(); preset_old_allow(0);

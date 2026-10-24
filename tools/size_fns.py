@@ -58,6 +58,23 @@ def size_names():
     names = {"recording_restore_note", "recording_copy", "recording_reindex",
              "drum909_init", "drum909_set", "drum_note_on", "voice_start",
              "audio_batch_push", "mix_prepare_batch", "fm6_sync", "cz_native_block"}
+    # Resident audio code that runs once per note, MIDI message, drum hit, recorded take, pattern switch or SysEx byte,
+    # never per sample: its SRAM is the audio arena's (the MIDI-only tracks' banks took some)
+    names |= {"d9_set_panel", "d9_rim_retune", "d9_smp_rate", "d9_bt_trigger", "drum909_trigger", "d9_biquad_set",
+              "d9_shape_prep", "dsk_load",
+              "rec_note", "rec_finish", "rec_set", "rec_release", "recording_quantize", "recording_sync",
+              "recording_present", "recording_undo_capture", "recording_undo_signature", "recording_insert",
+              "recording_zero", "recording_snapshot", "recording_stop", "recording_pitch_add",
+              "recording_queue_remove", "recording_queue_refresh",
+              "trk_note_on_engine", "trk_note_on_raw", "input_on", "input_off", "key_off", "mono_play", "voice_victim",
+              "midi_event", "midi_note_event", "midi_parameter", "midi_release", "midi_forget_track", "midi_clock_mode",
+              "midi_insert_release", "midi_insert_controls", "midi_track_note_on", "midi_track_controller",
+              "midi_track_flush", "midi_track_all_off",
+              "chord_make", "chord_strum_begin", "lcz_sx_encode", "cz_ed_decode", "cz_ed_put", "sysex_byte",
+              "fm6_sx_byte", "seq_erase_rebuild", "seq_erase_pass", "seq_stop", "seq_start", "pattern_encode",
+              "pattern_apply", "fm6_note_on", "fm6_legato", "fm6_keyed", "fm6_alloc", "p5_note_on", "sid_note_on",
+              "cz_native_note_on", "motion_native_edited", "motion_set_event", "motion_native_ok", "motion_capture",
+              "motion_restore", "audition_stop"}
     for f in SIZE_FILES:
         names.update(n for n in definitions((SRC / f).read_text()) if not n.endswith("_irq"))   # (ISRs stay as they are)
     return names

@@ -40,7 +40,20 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 ./build.sh
 ```
 
-`MELODEE_RAM_AUDIO=1 ./build.sh` builds the resident audio performance profile.
+Plain local, nightly and release builds enable resident audio, cache RAM and all
+twelve performance optimizations by default. The shared defaults live in
+`firmware/src/performance_options.h`; the build tool uses them for compiler
+flags, SRAM placement and linking. Explicit `MELODEE_<OPTION>=0` overrides
+remain available for reference comparisons. No environment setup is needed
+to keep these optimizations in a local flash.
+The audio scheduler keeps up to 24 voice jobs in one pipeline, including final
+fade blocks and grouped native FM6 states that continue silently after a voice
+is freed. Sounding FM6 controls and inactive state updates participate in the
+same cost-based partition as sample work. Part-wide modulation caches are
+prepared before publication and remain read-only during jobs. The queue retains
+voice admission and sample addition order. MIDIVerb release rates update when
+the amount or native patch changes; stationary operator envelopes avoid an
+unnecessary indirect call without changing their timing.
 All builds retain a bit-identical dry bypass and support the bounded per-track FX inserts described in README.md.
 The optimized audio ISR, all enabled engine callbacks and their reachable helpers
 execute from ordinary SRAM; `tools/audio_ram.py` preserves existing low-SRAM DSP
@@ -57,7 +70,9 @@ The profile retains at least a 64 KiB contiguous resource arena for four engine
 states and off-record note history. Additional SRAM tails remain available.
 Factory banks and cold assets remain in flash; loaded patches and active engine
 state are in SRAM. Old effect values remain readable as inert format padding; the new FX use separate parameter IDs.
-Run the host suite with `MELODEE_RAM_AUDIO=1` when checking this target variant.
+The host suite exercises the optimized kernels by default. Serial host fixtures
+retain their reference admission policy; dedicated resident/dual-core tests
+exercise the target's admission policy.
 Both target profiles reject the retired effect processors. Host sound regressions
 validate dry output against the original engines with all effect sends off.
 `tools/usb_audio_stats.py --parts` identifies cuts on each of the four tracks.
@@ -128,6 +143,7 @@ Build options (environment; most use `0` or `1`; defaults in `firmware/src/build
 | `MELODEE_USB_AUDIO` | 1 | One duplex "Melodee" device: stereo playback and stereo master recording or optional four-track mono recording (16 / 24 bit, 44.1 kHz) |
 | `MELODEE_CDC` | 0 (1 without USB audio) | USB serial console; it shares EP2 / EP3 with USB audio, so `MELODEE_USB_AUDIO=0` |
 | `MELODEE_UART` | 1 | TRS MIDI IN |
+| `MELODEE_USB_HOST` | 1 | USB MIDI host: the menu's USB HOST makes the USB-C port the host of a class compliant controller, directly or behind a powered hub (`firmware/src/usb_host.c`). Not saved: every boot is a device |
 | `MELODEE_DUAL_CORE` | 1 | paired FM6/Prophet rendering on CPU1; target builds require `1` |
 | `MELODEE_CORE1_FALLBACK` | 1 | automatic recovery on one core; `0` halts for watchdog reset on CPU1 failure |
 | `MELODEE_SLICE` | 1 | the SLICE engine |
@@ -141,6 +157,40 @@ continuing on CPU0. Retained CPU1 bars and the one-core choice after an early
 failed boot are ignored; a caught CPU0 crash does not save a new CPU1 bar.
 The existing boot-loop guard, supply values and clock setup remain unchanged.
 This is a diagnostic option; the default stays `1`. `--cpu-manifest` records it.
+
+## USB MIDI host
+
+Menu > **USB HOST** (OFF at every boot; not saved) turns the USB-C port from the computer link into a host for a
+class-compliant USB-MIDI controller or synth. Notes, controllers and clock from it arrive like USB MIDI (source USB).
+Switch it OFF to give the port back to the computer; the FM-1 never boots as a host, so the update paths work as before.
+
+- **Power.** Nothing in the firmware drives VBUS. Use a hub with its own supply, or an OTG adapter that powers
+  the controller. Whether the FM-1's USB-C connector (its CC resistors) lets a USB-C hub treat it as a host is a
+  property of the board, not of the firmware: an USB-C to USB-A OTG adapter or a hub with a USB-A downstream
+  port is the safer first test.
+- **Supported:** full-speed devices with a MIDI 1.0 streaming interface (bulk or interrupt IN and/or OUT), alone or behind
+  one hub (the hub's ports are powered and each device is tried until one has MIDI). Channel messages and
+  clock / start / continue / stop are passed on; SysEx from the controller is ignored by design.
+- **Output:** MIDI tracks send their notes, releases and channel controls on their selected channels to cable 0
+  of the selected interface's OUT endpoint. Output-only synths and simultaneous IN/OUT work. A packet remains
+  queued until ACK; NAKs/transient errors retain its data and toggle. Stalls, repeated errors or 500 ms without
+  completion restart enumeration, dropping stale queued note-ons and scheduling held-note/pedal releases before
+  new notes after reconnection. Connection loss releases USB input owners while retaining local keys and TRS
+  owners. USB AUDIO/USB INPUT setting changes wait until HOST is off.
+- **Not supported:** SysEx/editor traffic to attached devices, device-specific LED protocols, USB MIDI 2.0,
+  low-speed devices, hubs behind hubs, hot-plugging a
+  second controller while one runs (unplug and replug; a lost controller is found again by itself).
+- **Messages** (toast): USB MIDI READY, USB NO MIDI DEVICE, USB LOW SPEED, USB CONTROLLER LOST. On / off is the
+  header's `HOST` tag (and the menu row), not a toast.
+
+`tests/usb_host_test.c` runs the real driver against a model of the SIE and of a keyboard, a hub and a stick
+(`tests/run_tests.sh`). It cannot show that the controller behaves as the SDK's host code implies; the register
+sequences were taken from the AC79 SDK (`usb_h_sie_init`, `usb_h_chirp_and_reset`, `usb_ctlXfer`,
+`usb0_h_ep_read`). The PR contributor reports an FM-1 input test with a powered hub and controller; this
+branch's new OUT path has model coverage but still needs physical MIDI/audio and sustained-timing validation.
+The model also covers OUT-only devices, small endpoint packets, duplex traffic, delayed ACKs, NAK/error/stall
+recovery and device-mode audio preferences while hosting. `tests/midi_track_test.c` checks the real track
+output admission and reconnect cleanup. Build with `MELODEE_USB_HOST=0 ./build.sh` to leave the feature out.
 
 ## Samples
 
@@ -175,6 +225,7 @@ LCD transfer; large graphs wait before reusing the full canvas. Transition and
 DMA tests check stream resumption, cache invalidation and source-buffer reuse.
 
 ```
+npm ci --prefix web
 tests/run_tests.sh
 ```
 
@@ -359,13 +410,13 @@ tool has simulated USB/NOR tests, including interrupted writes; its Linux and Wi
 hardware paths still need validation. If ROM USB never appears, use
 [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) and its RP2040 setup.
 
-## Experimental cache RAM
+## Cache RAM
 
 Builds reclaim seven 4 KiB data-cache ways at `0x01F28000..0x01F2F000`
-(`MELODEE_CACHE_RAM=1`, opt-in; normal builds retain all data-cache ways; `MELODEE_CACHE_RAM=0 ./build.sh`
+(`MELODEE_CACHE_RAM=1`, enabled by default; `MELODEE_CACHE_RAM=0 ./build.sh`
 turns it off), following the AC79 SDK's flash-execution configuration. All instruction-cache ways remain available.
 The first 14 KiB are the UI's (eight undo levels); the rest join the audio allocator, whose worst case still fits
-the SRAM banks alone. Normal builds keep eight undo levels in ordinary SRAM, within the existing arena reserve.
+the SRAM banks alone. Builds with cache RAM disabled keep eight undo levels in ordinary SRAM, within the existing arena reserve.
 When both `MELODEE_RAM_AUDIO=1` and `MELODEE_CACHE_RAM=1`, only one fallback undo level is reserved in
 ordinary SRAM, freeing 11,256 B for the resident layout. A successful cache self-test still supplies eight
 undo levels. A failed/skipped self-test leaves one undo level and excludes the cache bank entirely;
@@ -435,15 +486,16 @@ CPU1 fault retirement and serial host reference tests remain supported.
 There is no async runtime or RTOS dependency. Sustained musical load and
 battery impact still need device measurements.
 
-CPU0 prepares a voice's controls and envelopes. CPU1 calculates its planned FM6
-operators or Prophet oscillator/filter samples into private buffers while CPU0
-prepares and calculates the next voice. CPU0 joins and adds both in their original
-order before the track's post processing. Part-wide Prophet wheel buffers and
-patch bytes remain read-only during a job; envelopes, allocation and shared RNG
-stay on CPU0. Prophet's per-voice sample noise state travels with its voice.
-An isolated voice stays on CPU0. Other engines, effects, MIDI, USB and the screen
-retain their existing execution paths. This is a targeted synth optimization;
-it does not double all firmware throughput.
+CPU0 prepares events, allocation, modulation and read-only part-wide caches.
+FM6 jobs advance each voice's envelopes, pitch and operator plan before rendering
+its samples. Grouped jobs also advance the inactive native states needed for
+later notes. A voice's state has one owner until join, and its parameters are
+captured before the producer restores track modulation. Prophet envelopes and
+shared RNG remain on CPU0; its oscillator/filter samples run in voice jobs.
+CPU0 joins and adds private PCM in its original order before post processing.
+This preserves the native FM6 state as well as the samples under repeated note
+stealing, release edits and changing track modulation. It does not double all
+firmware throughput.
 
 The FM6, Prophet and synthesized 808 sample loops stay resident in internal
 DSP RAM, shared by all four tracks; two FM6 tracks share code while retaining
@@ -662,9 +714,21 @@ channel, with shared coefficients and polarity smoothed over about 15 ms.
 Coefficient targets are calculated only when JITTER or the random target
 changes. It avoids the six separate filter passes and hardware EQ waits, and
 needs no delay allocation. The other filter effects retain the optional EQ path.
-Filter effects, Echo and Room run at FS/4 (11.025 kHz). Reverb runs at FS/8 (5.5125 kHz), with a 4 KiB allocation per slot. Two modular running sums provide a triangular CIC input filter; cached block-local converter state avoids repeated SRAM accesses. The seven-tap quarter-rate response and fifteen-tap eighth-rate response reject aliases, with a low-pass pole and upper-mid compensation for Reverb. Wet interpolation and wet/dry mixing are fused in the sample kernels; bounded power-of-two divisions use exact shifts, without a hardware divide.
+The existing filter effects and ROOM run at FS/4 (11.025 kHz), with full-rate
+dry audio and fused wet interpolation/mixing. SLOOP REVERB runs natively at
+44.1 kHz: two input allpasses, four damped Hadamard delay lines, one slowly
+modulated tap and stereo output. SIZE controls feedback decay, DAMP its highs,
+TONE wet input. It uses one optional 19,396-byte tank per active slot. Echoverb
+is removed, including its 60,340-byte allocation and full-rate diffusion chain.
 
-The eight-line fixed-point Reverb tank uses an orthogonal Householder reflection, input/output diffusers, length-normalised decay and a bounded wet return. SIZE/DEPTH coefficients are cached; drift targets update once per control block. DEPTH retains bass/body and increases return level and tail duration. Synths and the dry mixer retain FS = 44.1 kHz. OFF / MIX 0 releases the slot's delay memory; memory exhaustion bypasses only the failing slot.
+SLOOP insert algorithms (SOFT/HARD/FOLD/FUZZ/CRUSH/FLANGER/PEDAL PH/PEDAL CH)
+use fixed-point sample loops, block-local controls and arena-owned state. Only
+flanger/chorus allocate the two 256-sample delay lines. Mono input runs once
+until a stereo signal requires independent histories; that transition copies
+the earlier mono state. Swept bus returns exclude the pedal's embedded dry
+half. These append effect IDs, retaining existing algorithms and project IDs.
+OFF/MIX 0 releases working memory after the existing fade. Allocation failure
+bypasses only that slot. All production performance defaults remain enabled.
 
 Track SEND is post-level/pan/mute/solo and feeds one three-slot stereo auxiliary chain. Shared MIX defaults 127, RETURN defaults 100, SEND and TYPE default 0. CPU0 prepares control values and all allocations, then snapshots the final pointers after compaction. CPU1 owns the shared workspace while CPU0 computes dry master gain, and CPU0 joins before return summing, DC rejection, limiting or any events/flash access. Existing FM6/Prophet voice pairing remains in place. There is no additional block of audio latency. Offline CPU1 runs the same callback serially; a failed in-flight callback is discarded, never rerun with partly advanced histories. Individual USB stems exclude the shared return. The parallel return ramps to silence when the final active slot is bypassed or changes type; RETURN edits are smoothed over about 6 ms.
 

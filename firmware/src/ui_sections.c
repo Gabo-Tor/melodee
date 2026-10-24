@@ -304,22 +304,24 @@ static void smap_draw(void)
                 sh = y + smap_h(r) + 2 - top;
         if (sh <= 0)
             sh = h - top < 124 ? h - top : 124;
-        cv_begin(240, (uint32_t)sh, T_BG);
-        cv_oy = -top;
-        for (r = first, y = 2; r < last; y += smap_h(r) + 2, r++) {
-            int open = r == smap.row;
-            uint16_t bg = open ? ux_mix(T_BG, T_THEME, 18) : T_BG;
-            if (y + smap_h(r) <= top || y >= top + sh)
-                continue;
-            if (open)
-                cv_rrect(BOX_X, y, BOX_W, smap_h(r), 8, bg, T_BG);
-            cv_text_on(12, ty_y(y + SM_RH / 2, TY_TX), TY_TX, sec.name[r], r == cur ? T_THEME : open ? T_TEXT : T_SEC,
-                       bg);
-            if (open)
-                smap_pills(r, y + SM_RH, bg, 1, cur);
+        for (uint32_t band = 0; band < (uint32_t)((uint32_t)sh); band += CV_MAX / (240)) {
+            cv_begin_band(240,(uint32_t)sh,T_BG,band);
+            cv_oy = -top;
+            for (r = first, y = 2; r < last; y += smap_h(r) + 2, r++) {
+                int open = r == smap.row;
+                uint16_t bg = open ? ux_mix(T_BG, T_THEME, 18) : T_BG;
+                if (y + smap_h(r) <= top || y >= top + sh)
+                    continue;
+                if (open)
+                    cv_rrect(BOX_X, y, BOX_W, smap_h(r), 8, bg, T_BG);
+                cv_text_on(12, ty_y(y + SM_RH / 2, TY_TX), TY_TX, sec.name[r], r == cur ? T_THEME : open ? T_TEXT : T_SEC,
+                           bg);
+                if (open)
+                    smap_pills(r, y + SM_RH, bg, 1, cur);
+            }
+            cv_oy = 0;
+            cv_blit_band(0, (uint32_t)(H_HEAD + top));
         }
-        cv_oy = 0;
-        cv_blit(0, (uint32_t)(H_HEAD + top));
         top += sh;
     }
 }

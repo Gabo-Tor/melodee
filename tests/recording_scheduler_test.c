@@ -54,7 +54,10 @@ static int state_matches(track_t *t)
 {
     uint16_t refs[128]={0};
     for(uint32_t i=0;i<RECORD_MAX;i++){
-        if(recording_run[i].held!=expected[i].held || recording_left(i)!=expected[i].left ||
+        /* Queued playback reuses the former hold counter. Compare capture
+         * duration while held; playback has its independent remaining-time
+         * oracle below. Countdown/reference mode still retains both fields. */
+        if(((!MELODEE_RECORD_QUEUE || (expected[i].flags&1u)) && recording_run[i].held!=expected[i].held) || recording_left(i)!=expected[i].left ||
            (recording_flags[i]&~2u)!=expected[i].flags)return 0;
         if(expected[i].left && recording_active(t,i))refs[recording[i].note]++;
     }
@@ -118,7 +121,7 @@ static int cursor_slot_reuse(void)
     int bad=check("reusing a pending slot on another track cannot redirect the old cursor",!gate_note(t,67) && !recording_refs[0][67]);
     seq_stop();
 #if MELODEE_RECORD_CURSOR
-    for(uint32_t k=0;k<NTRK;k++)bad+=check("STOP empties every runtime list",recording_live_head[k]==RECORD_MAX);
+    for(uint32_t k=0;k<NPART;k++)bad+=check("STOP empties every runtime list",recording_live_head[k]==RECORD_MAX);
 #endif
     return bad;
 }
