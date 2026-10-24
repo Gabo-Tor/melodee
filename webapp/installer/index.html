@@ -2,57 +2,225 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only
      Copyright (C) 2026 Kerem Kilic (Ellic Studio)
      Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments -->
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Melodee</title>
-<style>
-  :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Melodee</title>
+<style>/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+ * Portions Copyright (C) 2026 Charles Vestal
+ * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Ported from keremimo/saadet web/install/index.html at f358c01. */
+
+  :root {
+    --paper: #f6f5f1; --card: #fff; --ink: #121212; --dim: #63625d; --faint: #8f8e88; --line: #e2e0d9; --chip: #eeede7;
+    --warn: #8a5300; --warn-bg: #fff3d6; --warn-line: #f0d9a6; --ok: #17733a; --ok-bg: #e5f4ea; --bad: #b42318; --bad-bg: #fdeceb;
+    --focus: #2563eb; --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(0, 0, 0, .06);
   }
-  :root[data-theme="dark"] { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 0 0 24px; }
-  .lang { float: right; font-size: 13px; color: var(--dim); cursor: pointer; text-decoration: underline; background: none; padding: 0; color: var(--dim); }
-  p { margin: 0 0 16px; }
-  button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 8px 20px; cursor: pointer; }
-  button:disabled { opacity: .3; cursor: default; }
-  #status { margin-top: 16px; min-height: 1.6em; }
-  .small { color: var(--dim); font-size: 13px; }
-  progress { width: 100%; height: 4px; margin-top: 16px; }
-  pre { color: var(--dim); font-size: 12px; white-space: pre-wrap; margin-top: 16px; max-height: 200px; overflow-y: auto; overflow-wrap: anywhere; }
-  select { font: inherit; max-width: 100%; padding: 4px; background: var(--bg); color: var(--fg); }
-  details { margin-bottom: 16px; }
-  .site { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 24px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .site .brand { font-size: 24px; font-weight: 600; }
-  .site .links { display: flex; gap: 16px; font-size: 13px; }
-  .site .links a { color: var(--dim); text-decoration: none; }
-  .site .links a:hover { color: var(--fg); }
-  .site .links a[aria-current="page"] { color: var(--fg); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0b0b0c; --card: #151516; --ink: #f2f2ee; --dim: #a6a5a0; --faint: #74736f; --line: #2a2a2c; --chip: #202022;
+      --warn: #f4b54a; --warn-bg: #2a2111; --warn-line: #4a3a17; --ok: #55c785; --ok-bg: #12261a; --bad: #ff8577; --bad-bg: #2c1614;
+      --focus: #7aa7ff; --shadow: 0 1px 2px rgba(0, 0, 0, .5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0b0b0c; --card: #151516; --ink: #f2f2ee; --dim: #a6a5a0; --faint: #74736f; --line: #2a2a2c; --chip: #202022;
+    --warn: #f4b54a; --warn-bg: #2a2111; --warn-line: #4a3a17; --ok: #55c785; --ok-bg: #12261a; --bad: #ff8577; --bad-bg: #2c1614;
+    --focus: #7aa7ff; --shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { background: var(--paper); }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", Arial, sans-serif;
+         font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-underline-offset: 2px; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+  svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* the site's bar, as the editor's */
+  .site { max-width: 640px; margin: 0 auto; padding: 18px 16px 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .site .brand { font-weight: 650; font-size: 17px; letter-spacing: -.01em; text-decoration: none; }
+  .site nav { display: flex; gap: 18px; font-size: 14px; }
+  .site nav a, .site button.lang { color: var(--dim); text-decoration: none; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+  .site nav a:hover, .site button.lang:hover { color: var(--ink); }
+  .site nav a[aria-current="page"] { color: var(--ink); }
+
+  main { max-width: 640px; margin: 0 auto; padding: 0 16px 32px; }
+  .demo { background: var(--ink); color: var(--paper); font-size: 13px; text-align: center; padding: 7px 16px; }
+  .demo a { color: inherit; }
+
+  .hero { padding: 48px 0 28px; }
+  .kicker { margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  h1 { margin: 0; font-size: clamp(34px, 8vw, 46px); line-height: 1.04; font-weight: 680; letter-spacing: -.025em; }
+  h1 .v { color: var(--faint); font-weight: 500; }
+  .lede { margin: 14px 0 0; font-size: 18px; color: var(--dim); max-width: 34em; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
+  .facts li { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--dim); }
+  .banner { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 16px; padding: 14px 16px; border-radius: 12px;
+            background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--ink); }
+  .banner svg { color: var(--warn); margin-top: 2px; }
+  .banner p { margin: 0; }
+
+  /* the three steps, numbered by what is shown */
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  .step { counter-increment: step; position: relative; display: grid; grid-template-columns: 32px 1fr; gap: 0 16px;
+          background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 22px 22px 18px; margin: 0 0 12px; box-shadow: var(--shadow); }
+  .step::before { content: counter(step); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+                  border: 1.5px solid var(--line); color: var(--dim); font-size: 14px; font-weight: 600; }
+  .step[data-state="active"]::before { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .step[data-state="done"]::before { content: "✓"; background: var(--ok-bg); border-color: transparent; color: var(--ok); }
+  .step > div { min-width: 0; }
+  .step h2 { margin: 3px 0 6px; font-size: 18px; font-weight: 640; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .step p { margin: 0 0 14px; color: var(--dim); }
+  .step p:last-child { margin-bottom: 0; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--dim);
+         padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+
+  .btn { font: inherit; font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+         min-height: 44px; padding: 0 20px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  .btn:hover:not(:disabled) { border-color: var(--faint); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .btn.primary:hover:not(:disabled) { opacity: .88; }
+  .btn.big { width: 100%; min-height: 52px; font-size: 16px; }
+  .btn:disabled { opacity: .38; cursor: default; }
+  .btn.ghost { background: none; }
+  .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 22px; }
+  .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .device { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 0 0 14px; border-radius: 12px; background: var(--chip); }
+  .device svg.i { width: 28px; height: 28px; }
+  .device .what { flex: 1; min-width: 0; line-height: 1.35; }
+  .device .what b { display: block; font-weight: 620; }
+  .device .what span { color: var(--dim); font-size: 14px; }
+  .chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; background: var(--card); color: var(--dim); }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); }
+  .msg { color: var(--bad) !important; font-weight: 500; }
+  .msg:empty { display: none; }
+
+  .option { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+  .option:has(input:checked) { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .option input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--ink); flex: none; }
+  .option b { display: block; font-weight: 620; margin-bottom: 2px; }
+  .option span span { color: var(--dim); font-size: 15px; }
+  .note { font-size: 14px; }
+  .caution { display: flex; gap: 10px; align-items: flex-start; color: var(--ink) !important; background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; }
+  .caution svg.i { color: var(--warn); width: 18px; height: 18px; margin-top: 2px; }
+  .small { font-size: 13px !important; color: var(--faint) !important; }
+
+  .more { margin: 28px 0 0; border-top: 1px solid var(--line); }
+  .more details { border-bottom: 1px solid var(--line); }
+  .more summary { cursor: pointer; padding: 16px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .more summary::-webkit-details-marker { display: none; }
+  .more summary::after { content: "+"; color: var(--faint); font-weight: 400; font-size: 20px; line-height: 1; }
+  .more details[open] summary::after { content: "−"; }
+  .more .in { padding: 0 0 18px; color: var(--dim); }
+  .more .in p, .more .in ol { margin: 0 0 12px; }
+  .more .in ol { padding-left: 20px; }
+  .more textarea { width: 100%; font: 12px/1.45 ui-monospace, Menlo, monospace; color: var(--ink); background: var(--card);
+                   border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  input[type=file] { font: inherit; font-size: 14px; color: var(--dim); max-width: 100%; }
+  footer { max-width: 640px; margin: 0 auto; padding: 8px 16px 56px; font-size: 13px; color: var(--faint); }
+  footer p { margin: 0 0 6px; }
+
+  /* dialogs: the checks before, and the install's own screen */
+  dialog { border: 0; padding: 0; color: var(--ink); background: var(--card); }
+  dialog::backdrop { background: rgba(10, 10, 10, .5); backdrop-filter: blur(3px); }
+  #preflight { width: min(480px, calc(100% - 32px)); border-radius: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .3); }
+  #preflight form { padding: 26px 24px 22px; }
+  #preflight h2 { margin: 0 0 18px; font-size: 22px; letter-spacing: -.015em; }
+  .rules { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 14px; }
+  .rules li { display: flex; gap: 14px; align-items: flex-start; }
+  .rules .ri { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 10px; background: var(--chip); }
+  .rules li:first-child .ri { background: var(--warn-bg); color: var(--warn); }
+  .rules b { display: block; font-weight: 620; }
+  .rules span span, .rules div span { color: var(--dim); font-size: 14px; }
+  .check { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--chip); cursor: pointer; font-size: 15px; }
+  .check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ink); flex: none; }
+
+  body:has(#run[open]) { overflow: hidden; }
+  #run { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; background: var(--paper); }
+  #run::backdrop { background: var(--paper); }
+  .run-warn { position: sticky; top: 0; display: flex; justify-content: center; align-items: center; gap: 10px; padding: 12px 16px;
+              background: var(--warn-bg); color: var(--ink); border-bottom: 1px solid var(--warn-line); font-weight: 600; font-size: 15px; text-align: center; }
+  .run-warn svg { color: var(--warn); }
+  #run[data-state]:not([data-state="running"]) .run-warn { display: none; }
+  .run-main { max-width: 560px; margin: 0 auto; padding: clamp(32px, 9vh, 96px) 20px 40px; }
+  .run-kicker { margin: 0 0 4px; color: var(--dim); font-weight: 600; }
+  .pct { font-size: clamp(76px, 22vw, 136px); font-weight: 250; line-height: 1; letter-spacing: -.04em; margin: 0 0 18px; }
+  .pct .pc { font-size: .38em; color: var(--faint); letter-spacing: 0; margin-left: .06em; }
+  .bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 99px; transition: width .4s ease; }
+  .bar.indet i { width: 30% !important; animation: indet 1.4s ease-in-out infinite; }
+  @keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .runstep { margin: 16px 0 0; font-size: 18px; font-weight: 560; min-height: 1.55em; }
+  .eta { margin: 2px 0 0; color: var(--dim); min-height: 1.55em; }
+  .phases { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 26px 0 0; padding: 0; font-size: 14px; color: var(--faint); }
+  .phases li { display: flex; align-items: center; gap: 8px; }
+  .phases li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid currentColor; }
+  .phases li.now { color: var(--ink); font-weight: 600; }
+  .phases li.now::before { background: var(--ink); border-color: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
+  .phases li.past { color: var(--dim); }
+  .phases li.past::before { background: var(--ok); border-color: var(--ok); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .backnote { display: flex; gap: 10px; align-items: flex-start; margin: 26px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--warn-bg); }
+  .backnote svg { color: var(--warn); margin-top: 2px; }
+  .stall { margin: 14px 0 0; color: var(--dim); font-size: 15px; }
+
+  #run[data-state]:not([data-state="running"]) .live { display: none; }
+  .end-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; margin: 0 0 22px; }
+  .end-icon svg.i { width: 32px; height: 32px; stroke-width: 2; }
+  #run[data-state="done"] .end-icon { background: var(--ok-bg); color: var(--ok); }
+  #run[data-state="paused"] .end-icon, #run[data-state="restart"] .end-icon, #run[data-state="partial"] .end-icon { background: var(--warn-bg); color: var(--warn); }
+  #run[data-state="safe"] .end-icon { background: var(--chip); color: var(--dim); }
+  .end h2 { margin: 0 0 10px; font-size: clamp(28px, 6vw, 36px); line-height: 1.1; letter-spacing: -.02em; }
+  .end > p { margin: 0 0 14px; color: var(--dim); font-size: 17px; }
+  .end ul { margin: 0 0 8px; padding-left: 20px; color: var(--dim); }
+  .end ul li { margin: 0 0 6px; }
+  .end .row { justify-content: flex-start; }
+  .log { margin: 36px 0 0; font-size: 13px; color: var(--faint); }
+  .log summary { cursor: pointer; }
+  .log pre { max-height: 14em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0;
+             padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+  .log pre:empty::after { content: "—"; }
+
+  @media (max-width: 520px) {
+    .step { display: block; padding: 18px 16px; }
+    .step::before { float: left; width: 28px; height: 28px; margin: 0 12px 0 0; font-size: 13px; }
+    .step h2 { margin-top: 0; min-height: 28px; }
+    .step p:first-of-type { clear: left; }
+    .row .btn { flex: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+
+  select { font: inherit; max-width: 100%; padding: 8px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
+  main > section:not(.hero) { margin-top: 24px; }
+  main > details { margin-top: 16px; }
+  .small { font-size: 13px; color: var(--dim); }
+  #status { min-height: 1.6em; }
+  #log { max-height: 200px; overflow-y: auto; }
+  #bar { width: 100%; accent-color: var(--ink); }
+  #run .run-main { padding-top: 48px; }
 </style>
-</head>
-<body>
+</head><body>
+<header class="site"><a class="brand" href="../editor/">Melodee</a><nav>
+<a href="../editor/">Editor</a><a href="../installer/" aria-current="page">Install</a><a href="../manual/">Manual</a>
+<button type="button" class="lang" id="lang"></button></nav></header>
 <main>
-  <button class="lang" id="lang"></button>
-  <nav class="site">
-    <span class="brand">Melodee</span>
-    <div class="links">
-      <a href="../editor/">Patch Editor</a>
-      <a href="../installer/" aria-current="page">Installer</a>
-      <a href="../manual/">Manual</a>
-    </div>
-  </nav>
-  <h1>Installer</h1>
-  <p data-t="intro"></p>
-  <p data-t="warn"></p>
-  <p class="small" data-t="direct"></p>
-  <p class="small" data-t="beta"></p>
-  <p class="small"><span data-t="brick"></span>
-    <a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md" target="_blank" rel="noopener" style="color:inherit" data-t="recoveryLink"></a></p>
+<section class="hero"><p class="kicker" data-t="kicker"></p>
+<h1><span data-t="installTitle"></span> <span class="v" id="hver"></span></h1>
+<p class="lede" data-t="intro"></p><ul class="facts"><li>Chrome / Edge</li><li>USB MIDI</li><li data-t="factTime"></li></ul></section>
+<div class="banner" id="resumebanner" hidden role="status"><p id="resumetext"></p></div>
+<ol class="steps">
+<li class="step" data-state="active"><div><h2 data-t="connectTitle"></h2><p data-t="direct"></p>
+<p data-t="connectHelp"></p><button type="button" class="btn" id="find" data-t="find"></button>
+<div class="device" id="device" hidden><div class="what"><b>FM-1</b><span id="devwhat"></span></div></div>
+<p id="connmsg" role="status"></p></div></li>
+<li class="step"><div><h2 data-t="chooseTitle"></h2>
   <p><label><span data-t="releaseTitle"></span><br><select id="release"></select></label></p>
   <p><label><input type="radio" name="build" id="build-dual" checked> <span data-t="dual"></span></label></p>
   <details id="advanced-installs" hidden>
@@ -69,7 +237,10 @@
       <p class="small" id="nightly-info"></p>
     </section>
   </details>
-  <p><button id="go" disabled data-t="install"></button></p>
+</div></li>
+<li class="step"><div><h2 data-t="installTitle"></h2><p data-t="backupFirst"></p>
+<button type="button" class="btn primary big" id="go" disabled data-t="install"></button><p id="status" role="status" aria-live="polite"></p>
+</div></li></ol>
   <section style="margin-top:24px" aria-labelledby="transit-title">
     <h2 id="transit-title" data-t="transitTitle"></h2>
     <p data-t="transitWhy"></p>
@@ -77,7 +248,7 @@
       <li data-t="transitFirst"></li>
       <li data-t="transitNext"></li>
     </ol>
-    <p><button id="transit-go" data-t="transitGo"></button></p>
+    <p><button class="btn" id="transit-go" data-t="transitGo"></button></p>
     <p class="small" data-t="stockBackup"></p>
     <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
     <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
@@ -90,22 +261,42 @@
     <p class="small" data-t="back"></p>
     <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
     <p><label><span data-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-    <p><button id="stock-go" disabled data-t="stockGo"></button></p>
+    <p><button class="btn" id="stock-go" disabled data-t="stockGo"></button></p>
     <p class="small" data-t="stockBackup"></p>
     <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
     <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
     <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-t="stockHelp"></a></p>
   </details>
-  <progress id="bar" max="100" value="0"></progress>
-  <p id="status"></p>
-  <pre id="log"></pre>
-  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
+
+<section class="more"><details><summary data-t="recoveryLink"></summary><div class="in"><p data-t="brick"></p>
+<a href="https://github.com/keremimo/melodee/blob/nightly/docs/RECOVERY.md" target="_blank" rel="noopener" data-t="recoveryLink"></a></div></details></section>
+</main><footer>  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
     by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms and Fukiai icons (MIT).<br>
     Font: Inter Tight (The Inter Project Authors, SIL OFL 1.1). Samples: Versilian Studios VSCO-2 Community Edition and VCSL (CC0 1.0).<br>
     FM6 engine: msfa from Dexed (Google Inc., Pascal Gauthier, Apache-2.0). The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <span data-t="license"></span> <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
-</main>
+</footer>
+<dialog id="preflight" aria-labelledby="pfh"><form method="dialog">
+<h2 id="pfh" data-t="beforeStart"></h2><ul class="rules">
+<li><span class="ri">1</span><div><b data-t="stayHere"></b><span data-t="stayWhy"></span></div></li>
+<li><span class="ri">2</span><div><b data-t="keepPower"></b><span data-t="keepWhy"></span></div></li>
+<li><span class="ri">3</span><div><b data-t="factTime"></b><span data-t="screenNormal"></span></div></li></ul>
+<label class="check" id="pfcheck"><input type="checkbox" id="pfok"><span data-t="backupAck"></span></label>
+<div class="row"><button type="submit" class="btn ghost" value="cancel" data-t="cancel"></button>
+<button type="submit" class="btn primary" value="go" id="pfgo" disabled data-t="startInstall"></button></div>
+</form></dialog>
+<dialog id="run" aria-labelledby="runtitle" data-state="running">
+<div class="run-warn" role="note" data-t="runWarning"></div><div class="run-main">
+<div class="live"><p class="run-kicker" id="runtitle"></p><div class="pct" aria-hidden="true"><span id="pct">0</span><span class="pc">%</span></div>
+<div class="bar" id="bar" role="progressbar" aria-labelledby="runtitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="barfill"></i></div>
+<p class="runstep" id="runstep" role="status"></p><p class="eta" id="eta"></p>
+<ol class="phases" id="phases"><li data-ph="prepare" data-t="prepare"></li><li data-ph="write" data-t="write"></li><li data-ph="restart" data-t="reboot"></li></ol>
+<p class="stall" id="stall" hidden data-t="stall"></p><div class="backnote" id="backnote" hidden role="alert"><span id="backtext"></span></div></div>
+<div class="end" id="end" hidden><h2 id="endtitle"></h2><p id="endtext"></p><p id="endtips"></p></div>
+<div class="row"><button type="button" class="btn primary" id="run-resume" hidden data-t="resumeInstall"></button>
+<button type="button" class="btn" id="run-close" hidden data-t="close"></button></div>
+<details class="log"><summary data-t="details"></summary><pre id="log"></pre></details></div></dialog>
 <script type="module">
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
@@ -459,6 +650,8 @@ function parseIdentity(pkt) {
   const d = unpack7(pkt.slice(1, -1));
   if (d.length !== 34 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x11) return null;
   const txt = String.fromCharCode(...d.slice(6, 33)).replace(/\0+$/, "");
+  if (/^FM1_(OFFICIAL_OPEN|COMMUNITY_\d+)$/.test(txt))
+    return {text:txt,model:"FM-1",open:true};
   const m = /^([^_]+)_(\d+)$/.exec(txt);
   return m ? { text: txt, model: m[1], version: parseInt(m[2], 10) } : null;
 }
@@ -576,11 +769,12 @@ class Updater {
     const dev = await this.find((id) => !IS_OTA(id));
     if (!dev) throw fail("notfound", "FM-1 not found (USB cable, and no other app using it?)");
     const [model] = product.split("_");
+    if (dev.id.open) { dev.link.close(); throw fail("open", "Return from M-VAVE Open firmware to official firmware before installing Melodee."); }
     if (dev.id.model !== model) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
     step("start", dev.id.text);
     dev.link.send(UPGRADE);
     await sleep(2000);
-    const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n) => step("verify", n));
+    const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n, addr, bytes) => step("verify", n, bytes));
     dev.link.close();
     if (!s1.finished) {
       const e = fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
@@ -611,7 +805,7 @@ class Updater {
   async write(ota, image, step) {
     ota.link.send(UPGRADE);
     await sleep(2000);
-    const s2 = await this.serve(ota.link, image, 0xF0000000, 180000, (n) => step("write", n));
+    const s2 = await this.serve(ota.link, image, 0xF0000000, 180000, (n, addr, bytes) => step("write", n, bytes));
     ota.link.close();
     return s2;
   }
@@ -851,6 +1045,417 @@ class BackupConnection {
   }
 }
 
+const {progressModel, remaining, afterFailure} = (() => {
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+ * Portions Copyright (C) 2026 Charles Vestal
+ * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Ported from keremimo/saadet web/install/flow.js and fm1pkg.js at f358c01. */
+
+function ufwEntries(image) {
+  const dec = (off, n) => {
+    const b = image.slice(off, off + n);
+    for (let i = 0, k = 0xFFFF; i < n; i++) { b[i] ^= k & 0xFF; k = ((k << 1) ^ (k & 0x8000 ? 0x1021 : 0)) & 0xFFFF; }
+    return b;
+  };
+  const rd16 = (b, o) => b[o] | (b[o + 1] << 8);
+  const rd32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+  const out = {};
+  const n = Math.min(rd16(dec(0, 0x40), 8), 11);
+  for (let i = 0; i < n; i++) {
+    const e = dec(0x40 + i * 0x50, 0x50);
+    out[rd16(e, 0)] = { off: rd32(e, 8), len: rd32(e, 12) };
+  }
+  return out;
+}
+
+// the bytes the device reads, for the bar. Step 1 (the running firmware): the UFW header, the loader's head twice,
+// its body. Step 2 (the loader): the header, the chip-key check, the whole flash.bin (checked before anything is
+// erased), then the app area again as it writes it. A resume has step 2 only. Without a readable flash.bin entry
+// the whole image stands for it.
+function progressModel(image, resume = false) {
+  let ent = {};
+  try { ent = ufwEntries(image); } catch (_) { /* not a UFW image */ }
+  const fl = ent[0], ldr = ent[100];
+  const flen = fl && fl.len > 0x4000 && fl.len <= 0x100000 ? fl.len : image.length;
+  const check = resume ? 0 : 0x400 + 0x400 + (ldr && ldr.len > 0x20 && ldr.len < image.length ? ldr.len - 0x20 : 0);
+  const write = 0x400 + 0x20 + flen + Math.max(0, flen - 0x4000);
+  const total = check + write;
+  return {
+    check, write, total,
+    verify: (b) => (Math.min(b, check) / total) * 100,
+    writing: (b) => Math.min(99, ((check + Math.min(b, write)) / total) * 100),
+  };
+}
+
+// minutes and seconds left at the rate so far, or null while it is too early to say
+function remaining(done, total, ms) {
+  if (done < total * 0.04 || ms < 3000) return null;
+  return Math.max(0, Math.round(((total - done) / done) * ms / 1000));
+}
+
+// what a failure leaves: "safe" (nothing written), "paused" (in update mode: resume), "restart" (written; the FM-1
+// did not come back as expected), "partial" (the firmware installed, m-bootloader not)
+function afterFailure(code, phase) {
+  if (phase === "boot") return code === "noreturn" ? "restart" : "partial";
+  if (phase === "done") return "restart";
+  if (phase === "staged") return code === "noreturn" || code === "mismatch" ? "restart" : "paused";
+  return "safe";
+}
+
+return {progressModel, remaining, afterFailure};
+})();
+
+const {hold, busyElsewhere} = (() => {
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+//
+// Keeps an install going while it runs, as far as a page can:
+//   - timers from a worker: Chrome's background-tab throttling (1 s alignment, then one wake-up a minute) is
+//     applied to the page's own timers, which fm1ota.js waits on between steps; a dedicated worker's timers are
+//     scheduled apart from them. setTimeout/clearTimeout are routed through it until release. A browser that slows
+//     the worker too (a hidden embedded view does) loses nothing: the transfer itself waits on no timer.
+//   - one install at a time: a Web Lock that a second installer tab cannot take (two tabs answering the same
+//     FM-1 corrupt each other's transfer).
+//   - a screen wake lock: the display and the computer stay awake while the page is in front (taken again
+//     whenever the page comes back).
+//   - leaving: the browser asks before the page is closed or reloaded.
+//   - the page's visibility, reported to the caller (the warning when the tab is switched).
+// Each part is skipped where the browser lacks it; none is needed for the transfer itself (transfer.js).
+
+const LOCK = "melodee-fm1-install";
+const BASE_ID = 1 << 30;                          // worker timer ids, apart from the browser's own
+
+let worker = null, nextId = BASE_ID;
+const pending = new Map();
+
+function workerTimers() {
+  if (worker !== null) return worker;
+  worker = false;
+  try {
+    const src = "const t=new Map();onmessage=({data:[on,id,ms]})=>{if(on)t.set(id,setTimeout(()=>{t.delete(id);" +
+      "postMessage(id)},ms));else{clearTimeout(t.get(id));t.delete(id)}}";
+    const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    let w;
+    try { w = new Worker(url); } finally { URL.revokeObjectURL(url); }
+    w.onmessage = ({ data: id }) => { const f = pending.get(id); pending.delete(id); if (f) f(); };
+    worker = w;                                   // kept for the page's life: a timer set before release still fires
+  } catch (_) { /* no workers here: the page's timers, then */ }
+  return worker;
+}
+
+function routeTimers() {
+  const w = workerTimers();
+  if (!w) return () => {};
+  const nativeSet = globalThis.setTimeout, nativeClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn, ms = 0, ...args) => {
+    if (typeof fn !== "function") return nativeSet(fn, ms, ...args);
+    const id = nextId++;
+    pending.set(id, () => fn(...args));
+    w.postMessage([1, id, Math.max(0, +ms || 0)]);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    if (typeof id === "number" && id >= BASE_ID) { if (pending.delete(id)) w.postMessage([0, id]); }
+    else nativeClear(id);
+  };
+  return () => { globalThis.setTimeout = nativeSet; globalThis.clearTimeout = nativeClear; };
+}
+
+// the single-install lock: resolves to a release function, or null when another tab holds it
+async function takeLock() {
+  if (!navigator.locks) return () => {};
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const got = await new Promise((answer) => {
+    navigator.locks.request(LOCK, { ifAvailable: true }, (lock) => {
+      answer(!!lock);
+      return lock ? held : undefined;
+    }).catch(() => answer(false));
+  });
+  return got ? release : null;
+}
+
+async function busyElsewhere() {
+  if (!navigator.locks || !navigator.locks.query) return false;
+  try { return (await navigator.locks.query()).held.some((l) => l.name === LOCK); } catch (_) { return false; }
+}
+
+// starts holding; -> release(), or null when another tab is installing. onHidden() / onVisible(ms away)
+async function hold({ leaveText = "", onHidden, onVisible } = {}) {
+  const unlock = await takeLock();
+  if (!unlock) return null;
+  const undo = [unlock, routeTimers()];
+  let wake = null, waking = false, hiddenAt = 0, done = false;
+  const awake = async () => {
+    if (done || wake || waking || document.visibilityState !== "visible" || !navigator.wakeLock) return;
+    waking = true;
+    try {
+      const granted = await navigator.wakeLock.request("screen");
+      if (done) { granted.release().catch(() => {}); return; }
+      wake = granted;
+      wake.addEventListener("release", () => { wake = null; });
+    } catch (_) { wake = null; }
+    finally { waking = false; }
+  };
+  const vis = () => {
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      if (onHidden) onHidden();
+    } else {
+      awake();
+      if (hiddenAt && onVisible) onVisible(Date.now() - hiddenAt);
+      hiddenAt = 0;
+    }
+  };
+  const leave = (e) => { e.preventDefault(); e.returnValue = leaveText; return leaveText; };
+  document.addEventListener("visibilitychange", vis);
+  window.addEventListener("beforeunload", leave);
+  undo.push(() => {
+    document.removeEventListener("visibilitychange", vis);
+    window.removeEventListener("beforeunload", leave);
+    if (wake) wake.release().catch(() => {});
+  });
+  awake();
+  return () => {
+    if (done) return;
+    done = true;
+    undo.reverse().forEach((f) => f());
+  };
+}
+
+return {hold, busyElsewhere};
+})();
+
+const {SteadyUpdater} = (() => {
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// Portions Copyright (C) 2026 Charles Vestal
+// Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+//
+// fm1-base's Updater (fm1ota.js, unchanged beside this file) with a read loop that does not depend on the page's
+// timers. Upstream answers each of the device's read requests after `await sleep(10)`. A browser throttles the timers
+// of a page in the background (Chrome: once a second at once, once a minute after five minutes), so a switched tab
+// turned every 10 ms gap into a second or a minute. The device waits 3 x 5 s for an answer and its first step gives
+// up after 2 min: the install stopped halfway. Here an answer is sent from the MIDI message's own event, with the
+// same 10 ms gap given to the browser's MIDI service as the send's timestamp; no page timer is between a request
+// and its answer. response() and parseRequest() are fm1ota.js's (module-private there), kept byte for byte.
+
+
+const MAXDATA = 512;
+const GAP_MS = 10;                          // upstream's pause before each answer
+const FINISH = [0xE0000000, 0xF0000000];           // step 1's and step 2's "success" questions
+
+function response(addr, data, fl = 0) {
+  const len = data.length;
+  const body = [0x00, 0x59, 0x30, (len + 8) & 0xFF, ((len + 8) >> 8) & 0xFF, 0, fl,
+    addr & 0xFF, (addr >>> 8) & 0xFF, (addr >>> 16) & 0xFF, (addr >>> 24) & 0xFF,
+    len & 0xFF, (len >> 8) & 0xFF, 0, ...data];
+  let s = 0;
+  for (let i = 6; i < body.length; i++) s += body[i];
+  body.push(~s & 0xFF);
+  return [0xF0, ...pack7(body), 0xF7];
+}
+
+function parseRequest(pkt) {
+  if (pkt[0] !== 0xF0 || pkt[pkt.length - 1] !== 0xF7) return null;
+  const u = unpack7(pkt.slice(1, -1));
+  if (u.length !== 15 || u[0] !== 0 || u[1] !== 0x59 || u[2] !== 0x30) return null;
+  let s = 0;
+  for (let i = 6; i < 14; i++) s += u[i];
+  if ((~s & 0xFF) !== u[14]) return null;
+  return { fl: u[6], addr: (u[7] | (u[8] << 8) | (u[9] << 16) | (u[10] << 24)) >>> 0, len: u[11] | (u[12] << 8) | (u[13] << 16) };
+}
+
+// a send the MIDI service delivers `delay` ms from now; false when the port is gone
+function sendLater(link, bytes, delay) {
+  try { link.output.send(bytes, performance.now() + delay); return true; } catch (_) { return false; }
+}
+
+function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
+
+class SteadyUpdater extends Updater {
+  // Updater.serve's contract: answer reads until the device asks finishAddr -> { served, finished, lost }
+  async serve(link, image, finishAddr, idleMs, onProgress) {
+    let served = 0, bytes = 0, last = Date.now(), lastRead = -1;
+    for (;;) {
+      const pkt = await link.read(1000);           // resolves from the message event; its timeout only measures idle
+      if (!pkt) {
+        if (link.lost) return { served, finished: false, lost: true, lastRead };
+        if (Date.now() - last > idleMs) return { served, finished: false, lastRead };
+        continue;
+      }
+      const r = parseRequest(pkt);
+      if (!r) continue;
+      last = Date.now();
+      if (FINISH.includes(r.addr)) {
+        if (!sendLater(link, response(r.addr, [...new TextEncoder().encode("success"), 0]), 0))
+          return { served, finished: false, lost: true, lastRead };
+        if (r.addr === finishAddr) return { served, finished: true };
+        continue;
+      }
+      if (r.len > MAXDATA || r.addr + r.len > image.length) throw fail("badreq", `bad request ${r.addr.toString(16)}+${r.len}`);
+      lastRead = r.addr;
+      if (!sendLater(link, response(r.addr, Array.from(image.subarray(r.addr, r.addr + r.len)), r.fl), GAP_MS)) {
+        return { served, finished: false, lost: true, lastRead };
+      }
+      served++;
+      bytes += r.len;
+      if (onProgress) onProgress(served, lastRead, bytes);
+    }
+  }
+}
+
+return {SteadyUpdater};
+})();
+
+const {createInstallSession} = (() => {
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// Melodee's installer session. Adapts Saadet's preflight, progress and recovery
+// interaction to Melodee's loader identities, release channels and backup paths.
+
+function createInstallSession({ t }) {
+  const $ = id => document.getElementById(id);
+  const MARK = 'melodee-install-pending';
+  let active = null, preparing = false;
+  const read = () => { try { return JSON.parse(localStorage.getItem(MARK)); } catch { return null; } };
+  const save = value => { try { value ? localStorage.setItem(MARK, JSON.stringify(value)) : localStorage.removeItem(MARK); } catch { /* device remains authoritative */ } };
+  const banner = () => {
+    const pending = read();
+    $('resumebanner').hidden = !pending;
+    $('resumetext').textContent = pending ? t('pendingInstall') + ' ' + pending.label : '';
+  };
+  const close = () => { if (!active) { $('run').close(); document.title = baseTitle; } };
+  const baseTitle = document.title;
+  $('run').addEventListener('cancel', e => { if (active) e.preventDefault(); });
+  $('run-close').addEventListener('click', close);
+  $('pfok').addEventListener('change', () => { $('pfgo').disabled = !$('pfok').checked; });
+  banner();
+
+  function preflight(backup) {
+    const dialog = $('preflight'), form = dialog.querySelector('form');
+    $('pfcheck').hidden = !backup;
+    $('pfok').checked = false;
+    $('pfgo').disabled = backup;
+    dialog.showModal();
+    (backup ? $('pfok') : $('pfgo')).focus();
+    return new Promise(resolve => {
+      const done = go => {
+        form.removeEventListener('submit', submit);dialog.removeEventListener('cancel', cancel);
+        dialog.close();resolve(go);
+      };
+      const submit = e => { e.preventDefault();if (e.submitter?.value !== 'go' || !backup || $('pfok').checked) done(e.submitter?.value === 'go'); };
+      const cancel = e => { e.preventDefault();done(false); };
+      form.addEventListener('submit', submit);dialog.addEventListener('cancel', cancel);
+    });
+  }
+  function pct(value) {
+    if (!active) return;
+    active.pct = Math.max(active.pct, Math.min(100, Math.floor(value)));
+    $('pct').textContent = active.pct;
+    $('barfill').style.width = active.pct + '%';
+    $('bar').setAttribute('aria-valuenow', active.pct);
+    document.title = `${active.pct}% · ${t(document.visibilityState === 'hidden' ? 'comeBack' : 'installingTitle')}`;
+  }
+  function message(text) { if (active) $('runstep').textContent = text; }
+  function phase(name) {
+    if (!active) return;
+    active.phase = name;
+    const stages = ['prepare','write','restart'];
+    document.querySelectorAll('#phases li').forEach(li => {
+      const pos = stages.indexOf(li.dataset.ph), now = stages.indexOf(name);
+      li.className = pos < now ? 'past' : pos === now ? 'now' : '';
+    });
+  }
+  function step(k, n, bytes) {
+    if (!active) return;
+    active.lastAt = Date.now();$('stall').hidden = true;
+    if (k === 'start') { phase('prepare');message(t('start')); }
+    if (k === 'verify') { message(t('verify'));pct(active.pm.verify(bytes ?? n * 512)); }
+    if (k === 'loader') {
+      active.staged = true;save({ key: active.key, label: active.label });
+      message(t('loader'));
+    }
+    if (k === 'write') {
+      active.staged = true;save({ key: active.key, label: active.label });
+      phase('write');message(t('write'));pct(active.pm.writing(bytes ?? n * 512));
+      if (!active.writeAt) active.writeAt = Date.now();
+      const seconds = remaining(bytes ?? n * 512, active.pm.write, Date.now() - active.writeAt);
+      $('eta').textContent = seconds == null ? '' : seconds < 60 ? t('etaSoon') : `${Math.ceil(seconds / 60)} ${t('etaMinutes')}`;
+    }
+    if (k === 'reboot') { phase('restart');message(t('reboot'));pct(99);$('eta').textContent = ''; }
+  }
+  async function begin({ key, label, image, resume = false, backup = false, onResume }) {
+    if (active || preparing) return false;
+    preparing = true;
+    let release;
+    try {
+      const pending = read();
+      if (resume && pending?.key && pending.key !== key) {
+        throw Object.assign(new Error(t('differentPending') + ' ' + pending.label), { code: 'pending' });
+      }
+      release = await hold({leaveText:t('leave'),
+        onHidden:() => { if (active) { active.hiddenPct = active.pct;pct(active.pct); } },
+        onVisible:ms => {
+          if (!active) return;
+          pct(active.pct);
+          if (ms >= 1500) {
+            $('backtext').textContent = t(active.pct > active.hiddenPct ? 'backgroundKept' : 'backgroundSlow');
+            $('backnote').hidden = false;
+          }
+        }});
+      if (!release) throw Object.assign(new Error(t('busy')), { code:'busy' });
+      if (!await preflight(backup)) { release();return false; }
+      active = {key,label,image,release,onResume,pct:0,phase:'prepare',pm:progressModel(image,resume),staged:resume,lastAt:Date.now()};
+      if (resume) save({key,label});
+      $('run').dataset.state = 'running';$('end').hidden = true;
+      $('backnote').hidden = $('stall').hidden = true;$('eta').textContent = '';
+      $('log').textContent = '';$('runtitle').textContent = label;
+      $('run-close').hidden = true;$('run-resume').hidden = true;
+      $('run').showModal();phase('prepare');pct(0);message(t('start'));
+      active.timer = setInterval(() => { if (active) $('stall').hidden = Date.now() - active.lastAt < 12000; }, 1000);
+      return true;
+    } catch (error) { if (release) release();throw error; }
+    finally { preparing = false; }
+  }
+  function finish(ok, error) {
+    if (!active) return;
+    const run = active;
+    let state = ok ? 'done' : afterFailure(error?.code, run.staged ? 'staged' : 'start');
+    if (!ok && run.phase === 'restart') state = 'restart';
+    if (ok) { pct(100);save(null); }
+    $('run').dataset.state = state;$('end').hidden = false;
+    $('endtitle').textContent = t('end_' + state);
+    $('endtext').textContent = ok ? run.label + '. ' + t('installedVerified') : error?.message || t('stopped');
+    $('endtips').textContent = t('tip_' + state);
+    $('run-close').hidden = false;
+    $('run-resume').hidden = state !== 'paused';
+    $('run-resume').onclick = () => { close();run.onResume?.(); };
+    clearInterval(run.timer);
+    active = null;
+    run.release();document.title = ok ? t('done') + ' · Melodee' : baseTitle;
+    banner();$('run-close').focus();
+  }
+  function resume() {
+    if (!active) throw new Error('No install session');
+    const pending = read();
+    if (pending?.key && pending.key !== active.key)
+      throw Object.assign(new Error(t('differentPending') + ' ' + pending.label), {code:'pending'});
+    active.pm = progressModel(active.image, true);
+    active.staged = true;save({key:active.key,label:active.label});
+  }
+  async function probe(fn) {
+    const release = await hold();
+    if (!release) throw new Error(t('busy'));
+    try { return await fn(); } finally { release(); }
+  }
+  return {begin,step,message,finish,resume,probe,busy:busyElsewhere};
+}
+
+return {createInstallSession};
+})();
+
 const $ = (id) => document.getElementById(id);
 const TEXT = {
   ja: {
@@ -976,6 +1581,8 @@ const TEXT = {
     license: "GPL-3.0, no warranty. Source:",
   },
 };
+Object.assign(TEXT.en, {"kicker": "Firmware for the M-VAVE FM-1", "installTitle": "Install Melodee", "factTime": "About 3 minutes", "connectTitle": "Connect the FM-1", "connectHelp": "Switch it on, close music apps and other editor tabs, and allow MIDI access when asked.", "find": "Check connection", "chooseTitle": "Choose your version", "backupFirst": "Back up your music and sounds in the editor before updating.", "beforeStart": "Before you start", "stayHere": "Keep this tab open and in front", "stayWhy": "Stay on this page until it says Done.", "keepPower": "Keep the FM-1 connected and powered", "keepWhy": "Keep the cable connected. Plug your laptop into power.", "screenNormal": "UPDATING or a dark screen is normal during installation.", "backupAck": "I've saved a backup, or have nothing to keep.", "cancel": "Cancel", "startInstall": "Start installation", "runWarning": "Keep this tab open and in front. Don't unplug the FM-1.", "prepare": "Prepare", "stall": "Waiting for the FM-1. Keep the cable connected.", "resumeInstall": "Resume installation", "close": "Close", "details": "Details", "pendingInstall": "An installation did not finish. Select the same version and resume:", "differentPending": "Resume using the same selected build as the interrupted installation:", "busy": "Another tab is using the installer. Finish or close it there first.", "comeBack": "Come back to the installer", "installingTitle": "Installing Melodee", "etaSoon": "Less than a minute left", "etaMinutes": "minutes left", "backgroundKept": "The installation continued while you were away. Please stay here until it finishes.", "backgroundSlow": "The browser slowed this page while you were away. It is continuing; please stay here.", "end_done": "Installation complete", "end_safe": "Nothing was written", "end_paused": "Installation paused", "end_restart": "The FM-1 did not return as expected", "installedVerified": "The FM-1 restarted and reported the expected firmware.", "tip_done": "You can open the editor or unplug the FM-1.", "tip_safe": "Check the connection and other music apps, then try again.", "tip_paused": "Reconnect the FM-1 and resume the same build. The write starts again from the beginning.", "tip_restart": "Power-cycle the FM-1 and check its screen. If it stays in update mode, reconnect and resume the same build.", "badHash": "The firmware checksum does not match the published build. Reload the page."});
+Object.assign(TEXT.ja, {"kicker": "M-VAVE FM-1 用ファームウェア", "installTitle": "Melodee をインストール", "factTime": "約3分", "connectTitle": "FM-1 を接続", "connectHelp": "電源を入れ、音楽アプリや別のエディタタブを閉じてください。MIDI の許可を求められたら許可してください。", "find": "接続を確認", "chooseTitle": "バージョンを選ぶ", "backupFirst": "更新前にエディタで曲と音色をバックアップしてください。", "beforeStart": "開始前に確認", "stayHere": "このタブを開いたまま前面に保つ", "stayWhy": "完了と表示されるまで、このページから離れないでください。", "keepPower": "FM-1 の接続と電源を保つ", "keepWhy": "ケーブルを抜かず、パソコンも電源につないでください。", "screenNormal": "更新中は UPDATING 表示や画面の消灯が正常です。", "backupAck": "バックアップを保存済み、または保存するデータはありません。", "cancel": "キャンセル", "startInstall": "インストール開始", "runWarning": "このタブを前面に保ち、FM-1 を抜かないでください。", "prepare": "準備", "stall": "FM-1 の応答を待っています。接続を保ってください。", "resumeInstall": "インストールを再開", "close": "閉じる", "details": "詳細", "pendingInstall": "未完了のインストールがあります。同じバージョンを選んで再開してください：", "differentPending": "中断したインストールと同じビルドを選んで再開してください：", "busy": "別のタブでインストール中です。そのタブで完了するか閉じてください。", "comeBack": "インストーラに戻ってください", "installingTitle": "Melodee インストール中", "etaSoon": "残り1分未満", "etaMinutes": "分（残り）", "backgroundKept": "タブを離れた間も処理を続けました。完了までこのタブに留まってください。", "backgroundSlow": "タブを離れた間にブラウザが処理を遅くしました。再開しています。このタブに留まってください。", "end_done": "インストール完了", "end_safe": "書き込みは行われませんでした", "end_paused": "インストールを中断", "end_restart": "FM-1 の再起動を確認できませんでした", "installedVerified": "FM-1 の再起動と、指定したファームウェアの識別情報を確認しました。", "tip_done": "エディタを開くか、FM-1 を取り外せます。", "tip_safe": "接続と音楽アプリを確認して、もう一度お試しください。", "tip_paused": "FM-1 を再接続し、同じビルドで再開してください。書き込みは最初から始まります。", "tip_restart": "FM-1 の電源を入れ直して画面を確認してください。更新モードのままなら、再接続して同じビルドで再開してください。", "badHash": "ファームウェアのチェックサムが一致しません。ページを再読み込みしてください。"});
 let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
 const t = (k) => TEXT[lang][k];
 let lastKey = null, lastArg = "";
@@ -993,7 +1600,7 @@ $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; 
 applyLang();
 $("stock-skip-backup").addEventListener("change", applyLang);
 $("transit-skip-backup").addEventListener("change", applyLang);
-const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; };
+const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; session.message(t(k) + arg); };
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
 const buildIds = ["dual", "rc-dual", "nightly-dual"];
 const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
@@ -1001,10 +1608,10 @@ const selection = () => {     /* the release, or a channel ("nightly-dual": meta
   const kind = build(), dash = kind.indexOf("-");
   return dash < 0 ? {kind, channel: (meta.releases || []).find(r => r.version === $("release").value) || meta, key: kind} : {kind, channel: meta[kind.slice(0, dash)], key: kind.slice(dash + 1)};
 };
-const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
+const ready = () => { $("hver").textContent = selection().channel.version; lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
 const log = (t) => { const box = $("log"); box.textContent += t + "\n"; box.scrollTop = box.scrollHeight; };
 let image = null;
-const meta = {"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "nightly": {"version": "next-e62deea", "product": "FM-1_900", "branch": "nightly", "commit": "e62deeaff05af20f4d0404777b3e103bf7c49a1d", "builtAt": "2026-10-24T08:02:26Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc"}}, "rc": {"version": "1.4.2-rc.1", "product": "FM-1_91042", "branch": "next", "commit": "04943ed7781c08f030404233508be500fbfa3ba3", "builtAt": "2026-10-17T13:37:05.564727+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.2-rc.1.fwsc"}}, "releases": [{"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}}, {"version": "1.4.4", "product": "FM-1_91044", "pkg": {"dual": "../../firmware/melodee-1.4.4.fwsc"}}, {"version": "1.4.3", "product": "FM-1_91043", "pkg": {"dual": "../../firmware/melodee-1.4.3.fwsc"}}, {"version": "1.4.1", "product": "FM-1_91041", "pkg": {"dual": "../../firmware/melodee-1.4.1.fwsc"}}, {"version": "1.4.0", "product": "FM-1_91040", "pkg": {"dual": "../../firmware/melodee-1.4.0.fwsc"}}, {"version": "1.3.6", "product": "FM-1_91036", "pkg": {"dual": "../../firmware/melodee-1.3.6.fwsc"}}, {"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc"}}, {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc"}}, {"version": "1.0.1", "product": "FM-1_91001", "pkg": {"dual": "../../firmware/melodee-1.0.1.fwsc"}}, {"version": "1.0.0", "product": "FM-1_91000", "pkg": {"dual": "../../firmware/melodee-1.0.0.fwsc"}}]};
+const meta = {"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}, "nightly": {"version": "next-d918c41", "product": "FM-1_900", "branch": "nightly", "commit": "d918c41b3a48f805646241d5166b275f63a23589", "builtAt": "2026-10-24T08:30:53Z", "pkg": {"dual": "../../firmware/melodee-nightly.fwsc"}, "sha256": {"dual": "10ee207efe8013516c061978db2a82a2116c27f14d212d934c463a8be6c2b810"}}, "rc": {"version": "1.4.2-rc.1", "product": "FM-1_91042", "branch": "next", "commit": "04943ed7781c08f030404233508be500fbfa3ba3", "builtAt": "2026-10-17T13:37:05.564727+00:00", "pkg": {"dual": "../../firmware/melodee-1.4.2-rc.1.fwsc"}, "sha256": {"dual": "a99ff4e8249e60c1e812aa56cf29fd4d61bc27a7ea21d0aec6f822235683f8b4"}}, "releases": [{"version": "1.4.5", "product": "FM-1_91045", "pkg": {"dual": "../../firmware/melodee-1.4.5.fwsc"}, "sha256": {"dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"}}, {"version": "1.4.4", "product": "FM-1_91044", "pkg": {"dual": "../../firmware/melodee-1.4.4.fwsc"}, "sha256": {"dual": "d349a44dc5c29c2af2ad14b6fc76071fc9e218ad4a83dcd25948bd8479aa3607"}}, {"version": "1.4.3", "product": "FM-1_91043", "pkg": {"dual": "../../firmware/melodee-1.4.3.fwsc"}, "sha256": {"dual": "efa44743be492278e25261f012b02425f373b8f31e9e396ef5e47b240a79be80"}}, {"version": "1.4.1", "product": "FM-1_91041", "pkg": {"dual": "../../firmware/melodee-1.4.1.fwsc"}, "sha256": {"dual": "fe14e72f231fea45d3b10519846db3c733d7f175a88993a1f12853c3f5ba3c3d"}}, {"version": "1.4.0", "product": "FM-1_91040", "pkg": {"dual": "../../firmware/melodee-1.4.0.fwsc"}, "sha256": {"dual": "fc3a06a8e65b8a0a473e24229540fd43d2b666a9312cd5584264fc06f007b7f3"}}, {"version": "1.3.6", "product": "FM-1_91036", "pkg": {"dual": "../../firmware/melodee-1.3.6.fwsc"}, "sha256": {"dual": "abfb786611e1bbdf2b00952b0f65a0009682853544ab94450a5c0d6bccad8d5f"}}, {"version": "1.3.5", "product": "FM-1_91035", "pkg": {"dual": "../../firmware/melodee-1.3.5.fwsc"}, "sha256": {"dual": "5c49547826806445f6b72c6ad88a6bcff1a9d348dcd3794ec917363f4322e6b7"}}, {"version": "1.3.4", "product": "FM-1_91034", "pkg": {"dual": "../../firmware/melodee-1.3.4.fwsc"}, "sha256": {"dual": "8018b967aeffcd648b9c2b9fd114108a1fe8f1884097310bc9357031c753bb1b"}}, {"version": "1.3.3", "product": "FM-1_91033", "pkg": {"dual": "../../firmware/melodee-1.3.3.fwsc"}, "sha256": {"dual": "1cc2d5562c7c44717c4f1e468157089f5672a528d94be85e06b03bdaa75e65e5"}}, {"version": "1.3.2", "product": "FM-1_91032", "pkg": {"dual": "../../firmware/melodee-1.3.2.fwsc"}, "sha256": {"dual": "41b51d38724d89d286c6af327c93b4bdad0dcba243b9df92b9bd1d6e150b60e1"}}, {"version": "1.3.1", "product": "FM-1_91031", "pkg": {"dual": "../../firmware/melodee-1.3.1.fwsc"}, "sha256": {"dual": "65d1c5dcd76b40560b8495a9974f391dcbc32d07471e9391568519fd57e56680"}}, {"version": "1.3.0", "product": "FM-1_91030", "pkg": {"dual": "../../firmware/melodee-1.3.0.fwsc"}, "sha256": {"dual": "b4f13d418c5e408e26a2af0ea7fbda2c3dfadf56f7a07624262196718a6924ad"}}, {"version": "1.2.1", "product": "FM-1_91021", "pkg": {"dual": "../../firmware/melodee-1.2.1.fwsc"}, "sha256": {"dual": "1ba8116a44485ddc62741b13553bc01fa021bbfea4c5df22aa8c358ed23c1515"}}, {"version": "1.1.0", "product": "FM-1_91010", "pkg": {"dual": "../../firmware/melodee-1.1.0.fwsc"}, "sha256": {"dual": "105269153b2aa1e20f633d302ba028d505462f1521a3348867e09b39bd69b5e8"}}, {"version": "1.0.2", "product": "FM-1_91002", "pkg": {"dual": "../../firmware/melodee-1.0.2.fwsc"}, "sha256": {"dual": "6f1a6077f5620f97e4e7e821536244284b5b508dd5df94ef70b1e9a4866c0627"}}, {"version": "1.0.1", "product": "FM-1_91001", "pkg": {"dual": "../../firmware/melodee-1.0.1.fwsc"}, "sha256": {"dual": "db7e0c8f4a4e245ea7ad58f14d4d5d9387dc86eb9f3a780d61982c0544af2c18"}}, {"version": "1.0.0", "product": "FM-1_91000", "pkg": {"dual": "../../firmware/melodee-1.0.0.fwsc"}, "sha256": {"dual": "4b8421127fa9101897e4fccdf5f3004990efc4984d5753bf896f2c1c55bda65b"}}]};
 function releaseOptions() {
   const selected = $("release").value || meta.version;
   $("release").replaceChildren(...(meta.releases || [meta]).map(r => {
@@ -1021,11 +1628,12 @@ $("rc-options").hidden = !meta.rc;
 if (meta.rc) $("rc-version").textContent = meta.rc.version;
 $("nightly-options").hidden = !meta.nightly;
 if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
+const session = createInstallSession({t});
 const images = {};                // a build ("dual", "nightly-dual" ..) -> its package's image, each fetched once
 
 let writing = false, stock = null, stockFileEpoch = 0, buildEpoch = 0;
 const lockInstaller = (on) => {
-  writing = on; $("release").disabled = on; $("go").disabled = on || !image;
+  writing = on; $("find").disabled = on; $("release").disabled = on; $("go").disabled = on || !image;
   buildIds.forEach(k => { $("build-" + k).disabled = on; });
   $("stock-go").disabled = on || !stock;
   ["stock-file", "stock-recovery", "stock-skip-backup", "transit-go", "transit-recovery", "transit-skip-backup"].forEach(id => { $(id).disabled = on; });
@@ -1045,6 +1653,7 @@ async function choose() {
       const url = channel.pkg[key] + (channel.commit ? "?commit=" + channel.commit : ""), r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
       const pkg = new Uint8Array(await r.arrayBuffer());
+      if (channel.sha256?.[key] && await sha256hex(pkg) !== channel.sha256[key]) throw new Error(t("badHash"));
       if (productOf(pkg) !== channel.product) { if (epoch === buildEpoch) sayK("badpkg"); return; }
       images[cacheKey] = logicalImage(pkg);
     }
@@ -1064,40 +1673,51 @@ choose();
 // package's head over the boot data, Melodee's would write only V15's application (docs/RECOVERY.md)
 const refuseLoader = (id) => id === STOCK_LOADER ? sayK("loaderStock") : id === MELODEE_LOADER ? sayK("loaderMelodee") : sayK("loaderUnknown", id);
 
-$("go").addEventListener("click", async () => {
-  if (writing || !image) return;
-  const product = selection().channel.product;
-  lockInstaller(true);
-  let midi;
-  try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
-  catch (e) { sayK("denied"); lockInstaller(false); return; }
+let finding = false, connectedIdentity = null;
+$("find").addEventListener("click", async () => {
+  if (writing || finding) return;
+  finding = true;lockInstaller(true);
   try {
-    const up = new Updater(midi, log);
-    const total = 74 + 1167;
-    const step = (k, a) => {
-      log(`${k} ${a ?? ""}`);
-      if (k === "start") sayK("start");
-      if (k === "verify") { sayK("verify"); $("bar").value = (a / total) * 100; }
-      if (k === "loader") sayK("loader");
-      if (k === "write") { sayK("write"); $("bar").value = ((74 + a) / total) * 100; }
-      if (k === "reboot") sayK("reboot");
-      if (k === "done") { $("bar").value = 100; sayK("done"); }
-    };
-    const ota = await up.find((id) => /^ota-/i.test(id.model));
+    if (!navigator.requestMIDIAccess) throw new Error(t("nomidi"));
+    const found = await session.probe(async () => {
+      const access = await navigator.requestMIDIAccess({sysex:true});
+      return await new SteadyUpdater(access).find();
+    });
+    if (!found) throw new Error(t("notfound"));
+    found.link.close();connectedIdentity = found.id;$("go").textContent = t(/^ota-/.test(found.id.model) ? "resumeInstall" : "install");$("devwhat").textContent = found.id.text;$("device").hidden = false;$("connmsg").textContent = "";
+  } catch (e) { connectedIdentity = null;$("device").hidden = true;$("connmsg").textContent = e.message; }
+  finally { finding = false;lockInstaller(false); }
+});
+
+$("go").addEventListener("click", async () => {
+  if (writing || finding || !image) return;
+  const {kind,channel} = selection(), chosen = image, product = channel.product;
+  const key = [kind,channel.version,channel.commit || "",product,channel.sha256?.dual || ""].join(":");
+  lockInstaller(true);
+  let complete = false, failure = null;
+  try {
+    if (!await session.begin({key,label:`Melodee ${channel.version}`,image:chosen,resume:/^ota-/.test(connectedIdentity?.model || ""),backup:!/^ota-/.test(connectedIdentity?.model || ""),onResume:() => $("go").click()})) return;
+    let midi;
+    try { midi = await navigator.requestMIDIAccess({sysex:true}); }
+    catch (e) { sayK("denied");failure = new Error(t("denied"));return; }
+    const up = new SteadyUpdater(midi, log);
+    const step = (k,n,bytes) => { log(`${k} ${n ?? ""}`);session.step(k,n,bytes);if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k); };
+    const ota = await up.find(id => /^ota-/i.test(id.model));
     if (ota) {
       ota.link.close();
-      if (ota.id.text !== MELODEE_LOADER) refuseLoader(ota.id.text);
-      else sayK((await up.resume(image, step, product, MELODEE_LOADER)) ? "done" : "stopped");
+      if (ota.id.text !== MELODEE_LOADER) { refuseLoader(ota.id.text);failure = new Error($("status").textContent);return; }
+      session.resume();
+      complete = await up.resume(chosen, step, product, MELODEE_LOADER);
+      sayK(complete ? "done" : "stopped");
     } else {
-      await up.install(image, product, step, MELODEE_LOADER);
+      await up.install(chosen, product, step, MELODEE_LOADER);complete = true;sayK("done");
     }
   } catch (e) {
-    if (e && e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || "");
-    else sayK("error", e && e.message);
-    log(String(e && e.stack || e));
-  }
-  lockInstaller(false);
+    if (e.code === "wrongloader") refuseLoader(e.detail);
+    else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || "");
+    else sayK("error",e.message);
+    failure = {code:e.code,message:$("status").textContent};log(String(e.stack || e));
+  } finally { connectedIdentity = null; try { session.finish(complete,failure); } finally { lockInstaller(false); } }
 });
 
 $("stock-file").addEventListener("change", async () => {
@@ -1128,21 +1748,25 @@ function archiveInfo(a) {
   return {version,supported};
 }
 async function leaveMelodee(target) {
-  if (writing || (target === "stock" && !stock)) return;
+  if (writing || finding || (target === "stock" && !stock)) return;
   if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
   let selected = stock;
   const transit = target === "transit", ownLoader = transit ? MELODEE_LOADER : STOCK_LOADER;
   const skipBackup = $(target + "-skip-backup").checked;
   const confirmation = () => confirm(t(target + (skipBackup ? "ConfirmNoBackup" : "Confirm")));
-  const complete = () => { $("bar").value = 100; sayK(transit ? "transitDone" : "done"); };
+  let completed = false, failure = null;
+  const complete = () => { completed = true; $("bar").value = 100; sayK(transit ? "transitDone" : "done"); };
   lockInstaller(true); $("bar").value = 0;
   let link = null;
   try {
+    if (transit) { sayK("transitLoading"); selected = await fetchTransitPackage(); }
+    const key = transit ? "transit:0.1.3" : "stock:V15";
+    if (!await session.begin({key,label:transit ? "TransitFM1 0.1.3" : "M-VAVE V15",image:selected.image,onResume:() => leaveMelodee(target)})) return;
     let midi;
     try { midi = await navigator.requestMIDIAccess({sysex:true}); } catch (e) { sayK("denied"); return; }
-    if (transit) { sayK("transitLoading"); selected = await fetchTransitPackage(); }
-    const up = new Updater(midi, log);
-    const step = (k, n) => {
+    const up = new SteadyUpdater(midi, log);
+    const step = (k, n, bytes) => {
+      session.step(k,n,bytes);
       log(`${k} ${n ?? ""}`);
       if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k);
       if (k === "verify") $("bar").value = Math.min(10, n / 10);
@@ -1154,6 +1778,7 @@ async function leaveMelodee(target) {
       if (loader.id.text !== ownLoader) { refuseLoader(loader.id.text); return; }
       if (!skipBackup && !$(target + "-recovery").checked) { sayK("stockNeedBackup"); return; }
       if (!confirmation()) return;
+      session.resume();
       if (await up.resume(selected.image, step, selected.product, ownLoader)) complete();
       else sayK("stopped");
     } else {
@@ -1178,11 +1803,11 @@ async function leaveMelodee(target) {
     if (!transit && e.code === "stopped" && e.lastRead >= selected.head.from && e.lastRead < selected.head.to) sayK("stockHead");
     else if (e.code === "wrongloader") refuseLoader(e.detail);
     else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || ""); else sayK("error",e.message);
+    failure = {code:e.code,message:$("status").textContent};
     log(String(e.stack || e));
-  } finally { if (link) link.close(); lockInstaller(false); }
+  } finally { if (link) link.close(); try { session.finish(completed,failure || new Error($("status").textContent)); } finally { lockInstaller(false); } }
 }
 $("stock-go").addEventListener("click", () => leaveMelodee("stock"));
 $("transit-go").addEventListener("click", () => leaveMelodee("transit"));
 </script>
-</body>
-</html>
+</body></html>

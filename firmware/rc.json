@@ -6,5 +6,8 @@
   "builtAt": "2026-10-17T13:37:05.564727+00:00",
   "pkg": {
     "dual": "../../firmware/melodee-1.4.2-rc.1.fwsc"
+  },
+  "sha256": {
+    "dual": "a99ff4e8249e60c1e812aa56cf29fd4d61bc27a7ea21d0aec6f822235683f8b4"
   }
 }

@@ -3,5 +3,8 @@
   "product": "FM-1_91045",
   "pkg": {
     "dual": "../../firmware/melodee-1.4.5.fwsc"
+  },
+  "sha256": {
+    "dual": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20"
   }
 }
