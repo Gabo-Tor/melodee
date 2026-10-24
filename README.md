@@ -22,7 +22,10 @@ Use **Back up and install TransitFM1** in the web installer first, then install 
 destination firmware with its own installer once the FM-1 shows **TRANSIT**. Use
 [TransitFM1](https://quixotic7.github.io/TransitFM1/) as the stop between firmwares
 instead of returning to V15: it guards the next write against interruptions, except
-possibly the last sector. Keep power and USB connected throughout.
+possibly the last sector. Use TransitFM1 **0.1.3**; 0.1 has startup and MIDI stalls,
+and 0.1.2 was withdrawn. **For Baud Girl, install official V15 first, then use
+Baud Girl's installer:** its image can exceed TransitFM1's write range. Keep power
+and USB connected throughout, and close other apps sending MIDI.
 
 **Return to official V15** is still available if you want the official firmware itself.
 Both options save a complete backup first. If your firmware cannot export one, you can select
@@ -31,8 +34,8 @@ For a black-screen device already in ROM UBOOT, use the
 [direct USB recovery tool](BUILDING.md#recover-a-black-screen-fm-1).
 
 Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current release:
-**[Melodee 1.4.4](https://github.com/keremimo/melodee/releases/tag/v1.4.4)**
-([release notes](docs/RELEASE_1.4.4.md), [what's new](#whats-new-in-144)).
+**[Melodee 1.4.5](https://github.com/keremimo/melodee/releases/tag/v1.4.5)**
+([release notes](docs/RELEASE_1.4.5.md), [what's new](#whats-new-in-145)).
 
 The stock-restore installer accepts 1.4's backup capabilities. Existing Melodee 1.4.0
 users can return to official V15 directly from the updated web installer.
@@ -56,6 +59,19 @@ Tagged releases from 1.4.4 use the [FM-1 shared build workflow](https://github.c
 to build and attest firmware from the tagged source. See [release verification](BUILDING.md#releases)
 for the process and the command to check a downloaded package. An attestation establishes
 build provenance; hardware validation is a separate check.
+
+## What's new in 1.4.5
+
+- **USB identification:** the device and update loader identify as Melodee FM-1,
+  retaining the hardware family name when switching firmware.
+- **MIDI clock and ARP:** steadier external tempo measurement and display; held
+  keys keep arpeggiating while the USB or TRS sync master is stopped.
+- **Project root:** ROOT follows the project's shared scale across tracks.
+- **Navigation:** ordinary GLO and SCL taps no longer show repeated shortcut hints.
+- **Firmware switching:** the installer uses TransitFM1 0.1.3; recovery instructions
+  explain how to enter ROM UBOOT directly.
+
+See the [release notes](docs/RELEASE_1.4.5.md) for compatibility details.
 
 ## What's new in 1.4.4
 
@@ -903,6 +919,11 @@ as the synthesized 808 kit.
 
 ## Scale keyboard
 
+**Scale, ROOT (key note), and scale/key-map QNT apply to the whole project.** Changing them on any track
+updates every track. Drum tracks keep their drum note mappings and bypass scale quantization.
+TRN remains per track. Projects and templates save the shared settings; older projects with different
+roots per track use the selected track's root when loaded.
+
 The first **SCL** page is **SCALES**, a browser with full names and note counts.
 **KNOB 1** selects a family (or ALL / FAV), **KNOB 2** browses that list,
 **KNOB 3** sets ROOT beside SCALE, and **KNOB 4** sets QNT.
@@ -952,7 +973,7 @@ octave stays independent. The default program map is E: MIDI 100–115,
 F: 116–127 then 0–3, G: 4–19, H: 20–35. Banks A–D and banks for absent tracks are silent.
 Use the MPC's default pad map and enable Pad MIDI Out (Always, or Empty for empty pads).
 WHITE and ALL map incoming MIDI as the keys, without the octave buttons.
-SCL, QNT and DEG are shared by all four tracks; ROOT and TRN stay per track. DRUM tracks automatically
+ROOT, SCL, QNT and DEG are shared by all four tracks; TRN stays per track. DRUM tracks automatically
 use the finger-drumming layout below in their assigned bank. Drum pads ignore bank octave, ROOT, TRN
 and DEG so each pad keeps its sound; the native keys retain their chromatic drum map and octave.
 Other kits and slices keep their own pitches. Controllers retain their MIDI channel routing;
