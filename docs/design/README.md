@@ -189,6 +189,8 @@ place status cards over knobs, lists, waveforms, or notes.
   while one is connected. A controller found, lost or not MIDI, and a low-speed device, are brief toasts.
   The optional octave pill gives way when the tag needs the room. Screens that draw their own header (PRESETS, SONG,
   MENU) do not show the tag yet; the USB HOST row in the menu shows the state there.
+  A connected device may provide IN, OUT or both; the same tag covers a USB synth receiving MIDI tracks.
+  Crowded headers use the label face, with `P. PHASER` / `P. CHORUS` as compact pedal-effect names when needed.
 
 Brief action results (saved, copied, invalid action) use the existing header-message area; a long explanation may
 wrap in a temporary toast. A question requiring a decision uses a dialog; a value being edited stays at its

@@ -100,6 +100,8 @@ static uint8_t midi_in_source[MQ];                    /* 1 USB, 2 TRS */
 static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
 static volatile uint32_t mi_w, mi_r, mo_w, mo_r;
 static volatile uint8_t midi_in_overflow;               /* audio ISR discards a broken stream and releases notes */
+static volatile uint8_t midi_usb_lost;                  /* host session ended: audio ISR releases USB owners */
+static int usb_midi_out_ready(void);
 
 /* Firmware: raw TIMER4 ticks (wrap-safe differences). Parser-only host tests
  * retain their simulated millisecond clock. */
@@ -130,7 +132,7 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
 
 static int midi_track_emit(uint32_t pkt)            /* from the audio ISR */
 {
-    if (usb.config && mo_w - mo_r < MQ) {
+    if (usb_midi_out_ready() && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
         RING_PUBLISH();
         mo_w++;
@@ -843,6 +845,14 @@ static void ep3_tx(void)                                /* <= 63 bytes per packe
 
 #include "usb_host.c"                                   /* MELODEE_USB_HOST: the port as a MIDI host (menu USB HOST) */
 
+static int usb_midi_out_ready(void)
+{
+#if MELODEE_USB_HOST
+    if (uh.on) return uh.run && uh.out_mps;
+#endif
+    return usb.config != 0;
+}
+
 static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
@@ -991,6 +1001,9 @@ static void usb_retry(uint32_t now_ms)
  * configuration afresh. usb.up = 0 first: TIMER5 (usb_poll, ua_service) leaves the SIE to this context. */
 static void usb_replug(uint32_t now_ms)
 {
+#if MELODEE_USB_HOST
+    if (uh.on) return;                                  /* device settings cannot detach an active host */
+#endif
     if (usb.detached)
         return;
     usb.up = 0;
@@ -1021,6 +1034,9 @@ static void ua_tracks_set(int tracks, uint32_t now_ms)
 
 static int ua_off_apply(uint32_t now_ms)
 {
+#if MELODEE_USB_HOST
+    if (uh.on) return 0;                                /* apply device-mode settings after HOST is turned off */
+#endif
     if ((ua_off_want == ua_off && ua_tracks_want == ua_tracks) || now_ms - ua_off_ms < 600u)
         return 0;
     UA_MEMORY_GUARD_OFF();

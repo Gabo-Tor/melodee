@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+ * Retains the USB host SIE/bus fixture contributed by recursivefieldinstruments (2026). */
 /* USB MIDI host (firmware/src/usb_host.c, usb_host_desc.h): the production code against a model of the SIE and of
  * what hangs on the cable. The model answers EP0 requests the way a keyboard, a hub and a mass-storage stick do,
  * so this tests the enumeration order, the hub handling, the packet filter and the fault paths. It does not test
@@ -45,9 +47,13 @@ static uint16_t build_kbd_cfg(uint8_t *d, int with_out)
     };
     uint16_t n = 9u + sizeof body;
     static const uint8_t head[9] = {9, 2, 0, 0, 2, 1, 0, 0x80, 50};
-    (void)with_out;
     memcpy(d, head, 9);
     memcpy(d + 9, body, sizeof body);
+    if (!with_out) {
+        memmove(d + 58, d + 72, n - 72u);              /* remove OUT and its class-specific descriptor */
+        n -= 14;
+        d[31] = 1;
+    }
     d[2] = (uint8_t)n;
     d[3] = (uint8_t)(n >> 8);
     return n;
@@ -74,10 +80,13 @@ static void devices_init(void)
 static uint8_t regs[4][32], common[16], index_reg, rsp[512];
 static uint32_t rsp_len, rsp_pos, ep_cnt[4];
 static void *ep_radr[4];
+static void *ep_tadr[4];
 static uint32_t USB_CON0, line_state;
 static uint8_t bus_dead;                /* nothing answers (cable pulled) */
 static uint8_t devctl_ls;               /* the device is low speed */
 static uint32_t ctl_requests, rx_toggle_clears;
+static uint32_t tx_toggle_clears, off_count;
+static uint32_t wire[512], wire_n;
 static dev_t_ *pend_dev;
 static uint8_t pend_addr;
 static uint8_t rx_q[8][64];
@@ -232,6 +241,9 @@ static void mock_write(uint32_t r, uint32_t v)
         } else {
             regs[0][17] = (uint8_t)v;
         }
+    } else if (index_reg == 1 && r == 17) {
+        if (v & 0x40u) tx_toggle_clears++;
+        regs[1][17] = v & 1u ? 3u : 0u;               /* TXPKTRDY/FIFONotEmpty until an explicit ACK */
     } else if (index_reg == 1 && r == 20) {
         if (v == 0x20) {
             regs[1][20] = 0x20;
@@ -258,12 +270,13 @@ static uint32_t mock_dt(void)
     return r < 16 ? common[r] : regs[index_reg][r];
 }
 static void mock_enable(uint32_t eps) { (void)eps; }
-static void mock_txbuf(uint32_t ep, void *p) { (void)ep; (void)p; }
+static void mock_txbuf(uint32_t ep, void *p) { ep_tadr[ep] = p; }
 static void mock_rxbuf(uint32_t ep, void *p) { ep_radr[ep] = p; }
-static void mock_send(uint32_t ep, void *p, uint32_t n) { (void)p; ep_cnt[ep] = n; }
+static void mock_send(uint32_t ep, void *p, uint32_t n) { ep_tadr[ep] = p; ep_cnt[ep] = n; }
 static void mock_ep0_send(void *p, uint32_t n) { mock_send(0, p, n); }
 static void mock_ep0_buf(void *p) { ep_radr[0] = p; }
 static void mock_nop(void) {}
+static void mock_off(void) { off_count++; USB_CON0 = 0; }
 static void mock_attach(void *p) { (void)p; }
 static void mock_host_attach(void *p) { ep_radr[0] = p; USB_CON0 = 0x25; }
 static uint32_t mock_one(void) { return 1; }
@@ -284,17 +297,18 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #define fm1_usb_sie_rd_start mock_rd
 #define fm1_usb_sie_data mock_dt
 #define fm1_usb_reset mock_nop
-#define fm1_usb_off mock_nop
+#define fm1_usb_off mock_off
 #define fm1_usb_attach mock_attach
 #define fm1_usb_host_attach mock_host_attach
 #define fm1_usb_line mock_line
 #define fm1_usb_sof_take mock_zero
 #define fm1_wdt_feed() (fm1_ms++)                       /* the host code's waits run on this clock */
 #define RING_PUBLISH() ((void)0)
-#define MELODEE_USB_AUDIO 0
+#define MELODEE_USB_AUDIO 1
 #define MELODEE_CDC 0
 #define MELODEE_OTA 0
 #define MELODEE_USB_HOST 1
+#include "usb_audio_memory.h"
 #include "../firmware/src/usb.c"
 
 /* ---------------------------------------------------------- the tests --- */
@@ -308,6 +322,8 @@ static void connect(int which)
     dflt = 0;
     rx_head = rx_tail = 0;
     mi_r = mi_w = 0;
+    mo_r = mo_w = 0;
+    wire_n = 0;
     midi_in_overflow = 0;
     if (which == HUB) {
         dev[HUB].port_dev[1] = STICK + 1;               /* port 1: a mass-storage stick, port 3: the keyboard */
@@ -364,10 +380,10 @@ static void test_parse(void)
     assert(!uh_parse_midi(stick_cfg, 32, &m) && !m.found);
     assert(!uh_parse_midi(hub_cfg, 25, &m));
     memcpy(cut, kbd_cfg, kbd_cfg_len);
-    assert(!uh_parse_midi(cut, 76, &m));                    /* cut inside the IN endpoint (it starts at 72) */
+    assert(uh_parse_midi(cut, 76, &m) && m.out_ep && !m.in_ep); /* OUT remains usable when IN is truncated */
     assert(uh_parse_midi(cut, kbd_cfg_len, &m));
     cut[72] = 0;                                            /* a zero-length descriptor ends the walk safely */
-    assert(!uh_parse_midi(cut, kbd_cfg_len, &m));
+    assert(uh_parse_midi(cut, kbd_cfg_len, &m) && m.out_ep && !m.in_ep);
     assert(uh_midi_ok(0x643C9009u) == 0x643C9009u);        /* note on ch0 */
     assert(uh_midi_ok(0x643C9019u) == 0x643C9009u);        /* cable 1 is dropped */
     assert(uh_midi_ok(0x0000F80Fu) == 0x0000F80Fu);        /* clock */
@@ -493,6 +509,106 @@ static void test_no_midi(void)
     puts("USB host: a stick without MIDI, a low-speed device: reported, no endpoint started: OK");
 }
 
+static void ack_tx(void)
+{
+    const uint8_t *p = ep_tadr[1];
+    assert(regs[1][17] & 1u);
+    assert(ep_cnt[1] && ep_cnt[1] <= uh.out_mps && !(ep_cnt[1] & 3u));
+    for (uint32_t i = 0; i < ep_cnt[1]; i += 4u) {
+        assert(wire_n < sizeof wire / sizeof wire[0]);
+        wire[wire_n++] = (uint32_t)p[i] | (uint32_t)p[i+1] << 8 | (uint32_t)p[i+2] << 16 | (uint32_t)p[i+3] << 24;
+    }
+    regs[1][17] = 0;                                   /* ACK empties the FIFO and clears TXPKTRDY */
+}
+
+static void recover_host(void)
+{
+    uh_task(fm1_ms);
+    assert(!uh.run && !uh.fault && midi_usb_lost && mo_r == mo_w);
+    midi_usb_lost = 0;                                 /* the production audio ISR consumes this */
+    assert(enumerate());
+}
+
+static void test_host_output(int via_hub)
+{
+    connect(via_hub ? HUB : KBD);
+    host_on(); assert(enumerate());
+    assert(usb_midi_out_ready() && !usb.config);
+    assert(regs[1][24] == 0x22 && regs[1][25] == 0 && regs[1][18] == 0x20);
+    uint32_t first = mo_r, toggles = tx_toggle_clears;
+    for (uint32_t i = 0; i < MQ; i++)
+        assert(midi_track_emit(0x09u | (0x90u | (i & 15u)) << 8 | i << 16 | 93u << 24));
+    assert(!midi_track_emit(0x003c8008u));               /* full: releases remain CPU0's responsibility */
+    usb_poll();
+    assert(uh.tx_count == 16 && mo_r == first && ep_cnt[1] == 64);
+    uint8_t pending[64]; memcpy(pending, ep_tadr[1], 64);
+    push_packet(0x643c9009u); poll_n(8);                /* input continues while output is busy */
+    assert(mi_w == 1 && mo_r == first && !memcmp(pending, ep_tadr[1], 64));
+    regs[1][17] = 0x80; usb_poll();                    /* NAK: retain ring and data */
+    assert(mo_r == first && tx_toggle_clears == toggles);
+    regs[1][17] = 0x04; usb_poll();                    /* transient bus error: same packet/toggle */
+    assert(mo_r == first && !memcmp(pending, ep_tadr[1], 64) && tx_toggle_clears == toggles);
+    while (mo_r != mo_w) { ack_tx(); usb_poll(); }
+    assert(wire_n == MQ && !uh.tx_count);
+    for (uint32_t i = 0; i < MQ; i++)
+        assert(wire[i] == (0x09u | (0x90u | (i & 15u)) << 8 | i << 16 | 93u << 24));
+    /* Ring wrap and short packets preserve release/controller order. */
+    assert(midi_track_emit(0x003c8008u)); assert(midi_track_emit(0x000040bbu));
+    usb_poll(); assert(ep_cnt[1] == 8 && mo_w - mo_r == 2);
+    ack_tx(); usb_poll(); assert(wire[MQ] == 0x003c8008u && wire[MQ+1] == 0x000040bbu);
+    /* A stall discards old queued note-ons and requests cleanup, then re-enumerates. */
+    assert(midi_track_emit(0x643c9009u)); usb_poll(); regs[1][17] = 0x20; usb_poll();
+    assert(uh.fault && !uh.run && !midi_track_emit(0x643d9009u)); recover_host();
+    assert(mo_r == mo_w && !uh.tx_count);
+    /* Persistent errors and an unresponsive/NAKing output have bounded recovery. */
+    assert(midi_track_emit(0x643c9009u)); usb_poll();
+    for (uint32_t i = 0; i < UH_MAX_ERRORS; i++) { regs[1][17] = 4; usb_poll(); }
+    assert(uh.fault); recover_host();
+    assert(midi_track_emit(0x643c9009u)); usb_poll(); fm1_ms += 500; usb_poll();
+    assert(uh.fault); recover_host();
+    /* Device audio/capture preferences wait for HOST OFF, never resetting active host DMA. */
+    uint32_t off = off_count, type = regs[1][24];
+    ua_off_set(UA_OFF_IN, !!(ua_off & UA_OFF_IN), fm1_ms); fm1_ms += 1000;
+    assert(!ua_off_apply(fm1_ms) && uh.run && off_count == off && regs[1][24] == type);
+    usb_replug(fm1_ms); assert(uh.run && off_count == off);
+    uh.want = 0; uh_task(fm1_ms);
+    assert(ua_off_apply(fm1_ms) == 1 && !uh.on && !usb_midi_out_ready());
+    usb_retry(fm1_ms + 1000); usb.config = 1;
+    assert(midi_track_emit(0x643c9009u));               /* ordinary computer-facing output remains available */
+    usb.config = usb.up = 0; mo_r = mo_w;
+    printf("USB host OUT %s: duplex, ACK ownership, NAK/error retries, bounded faults, mode settings: OK\n",
+           via_hub ? "behind a hub" : "direct");
+}
+
+static void test_endpoint_selection(void)
+{
+    uh_midi_t m;
+    uint8_t d[] = {9,2,41,0,1,1,0,0x80,50,
+                  9,4,2,1,1,1,3,0,0, 7,5,2,2,8,0,0,
+                  9,4,2,2,1,1,3,0,0, 7,5,0x81,2,64,0,0};
+    assert(uh_parse_midi(d, sizeof d, &m) && m.alt == 1 && m.out_ep == 2 && m.out_mps == 8 && !m.in_ep);
+    d[14] = 0;                                        /* first alternate isn't MIDI: use second */
+    assert(uh_parse_midi(d, sizeof d, &m) && m.alt == 2 && m.in_ep == 1 && !m.out_ep);
+    d[32] = 2;                                        /* MIDI 2.0 protocol is not a MIDI 1.0 event stream */
+    assert(!uh_parse_midi(d, sizeof d, &m));
+    d[32] = 0; d[38] = 0;                             /* invalid packet size */
+    assert(!uh_parse_midi(d, sizeof d, &m));
+    /* A receive-only controller rejects output; an output-only synth is still enumerated. */
+    connect(KBD); kbd_cfg_len = build_kbd_cfg(kbd_cfg, 0);
+    host_on(); assert(enumerate() && uh.in_ep && !uh.out_mps && !midi_track_emit(0x643c9009u));
+    uh.want = 0; uh_task(fm1_ms);
+    connect(KBD);
+    kbd_cfg_len = 25; memcpy(kbd_cfg, d, 25); kbd_cfg[14] = 1;
+    kbd_cfg[2] = 25;
+    host_on(); assert(enumerate() && !uh.in_ep && uh.out_mps == 8 && dev[KBD].alt == 1);
+    for (uint32_t i = 0; i < 3; i++) assert(midi_track_emit(0x643c9009u + (i << 16)));
+    usb_poll(); assert(ep_cnt[1] == 8); ack_tx(); usb_poll();
+    assert(ep_cnt[1] == 4); ack_tx(); usb_poll(); assert(wire_n == 3 && mo_r == mo_w);
+    line_state = 0; usb_poll(); assert(!uh.run && uh.fault); /* idle output-only unplug still detected */
+    uh.want = 0; uh_task(fm1_ms);
+    puts("USB host: output-only synth, input-only controller, alternate boundaries, protocol/packet validation: OK");
+}
+
 static void test_device_mode_untouched(void)
 {
     /* with the host off, usb_poll is the device driver and uh_task does nothing */
@@ -515,6 +631,9 @@ int main(void)
     test_keyboard(0);
     test_keyboard(1);
     test_no_midi();
+    test_host_output(0);
+    test_host_output(1);
+    test_endpoint_selection();
     puts("USB host: all OK");
     return 0;
 }

@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+ * Retains USB host enumeration and input contributed by recursivefieldinstruments (2026). */
 /* USB MIDI host on USB0 (MELODEE_USB_HOST), included by usb.c after the SIE helpers and ep1_take.
  *
  * The port is either the computer-facing device (usb.c) or, when the menu's USB HOST is on, the host of a class
@@ -8,20 +10,21 @@
  *   main loop (uh_task)   waits for a device, resets the bus, and enumerates it with blocking EP0 transfers
  *                         (hub: powers the ports, resets those with something on them, and tries each device
  *                         until one has a USB-MIDI streaming interface). The ISR does nothing until uh.run.
- *   TIMER5 (uh_poll)      once uh.run is 1 the SIE is the ISR's alone: one bulk / interrupt IN endpoint on host
- *                         EP1 is asked for a packet (ReqPkt), read when RxPktRdy, and its channel / clock events
+ *   TIMER5 (uh_poll)      once uh.run is 1 the SIE is the ISR's alone: optional IN and OUT endpoints share host
+ *                         EP1 in separate directions. IN is asked for a packet (ReqPkt), read when RxPktRdy, and its channel / clock events
  *                         go to the same ring as USB and TRS MIDI (source 1). A stall or a run of errors sets
  *                         uh.fault; the main loop then resets the bus and looks for a device again.
  *
  * Register sequences follow the AC79 SDK's USB0 host code (usb_h_sie_init, usb_h_chirp_and_reset, usb0_h_ep_read,
  * usb_ctlXfer): EP0 data moves through ep0buf / EP0_CNT as in the device driver, the target is FADDR (USB0 has no
  * per-endpoint function address), RXMAXP is 0xFF as everywhere in this firmware. Not driven: VBUS (the port
- * needs outside power, e.g. a powered hub), OUT endpoints (no MIDI to the controller yet), low-speed devices.
- * Tested against the SDK's register use and a SIE model only: see BUILDING.md. */
+ * needs outside power, e.g. a powered hub), low-speed devices. OUT drains the existing MIDI track queue only
+ * after the target ACKs; no SysEx/editor traffic is sent to attached devices.
+ * Host OUT is tested against the SDK register definitions and a SIE model, not on hardware: see BUILDING.md. */
 #if MELODEE_USB_HOST
 #include "usb_host_desc.h"
 
-enum { S_DEVCTL = 15, S_RXTYPE = 26, S_RXINTERVAL = 27 };
+enum { S_DEVCTL = 15, S_TXTYPE = 24, S_TXINTERVAL = 25, S_RXTYPE = 26, S_RXINTERVAL = 27 };
 enum { UH_MSG_NONE, UH_MSG_ON, UH_MSG_OFF, UH_MSG_MIDI, UH_MSG_NOMIDI, UH_MSG_LOW, UH_MSG_LOST };
 #define UH_FIRST_ADDR 1u
 #define UH_MAX_ERRORS 16u
@@ -31,12 +34,14 @@ static uint8_t uh_cfg[320];                                  /* a configuration,
 static struct {
     uint8_t want;                                       /* the menu (main loop) */
     uint8_t on;                                         /* the port is a host */
-    volatile uint8_t run;                               /* TIMER5 polls the IN endpoint */
+    volatile uint8_t run;                               /* TIMER5 owns the active MIDI endpoints */
     volatile uint8_t fault;                             /* TIMER5 -> main loop: reset the bus and look again */
     uint8_t seen, next_addr, dev, tried;
+    uint8_t in_ep, out_mps, tx_count, tx_errors;
     uint8_t msg;                                        /* one UH_MSG_* for main.c to show */
     volatile uint8_t errors;
     uint32_t t_ms, retry_ms;
+    uint32_t tx_ms;
     volatile uint32_t pkts, events;
 } uh;
 
@@ -205,22 +210,48 @@ static int uh_hub_probe(uint8_t addr, uint8_t mps, uint8_t cfgval, uh_midi_t *m)
     return 0;
 }
 
-/* host EP1 as the IN endpoint of the selected interface; the first request goes out at once */
+/* Host EP1 has independent RX/TX DMA slots. Both target endpoints belong to this device and alternate setting. */
 static void uh_start_ep(const uh_midi_t *m)
 {
     sie_wr(S_FADDR, uh.dev);
-    fm1_usb_ep_rxbuf(1, uh_rx);
     sie_wr(S_INDEX, 1);
-    sie_wr(S_RXMAXP, 0xFF);
-    sie_wr(S_RXCSR1, 0x90);                             /* clear data toggle, flush */
-    sie_wr(S_RXCSR2, 0);
-    sie_wr(S_RXTYPE, (uint32_t)(m->in_type << 4 | m->in_ep));
-    sie_wr(S_RXINTERVAL, m->in_type == 3u ? m->in_interval : 0u);   /* bulk: no NAK limit */
+    uh.in_ep = m->in_ep;
+    uh.out_mps = (uint8_t)m->out_mps;
+    uh.tx_count = uh.tx_errors = 0;
+    if (m->in_ep) {
+        fm1_usb_ep_rxbuf(1, uh_rx);
+        sie_wr(S_RXMAXP, 0xFF);
+        sie_wr(S_RXCSR1, 0x90);                         /* clear data toggle, flush */
+        sie_wr(S_RXCSR2, 0);
+        sie_wr(S_RXTYPE, (uint32_t)(m->in_type << 4 | m->in_ep));
+        sie_wr(S_RXINTERVAL, m->in_type == 3u ? m->in_interval : 0u);
+        sie_wr(S_RXCSR1, 0x20u);                        /* ReqPkt */
+    }
+    if (m->out_ep) {
+        fm1_usb_ep_txbuf(1, ep1tx);
+        sie_wr(S_TXMAXP, 0xFF);                         /* AC79 USB0's DMA maximum, as in the device driver */
+        sie_wr(S_TXCSR1, 0x48);                         /* ClrDataTog | FlushFIFO, only at endpoint start */
+        sie_wr(S_TXCSR2, 0x20);                         /* MODE: TX half of a bidirectional endpoint */
+        sie_wr(S_TXTYPE, (uint32_t)(m->out_type << 4 | m->out_ep));
+        sie_wr(S_TXINTERVAL, m->out_type == 3u ? m->out_interval : 0u);
+    }
     fm1_usb_ep_enable(1u << 1);
-    sie_wr(S_RXCSR1, 0x20u);                            /* ReqPkt */
     uh.errors = 0;
     uh.fault = 0;
+    RING_PUBLISH();
     uh.run = 1;
+}
+
+/* Stop admitting output before discarding queued notes. CPU0 releases the old USB input owners and schedules
+ * releases for MIDI-track notes that had been admitted (including a packet with an uncertain ACK). */
+static void uh_session_end(void)
+{
+    uh.run = 0;
+    uh.out_mps = 0;
+    uh.tx_count = 0;
+    mo_r = mo_w;
+    RING_PUBLISH();
+    midi_usb_lost = 1;
 }
 
 /* the controller's port as a host with nothing attached yet */
@@ -275,18 +306,17 @@ static void uh_connect(uint32_t now)
 static void uh_task(uint32_t now)
 {
     if (uh.want != uh.on) {
-        uh.run = 0;
-        uh.fault = 0;
-        uh.tried = 0;
         usb.up = 0;                                     /* TIMER5 leaves the SIE to this context */
         usb.config = 0;
         usb.suspended = 0;
+        uh_session_end();
+        uh.fault = 0;
+        uh.tried = 0;
         if (uh.want) {
 #if MELODEE_USB_AUDIO
             ua_hw_stop();
             ua_host_volume_reset();
 #endif
-            mo_r = mo_w;
             usb.sx_on = 0;
             fm1_usb_off();
             uh.on = 1;
@@ -304,7 +334,7 @@ static void uh_task(uint32_t now)
     if (!uh.on)
         return;
     if (uh.fault) {                                     /* stall, or the controller stopped answering (TIMER5 cleared run) */
-        uh.run = 0;
+        uh_session_end();
         uh.fault = 0;
         uh_host_up();
         uh.retry_ms = now + 500u;
@@ -330,20 +360,68 @@ static void uh_task(uint32_t now)
 }
 
 /* ------------------------------------------------------ TIMER5 ISR --- */
+static void uh_fail(void)
+{
+    uh.run = 0;
+    uh.fault = 1;
+}
+
+/* Retain ring slots and the DMA buffer until ACK. A NAK or transient error retries the same data toggle;
+ * a stall, repeated errors or 500 ms without completion hands recovery to the main loop. Never wait here. */
+static void uh_tx_poll(void)
+{
+    uint32_t csr = sie_rd(S_TXCSR1), n = 0;
+    if (uh.tx_count) {
+        if ((csr & 0x20u) || fm1_ms - uh.tx_ms >= 500u) {
+            uh_fail();
+            return;
+        }
+        if (csr & 0x84u) {                              /* Error / NAK timeout */
+            if ((csr & 4u) && ++uh.tx_errors >= UH_MAX_ERRORS) {
+                uh_fail();
+                return;
+            }
+            sie_wr(S_TXCSR1, 0x01u);                    /* retry retained FIFO, preserving data toggle */
+            return;
+        }
+        if (csr & 0x03u) return;                        /* TxPktRdy / FIFONotEmpty: no ACK yet */
+        RING_PUBLISH();
+        mo_r += uh.tx_count;
+        uh.tx_count = uh.tx_errors = 0;
+    }
+    while (mo_r + n / 4u != mo_w && n + 4u <= uh.out_mps) {
+        uint32_t p = midi_out_q[(mo_r + n / 4u) % MQ];
+        ep1tx[n] = (uint8_t)p;
+        ep1tx[n + 1] = (uint8_t)(p >> 8);
+        ep1tx[n + 2] = (uint8_t)(p >> 16);
+        ep1tx[n + 3] = (uint8_t)(p >> 24);
+        n += 4u;
+    }
+    if (!n) return;
+    uh.tx_count = (uint8_t)(n / 4u);
+    uh.tx_ms = fm1_ms;
+    fm1_usb_ep_send(1, ep1tx, n);
+    sie_wr(S_TXCSR1, 0x01u);
+}
+
 static void uh_poll(void)
 {
     uint32_t csr, n, i;
+    if (!fm1_usb_line()) {
+        uh_fail();
+        return;
+    }
     sie_wr(S_INDEX, 1);
+    if (uh.out_mps) uh_tx_poll();
+    if (!uh.run || !uh.in_ep) return;
     csr = sie_rd(S_RXCSR1);
     if (csr & 0x40u) {                                  /* RxStall: the endpoint is gone */
-        uh.run = 0;
-        uh.fault = 1;
+        uh_fail();
         return;
     }
     if (csr & 0x0Cu) {                                  /* Error / DataError: no usable answer */
         if (++uh.errors >= UH_MAX_ERRORS) {
-            uh.run = 0;
-            uh.fault = 1;
+            uh_fail();
             return;
         }
         sie_wr(S_RXCSR1, 0x20u);                        /* the flags clear (written 0) and the request goes again; the

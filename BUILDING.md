@@ -121,17 +121,24 @@ This is a diagnostic option; the default stays `1`. `--cpu-manifest` records it.
 ## USB MIDI host
 
 Menu > **USB HOST** (OFF at every boot; not saved) turns the USB-C port from the computer link into a host for a
-class-compliant USB-MIDI controller. Notes, controllers and clock from it arrive like USB MIDI (source USB).
+class-compliant USB-MIDI controller or synth. Notes, controllers and clock from it arrive like USB MIDI (source USB).
 Switch it OFF to give the port back to the computer; the FM-1 never boots as a host, so the update paths work as before.
 
 - **Power.** Nothing in the firmware drives VBUS. Use a hub with its own supply, or an OTG adapter that powers
   the controller. Whether the FM-1's USB-C connector (its CC resistors) lets a USB-C hub treat it as a host is a
   property of the board, not of the firmware: an USB-C to USB-A OTG adapter or a hub with a USB-A downstream
   port is the safer first test.
-- **Supported:** full-speed devices with a USB-MIDI streaming interface (bulk or interrupt IN), alone or behind
+- **Supported:** full-speed devices with a MIDI 1.0 streaming interface (bulk or interrupt IN and/or OUT), alone or behind
   one hub (the hub's ports are powered and each device is tried until one has MIDI). Channel messages and
   clock / start / continue / stop are passed on; SysEx from the controller is ignored by design.
-- **Not supported:** MIDI out to the controller (LED feedback), low-speed devices, hubs behind hubs, hot-plugging a
+- **Output:** MIDI tracks send their notes, releases and channel controls on their selected channels to cable 0
+  of the selected interface's OUT endpoint. Output-only synths and simultaneous IN/OUT work. A packet remains
+  queued until ACK; NAKs/transient errors retain its data and toggle. Stalls, repeated errors or 500 ms without
+  completion restart enumeration, dropping stale queued note-ons and scheduling held-note/pedal releases before
+  new notes after reconnection. Connection loss releases USB input owners while retaining local keys and TRS
+  owners. USB AUDIO/USB INPUT setting changes wait until HOST is off.
+- **Not supported:** SysEx/editor traffic to attached devices, device-specific LED protocols, USB MIDI 2.0,
+  low-speed devices, hubs behind hubs, hot-plugging a
   second controller while one runs (unplug and replug; a lost controller is found again by itself).
 - **Messages** (toast): USB MIDI READY, USB NO MIDI DEVICE, USB LOW SPEED, USB CONTROLLER LOST. On / off is the
   header's `HOST` tag (and the menu row), not a toast.
@@ -139,8 +146,11 @@ Switch it OFF to give the port back to the computer; the FM-1 never boots as a h
 `tests/usb_host_test.c` runs the real driver against a model of the SIE and of a keyboard, a hub and a stick
 (`tests/run_tests.sh`). It cannot show that the controller behaves as the SDK's host code implies; the register
 sequences were taken from the AC79 SDK (`usb_h_sie_init`, `usb_h_chirp_and_reset`, `usb_ctlXfer`,
-`usb0_h_ep_read`) and have not been run on an FM-1 yet. Build with `MELODEE_USB_HOST=0 ./build.sh` to leave the
-feature out.
+`usb0_h_ep_read`). The PR contributor reports an FM-1 input test with a powered hub and controller; this
+branch's new OUT path has model coverage but still needs physical MIDI/audio and sustained-timing validation.
+The model also covers OUT-only devices, small endpoint packets, duplex traffic, delayed ACKs, NAK/error/stall
+recovery and device-mode audio preferences while hosting. `tests/midi_track_test.c` checks the real track
+output admission and reconnect cleanup. Build with `MELODEE_USB_HOST=0 ./build.sh` to leave the feature out.
 
 ## Samples
 

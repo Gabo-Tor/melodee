@@ -198,9 +198,48 @@ static void sequencing(void)
     assert(!song.playing && !chain.running && t->p[P_E0] == 9); empty_midi();
     puts("MIDI Track: step sequencing, recorded-take timing/velocity and multi-row song playback passed");
 }
+
+static void usb_session_cleanup(void)
+{
+    reset_midi(1);
+    set_engine_of(&trk[0], HOST_SYNTH); events_block(0);
+    midi_enqueue(0x643c9009u, 1); midi_enqueue(0x643e9009u, 2); events_block(0);
+    assert((mn_get(0, 60) & 0x7fu) == 1 && (mn_get(0, 62) & 0x7fu) == 1);
+    kb_note[0] = 65; kb_trk[0] = 0; key_on(0, &trk[0]);
+    uint32_t keys = kb_chn[0]; assert(keys);
+    midi_enqueue(0x64409009u, 1); midi_enqueue(0x64439009u, 2);
+    midi_usb_lost = 1; events_block(0);
+    assert(!midi_usb_lost && !mn_get(0,60) && !mn_get(0,64));
+    assert((mn_get(0,62) & 0x7fu) == 1 && (mn_get(0,67) & 0x7fu) == 1 && kb_chn[0] == keys);
+    key_off(0, &trk[0]);
+    midi_enqueue(0x64409009u, 1);
+    midi_render_timed = 1; midi_render_time = fm1_ms - 1u;
+    midi_usb_lost = 1; events_block(0);
+    assert(mi_r == mi_w && !mn_get(0,64));             /* discard stale USB even ahead of the block timeline */
+    midi_render_timed = 0;
+    puts("MIDI USB session: disconnected USB owners/stale input released, TRS and local keys retained");
+#if MELODEE_USB_HOST
+    reset_midi(0);
+    usb.config = 0; uh.on = uh.run = 1; uh.out_mps = 64;
+    track_t *t = TSEL;
+    t->p[P_E0] = 12;
+    trk_note_on(t, 72, 85); pop_midi(0x9b,72,85);
+    midi_track_controller(t,0xb0,64,127); pop_midi(0xbb,64,127);
+    uh.run = 0; uh.out_mps = 0; midi_usb_lost = 1; events_block(0);
+    empty_midi(); assert(midi_track_pending(0));
+    trk_note_on(t, 74, 85); empty_midi();               /* offline: no new note before old releases */
+    uh.run = 1; uh.out_mps = 64; events_block(0);
+    pop_midi(0xbb,64,0); pop_midi(0x8b,72,0); empty_midi();
+    trk_note_on(t, 74, 85); pop_midi(0x9b,74,85);
+    trk_note_off(t, 74); pop_midi(0x8b,74,0); empty_midi();
+    uh.on = uh.run = uh.out_mps = 0;
+    puts("MIDI Track host output: remapped channel, sustain/note cleanup before new notes after reconnect passed");
+#endif
+}
 int main(void)
 {
     notes_and_panel(); routing(); cleanup(); silent_and_saved(); sequencing();
+    usb_session_cleanup();
     puts("MIDI TRACK TESTS PASSED");
     return 0;
 }

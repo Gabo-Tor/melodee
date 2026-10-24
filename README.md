@@ -407,6 +407,9 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
   **TRS** (THRU, KNOB 2) additionally accepts routed TRS input while SYSTEM **MIDI** shows USB; with it off,
   MIDI Track receives the input selected there. Synth tracks continue accepting both inputs. Incoming channel
   controls are forwarded on the chosen output channel. Channel and TRS THRU are saved in projects/templates.
+  With Menu > **USB HOST** on, the same MIDI tracks send to the first attached USB-MIDI device's output
+  endpoint (cable 0), directly or behind one externally powered hub. Output-only USB synths are supported;
+  the device must supply a MIDI 1.0 streaming interface. With HOST off, output goes to the computer as before.
   Track level, pan, audio modulation, insert FX, note FX and FX sends are disabled; MIDI Track allocates no
   audio voices or engine/FX working memory. Mute, solo, stop and sound/channel changes release outgoing notes.
 - **One to four tracks**, one instrument and sound per track: a new song starts with one, so the FM-1 can be a

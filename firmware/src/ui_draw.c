@@ -312,12 +312,21 @@ static void draw_head(void)
             cf = TY_LB;
             cw = text_w(cf, chip) + 4;
         }
+        if (hw && x + 6 + cw + (low ? 22 : 0) + hw > 236) {
+            /* Compact names retain the distinction from the original PHASER/CHORUS effects. */
+            if (!memcmp(chip, "PEDAL ", 6)) {
+                str_cpy(b, chip + 6, sizeof b);
+                str_cpy(chip, "P. ", sizeof chip);
+                str_cpy(chip + 3, b, sizeof chip - 3);
+                cw = text_w(cf, chip) + 4;
+            }
+        }
         if (octave) {                                   /* selected MPC bank's octave, else the shared octave */
             int32_t w;
             b[0] = octave > 0 ? '+' : '-';
             fmt_int(b + 1, octave < 0 ? -octave : octave);
             w = text_w(TY_LB, b) + 12;
-            if (hw && x + 2 + w + 8 > 236 - cw - (low ? 22 : 0) - hw - 6)
+            if (x + 2 + w + 8 > 236 - cw - (low ? 22 : 0) - hw - 6)
                 octave = 0;                             /* the HOST tag is status: the optional pill gives way */
         }
         if (octave) {

@@ -273,6 +273,7 @@ sound && t "Master audio punch: 27 effects, history, freeze, transitions and key
 sound && t "SLOOP FX: compact stereo reverb, eight inserts, shared returns and controls" sloop_fx_test -O1 $FW
 core && t "MIDI inserts: native release tails, timed note repeats, ownership, UI and persistence" midi_insert_test -O1 $FW
 core && t "MIDI Track: USB notes, TRS routing, song/recording, cleanup, silent mixer and persistence" midi_track_test -O1 $FW
+core && t "MIDI Track: host output, reconnect cleanup and USB input loss" midi_track_host_test:midi_track_test -O1 -DMELODEE_USB_HOST=1 $FW
 core && t "EQ accelerator: register layout, isolated histories and bounded timeout" eq_hw_test
 core && job web_tests
 sound && [ $TABLES = 1 ] && job dsp_tracks
@@ -314,7 +315,7 @@ if core; then
     t "TRS MIDI parser" midi_uart_test
     t "USB audio: routing, clock drift and stream recovery" usb_audio_test
     t "USB audio: endpoint lifecycle and packet ownership" usb_audio_driver_test
-    t "USB MIDI host: enumeration (direct and behind a hub), event filter, ring back-pressure, faults" usb_host_test -O1 -fsanitize=address,undefined
+    t "USB MIDI host: duplex I/O, enumeration, ACK ownership, back-pressure and recovery" usb_host_test -O1 -fsanitize=address,undefined
     run "USB descriptors: MIDI, CDC and audio configurations" python3 tests/usb_audio_desc_test.py
     run "resident audio: call graph and flash/RAM ABI boundaries" python3 tests/audio_ram_test.py
     run "performance defaults: local/compiler agreement and explicit reference overrides" python3 tests/performance_defaults_test.py

@@ -1587,18 +1587,20 @@ static void sweep_waiting_headers(const char *out)
 static void sweep_host_headers(void)
 {
     int previous_face = render_pixel;
-    static const int scenes[] = {S_HOME, S_TEMPO, S_PATGRID};   /* (PRESETS, SONG and MENU draw their own headers) */
+    static const int scenes[] = {S_HOME, S_TEMPO, S_PATGRID, S_PEDAL_PHASER, S_PEDAL_CHORUS};
     static uint16_t screen[240 * 240];
     for (uint32_t face = 0; face < 2u; face++) for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++)
-    for (uint32_t s = 0; s < NELEM(scenes); s++) for (uint32_t run = 0; run < 2u; run++) {
+    for (uint32_t s = 0; s < NELEM(scenes); s++) for (uint32_t run = 0; run < 2u; run++)
+    for (uint32_t rec = 0; rec < 2u; rec++) {
         char name[96];
         uint32_t seen = 0;
         render_pixel = face;
         setup(scenes[s]); pal(p);
         song.octave = 2; song.batt_raw = 520;
+        song.rec = rec;
         ui.msg_t = 0;
         uh.on = 1; uh.run = (uint8_t)run;
-        snprintf(name, sizeof name, "%s%s/%s/usb_host%u", face ? "PIXEL " : "", UI_PALETTES[p].name, S_NAME[scenes[s]], run);
+        snprintf(name, sizeof name, "%s%s/%s/usb_host%u_rec%u", face ? "PIXEL " : "", UI_PALETTES[p].name, S_NAME[scenes[s]], run, rec);
         cur_name = name;
         draw(-1); lint();
         for (uint32_t i = 0; i < nscr; i++)

@@ -1308,6 +1308,18 @@ static void events_block(uint32_t n)
     }
     pr = panic_req;
     panic_req = 0;
+    uint32_t usb_lost = midi_usb_lost, usb_lost_until = mi_w;
+    if (usb_lost) {
+        midi_usb_lost = 0;
+        /* A controller cannot send the missing releases after unplug. Keep local keys and TRS owners. */
+        for (uint32_t ch = 0; ch < 16u; ch++)
+            for (uint32_t note = 0; note < 128u; note++)
+                if (mn_get(ch, note) && !(midi_owner_trs[ch][note >> 5] & (1u << (note & 31u)))) {
+                    midi_ch[ch].pedal = 0;
+                    midi_release(ch, note);
+                }
+        for (uint32_t tr = 0; tr < NTRK; tr++) midi_track_all_off(&trk[tr]);
+    }
     if (midi_in_overflow) {                            /* a lost note-off must never leave a held note */
         mi_r = mi_w;
         memset(midi_sel_on, 0, sizeof midi_sel_on);
@@ -1360,6 +1372,8 @@ static void events_block(uint32_t n)
         uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu;
         uint32_t source = midi_in_source[at] ? midi_in_source[at] : 1u, ms = midi_in_ms[at];
         uint32_t time = midi_in_time[at];
+        uint32_t stale_usb = usb_lost && source == 1u && (int32_t)(mi_r - usb_lost_until) < 0;
+        if (stale_usb) { mi_r++; midi_dispatch_left--; continue; }
         if (midi_render_timed && (int32_t)(time - midi_render_time) > 0)
             break;
         mi_r++;midi_dispatch_left--;
