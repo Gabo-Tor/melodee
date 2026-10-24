@@ -74,6 +74,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libharfbuzz-dev libfribidi-dev libraqm-dev
         python3 -m pip install fonttools mido
+        npm ci --prefix web
         test "$(git -C "$AC79_SDK" rev-parse HEAD)" = d179b4484759423312073f5fbb232501aa491047
         version=$(python3 tools/fm1_recover.py --version | awk '{print $NF}')
         if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$version"; fi
