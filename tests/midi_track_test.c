@@ -216,6 +216,11 @@ static void usb_session_cleanup(void)
     midi_render_timed = 1; midi_render_time = fm1_ms - 1u;
     midi_usb_lost = 1; events_block(0);
     assert(mi_r == mi_w && !mn_get(0,64));             /* discard stale USB even ahead of the block timeline */
+    midi_enqueue(0x64459009u, 2); midi_enqueue(0x64479009u, 1);
+    midi_usb_lost = 1; events_block(0);               /* a future TRS event blocks the old USB event behind it */
+    assert(mi_r != mi_w);
+    midi_render_time = fm1_ms; events_block(0);
+    assert(mi_r == mi_w && !mn_get(0,71) && (mn_get(0,69) & 0x7fu) == 1);
     midi_render_timed = 0;
     puts("MIDI USB session: disconnected USB owners/stale input released, TRS and local keys retained");
 #if MELODEE_USB_HOST

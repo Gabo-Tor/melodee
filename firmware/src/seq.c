@@ -1308,9 +1308,13 @@ static void events_block(uint32_t n)
     }
     pr = panic_req;
     panic_req = 0;
-    uint32_t usb_lost = midi_usb_lost, usb_lost_until = mi_w;
+    static uint32_t usb_discard_until;
+    static uint8_t usb_discard;
+    uint32_t usb_lost = midi_usb_lost;
     if (usb_lost) {
         midi_usb_lost = 0;
+        usb_discard_until = mi_w;
+        usb_discard = 1;
         /* A controller cannot send the missing releases after unplug. Keep local keys and TRS owners. */
         for (uint32_t ch = 0; ch < 16u; ch++)
             for (uint32_t note = 0; note < 128u; note++)
@@ -1372,7 +1376,7 @@ static void events_block(uint32_t n)
         uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu;
         uint32_t source = midi_in_source[at] ? midi_in_source[at] : 1u, ms = midi_in_ms[at];
         uint32_t time = midi_in_time[at];
-        uint32_t stale_usb = usb_lost && source == 1u && (int32_t)(mi_r - usb_lost_until) < 0;
+        uint32_t stale_usb = usb_discard && source == 1u && (int32_t)(mi_r - usb_discard_until) < 0;
         if (stale_usb) { mi_r++; midi_dispatch_left--; continue; }
         if (midi_render_timed && (int32_t)(time - midi_render_time) > 0)
             break;
@@ -1402,6 +1406,7 @@ static void events_block(uint32_t n)
             midi_event_source = 0;
         }
     }
+    if (usb_discard && (int32_t)(mi_r - usb_discard_until) >= 0) usb_discard = 0;
     if(song.playing)resource_release(RES_NOTE_HISTORY);
     if (clock_mode) {
         if (song.playing) {
