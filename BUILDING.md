@@ -150,6 +150,7 @@ LCD transfer; large graphs wait before reusing the full canvas. Transition and
 DMA tests check stream resumption, cache invalidation and source-buffer reuse.
 
 ```
+npm ci --prefix web
 tests/run_tests.sh
 ```
 

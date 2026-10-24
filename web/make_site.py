@@ -28,6 +28,7 @@ manual page and those screenshots. Other PNGs and older version folders are remo
 installer-only update does not read or replace the published manual.
 """
 import json
+import hashlib
 import html as html_escape
 import re
 import shutil
@@ -42,6 +43,26 @@ def strip_module(src):
     """drop ES module import/export so the script can be inlined into index_pkg.html"""
     src = re.sub(r"^export\s+", "", src, flags=re.M)
     return re.sub(r"^import .*?;\n", "", src, flags=re.M)
+
+
+def installer_module(name, exports):
+    """Keep each ported module's private names and licence notices in its scope."""
+    source = strip_module((HERE / "install" / name).read_text(encoding="utf-8"))
+    names = ", ".join(exports)
+    return f"\nconst {{{names}}} = (() => {{\n{source}\nreturn {{{names}}};\n}})();\n"
+
+
+def installer_libraries():
+    lib = "\n".join(strip_module((HERE / name).read_text(encoding="utf-8"))
+                    for name in ("fm1pkg.js", "fm1ota.js", "fm1backup.js"))
+    for source, exports in (
+        ("progress.js", ["progressModel", "remaining", "afterFailure"]),
+        ("keepalive.js", ["hold", "busyElsewhere"]),
+        ("transfer.js", ["SteadyUpdater"]),
+        ("session.js", ["createInstallSession"]),
+    ):
+        lib += installer_module(source, exports)
+    return lib
 
 
 def product_of(raw):
@@ -100,7 +121,8 @@ def channel(spec, label, stem, branch):
         raise SystemExit("Nightly firmware must use development identity FM-1_900")
     files = {"dual": (path, data, identity, f"{stem}.fwsc")}
     return files, {"version": spec["version"], "product": identity, "branch": branch, "commit": spec["commit"],
-                   "builtAt": spec["builtAt"], "pkg": {"dual": "../../firmware/" + f"{stem}.fwsc"}}
+                   "builtAt": spec["builtAt"], "pkg": {"dual": "../../firmware/" + f"{stem}.fwsc"},
+                   "sha256": {"dual": hashlib.sha256(data).hexdigest()}}
 
 
 def release_history(out, current):
@@ -114,7 +136,8 @@ def release_history(out, current):
         version = match[1]
         raw, product = check_package(dual)
         releases[version] = {"version": version, "product": product,
-                             "pkg": {"dual": "../../firmware/" + dual.name}}
+                             "pkg": {"dual": "../../firmware/" + dual.name},
+                             "sha256": {"dual": hashlib.sha256(raw).hexdigest()}}
     return [current] + [releases[v] for v in sorted(releases, key=lambda v: tuple(map(int, v.split("."))), reverse=True)
                         if v != current["version"]]
 
@@ -184,19 +207,19 @@ def main(pkg, version, out, nightly=None, installer_only=False, rc=None, manual=
             raise SystemExit("Release candidate version must be X.Y.Z-rc.N")
         rc_files, rc_meta = channel(rc, "release candidate", f"melodee-{rc['version']}", "next")
     html = (HERE / "index_pkg.html").read_text(encoding="utf-8")
-    lib = strip_module((HERE / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
-        strip_module((HERE / "fm1ota.js").read_text(encoding="utf-8")) + "\n" + \
-        strip_module((HERE / "fm1backup.js").read_text(encoding="utf-8"))
+    lib = installer_libraries()
     v = re.sub(r'[^A-Za-z0-9.-]', '-', version)
     name = f"melodee-{v}.fwsc"
     release_meta = {"version": version, "product": product,
-                    "pkg": {"dual": "../../firmware/" + name}}
+                    "pkg": {"dual": "../../firmware/" + name},
+                    "sha256": {"dual": hashlib.sha256(raw).hexdigest()}}
     releases = release_history(out, release_meta)
     meta = json.dumps({**release_meta, "nightly": nightly_meta, "rc": rc_meta, "releases": releases})
-    for mark in ("/*LIB*/", "/*META*/{}"):
+    for mark in ("/*LIB*/", "/*META*/{}", "/*INSTALLER_STYLE*/"):
         if html.count(mark) != 1:
             raise SystemExit(f"index_pkg.html must contain {mark} once; update make_site.py")
     html = html.replace("/*LIB*/", lib).replace("/*META*/{}", meta)
+    html = html.replace("/*INSTALLER_STYLE*/", (HERE / "install/installer.css").read_text(encoding="utf-8"))
     inst, ed, man, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "webapp" / "manual", out / "firmware"
     man_src = Path(manual) if manual is not None else HERE / "manual"
     if not installer_only:

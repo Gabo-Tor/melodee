@@ -2,57 +2,25 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only
      Copyright (C) 2026 Kerem Kilic (Ellic Studio)
      Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments -->
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Melodee</title>
-<style>
-  :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  }
-  :root[data-theme="dark"] { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 0 0 24px; }
-  .lang { float: right; font-size: 13px; color: var(--dim); cursor: pointer; text-decoration: underline; background: none; padding: 0; color: var(--dim); }
-  p { margin: 0 0 16px; }
-  button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 8px 20px; cursor: pointer; }
-  button:disabled { opacity: .3; cursor: default; }
-  #status { margin-top: 16px; min-height: 1.6em; }
-  .small { color: var(--dim); font-size: 13px; }
-  progress { width: 100%; height: 4px; margin-top: 16px; }
-  pre { color: var(--dim); font-size: 12px; white-space: pre-wrap; margin-top: 16px; max-height: 200px; overflow-y: auto; overflow-wrap: anywhere; }
-  select { font: inherit; max-width: 100%; padding: 4px; background: var(--bg); color: var(--fg); }
-  details { margin-bottom: 16px; }
-  .site { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 24px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .site .brand { font-size: 24px; font-weight: 600; }
-  .site .links { display: flex; gap: 16px; font-size: 13px; }
-  .site .links a { color: var(--dim); text-decoration: none; }
-  .site .links a:hover { color: var(--fg); }
-  .site .links a[aria-current="page"] { color: var(--fg); }
-</style>
-</head>
-<body>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Melodee</title>
+<style>/*INSTALLER_STYLE*/</style>
+</head><body>
+<header class="site"><a class="brand" href="../editor/">Melodee</a><nav>
+<a href="../editor/">Editor</a><a href="../installer/" aria-current="page">Install</a><a href="../manual/">Manual</a>
+<button type="button" class="lang" id="lang"></button></nav></header>
 <main>
-  <button class="lang" id="lang"></button>
-  <nav class="site">
-    <span class="brand">Melodee</span>
-    <div class="links">
-      <a href="../editor/">Patch Editor</a>
-      <a href="../installer/" aria-current="page">Installer</a>
-      <a href="../manual/">Manual</a>
-    </div>
-  </nav>
-  <h1>Installer</h1>
-  <p data-t="intro"></p>
-  <p data-t="warn"></p>
-  <p class="small" data-t="direct"></p>
-  <p class="small" data-t="beta"></p>
-  <p class="small"><span data-t="brick"></span>
-    <a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md" target="_blank" rel="noopener" style="color:inherit" data-t="recoveryLink"></a></p>
+<section class="hero"><p class="kicker" data-t="kicker"></p>
+<h1><span data-t="installTitle"></span> <span class="v" id="hver"></span></h1>
+<p class="lede" data-t="intro"></p><ul class="facts"><li>Chrome / Edge</li><li>USB MIDI</li><li data-t="factTime"></li></ul></section>
+<div class="banner" id="resumebanner" hidden role="status"><p id="resumetext"></p></div>
+<ol class="steps">
+<li class="step" data-state="active"><div><h2 data-t="connectTitle"></h2><p data-t="direct"></p>
+<p data-t="connectHelp"></p><button type="button" class="btn" id="find" data-t="find"></button>
+<div class="device" id="device" hidden><div class="what"><b>FM-1</b><span id="devwhat"></span></div></div>
+<p id="connmsg" role="status"></p></div></li>
+<li class="step"><div><h2 data-t="chooseTitle"></h2>
   <p><label><span data-t="releaseTitle"></span><br><select id="release"></select></label></p>
   <p><label><input type="radio" name="build" id="build-dual" checked> <span data-t="dual"></span></label></p>
   <details id="advanced-installs" hidden>
@@ -69,7 +37,10 @@
       <p class="small" id="nightly-info"></p>
     </section>
   </details>
-  <p><button id="go" disabled data-t="install"></button></p>
+</div></li>
+<li class="step"><div><h2 data-t="installTitle"></h2><p data-t="backupFirst"></p>
+<button type="button" class="btn primary big" id="go" disabled data-t="install"></button><p id="status" role="status" aria-live="polite"></p>
+</div></li></ol>
   <section style="margin-top:24px" aria-labelledby="transit-title">
     <h2 id="transit-title" data-t="transitTitle"></h2>
     <p data-t="transitWhy"></p>
@@ -77,7 +48,7 @@
       <li data-t="transitFirst"></li>
       <li data-t="transitNext"></li>
     </ol>
-    <p><button id="transit-go" data-t="transitGo"></button></p>
+    <p><button class="btn" id="transit-go" data-t="transitGo"></button></p>
     <p class="small" data-t="stockBackup"></p>
     <p class="small"><label><input id="transit-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
     <p class="small"><label><input id="transit-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
@@ -90,22 +61,42 @@
     <p class="small" data-t="back"></p>
     <p class="small"><a href="https://www.m-vave.com/download" target="_blank" rel="noopener" style="color:inherit">M-VAVE Downloads</a></p>
     <p><label><span data-t="stockFile"></span><br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-    <p><button id="stock-go" disabled data-t="stockGo"></button></p>
+    <p><button class="btn" id="stock-go" disabled data-t="stockGo"></button></p>
     <p class="small" data-t="stockBackup"></p>
     <p class="small"><label><input id="stock-skip-backup" type="checkbox"> <span data-t="stockSkipBackup"></span></label></p>
     <p class="small"><label><input id="stock-recovery" type="checkbox"> <span data-t="stockRecovery"></span></label></p>
     <p class="small"><a href="https://github.com/keremimo/melodee/blob/next/docs/RECOVERY.md#return-to-stock-from-running-melodee" target="_blank" rel="noopener" style="color:inherit" data-t="stockHelp"></a></p>
   </details>
-  <progress id="bar" max="100" value="0"></progress>
-  <p id="status"></p>
-  <pre id="log"></pre>
-  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
+
+<section class="more"><details><summary data-t="recoveryLink"></summary><div class="in"><p data-t="brick"></p>
+<a href="https://github.com/keremimo/melodee/blob/nightly/docs/RECOVERY.md" target="_blank" rel="noopener" data-t="recoveryLink"></a></div></details></section>
+</main><footer>  <p class="small">Melodee by Ellic Studio, based on <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">Felucca</a>
     by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener" style="color:inherit">Hügelton Instruments</a>, with its CrispyZebra waveforms and Fukiai icons (MIT).<br>
     Font: Inter Tight (The Inter Project Authors, SIL OFL 1.1). Samples: Versilian Studios VSCO-2 Community Edition and VCSL (CC0 1.0).<br>
     FM6 engine: msfa from Dexed (Google Inc., Pascal Gauthier, Apache-2.0). The package also holds three JieLi AC79 SDK files, uboot.boot, cfg_tool.bin and eq_cfg_hw.bin (JieLi Technology, Apache-2.0). <a href="../../firmware/LICENSING.md" style="color:inherit">Licences</a>: <a href="../../firmware/LICENSE" style="color:inherit">GPL-3.0</a>, <a href="../../firmware/LICENSES/Apache-2.0.txt" style="color:inherit">Apache-2.0</a>, <a href="../../firmware/LICENSES/" style="color:inherit">all</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <span data-t="license"></span> <a href="https://github.com/keremimo/melodee" target="_blank" rel="noopener" style="color:inherit">github.com/keremimo/melodee</a></p>
-</main>
+</footer>
+<dialog id="preflight" aria-labelledby="pfh"><form method="dialog">
+<h2 id="pfh" data-t="beforeStart"></h2><ul class="rules">
+<li><span class="ri">1</span><div><b data-t="stayHere"></b><span data-t="stayWhy"></span></div></li>
+<li><span class="ri">2</span><div><b data-t="keepPower"></b><span data-t="keepWhy"></span></div></li>
+<li><span class="ri">3</span><div><b data-t="factTime"></b><span data-t="screenNormal"></span></div></li></ul>
+<label class="check" id="pfcheck"><input type="checkbox" id="pfok"><span data-t="backupAck"></span></label>
+<div class="row"><button type="submit" class="btn ghost" value="cancel" data-t="cancel"></button>
+<button type="submit" class="btn primary" value="go" id="pfgo" disabled data-t="startInstall"></button></div>
+</form></dialog>
+<dialog id="run" aria-labelledby="runtitle" data-state="running">
+<div class="run-warn" role="note" data-t="runWarning"></div><div class="run-main">
+<div class="live"><p class="run-kicker" id="runtitle"></p><div class="pct" aria-hidden="true"><span id="pct">0</span><span class="pc">%</span></div>
+<div class="bar" id="bar" role="progressbar" aria-labelledby="runtitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="barfill"></i></div>
+<p class="runstep" id="runstep" role="status"></p><p class="eta" id="eta"></p>
+<ol class="phases" id="phases"><li data-ph="prepare" data-t="prepare"></li><li data-ph="write" data-t="write"></li><li data-ph="restart" data-t="reboot"></li></ol>
+<p class="stall" id="stall" hidden data-t="stall"></p><div class="backnote" id="backnote" hidden role="alert"><span id="backtext"></span></div></div>
+<div class="end" id="end" hidden><h2 id="endtitle"></h2><p id="endtext"></p><p id="endtips"></p></div>
+<div class="row"><button type="button" class="btn primary" id="run-resume" hidden data-t="resumeInstall"></button>
+<button type="button" class="btn" id="run-close" hidden data-t="close"></button></div>
+<details class="log"><summary data-t="details"></summary><pre id="log"></pre></details></div></dialog>
 <script type="module">
 /*LIB*/
 const $ = (id) => document.getElementById(id);
@@ -233,6 +224,8 @@ const TEXT = {
     license: "GPL-3.0, no warranty. Source:",
   },
 };
+Object.assign(TEXT.en, {"kicker": "Firmware for the M-VAVE FM-1", "installTitle": "Install Melodee", "factTime": "About 3 minutes", "connectTitle": "Connect the FM-1", "connectHelp": "Switch it on, close music apps and other editor tabs, and allow MIDI access when asked.", "find": "Check connection", "chooseTitle": "Choose your version", "backupFirst": "Back up your music and sounds in the editor before updating.", "beforeStart": "Before you start", "stayHere": "Keep this tab open and in front", "stayWhy": "Stay on this page until it says Done.", "keepPower": "Keep the FM-1 connected and powered", "keepWhy": "Keep the cable connected. Plug your laptop into power.", "screenNormal": "UPDATING or a dark screen is normal during installation.", "backupAck": "I've saved a backup, or have nothing to keep.", "cancel": "Cancel", "startInstall": "Start installation", "runWarning": "Keep this tab open and in front. Don't unplug the FM-1.", "prepare": "Prepare", "stall": "Waiting for the FM-1. Keep the cable connected.", "resumeInstall": "Resume installation", "close": "Close", "details": "Details", "pendingInstall": "An installation did not finish. Select the same version and resume:", "differentPending": "Resume using the same selected build as the interrupted installation:", "busy": "Another tab is using the installer. Finish or close it there first.", "comeBack": "Come back to the installer", "installingTitle": "Installing Melodee", "etaSoon": "Less than a minute left", "etaMinutes": "minutes left", "backgroundKept": "The installation continued while you were away. Please stay here until it finishes.", "backgroundSlow": "The browser slowed this page while you were away. It is continuing; please stay here.", "end_done": "Installation complete", "end_safe": "Nothing was written", "end_paused": "Installation paused", "end_restart": "The FM-1 did not return as expected", "installedVerified": "The FM-1 restarted and reported the expected firmware.", "tip_done": "You can open the editor or unplug the FM-1.", "tip_safe": "Check the connection and other music apps, then try again.", "tip_paused": "Reconnect the FM-1 and resume the same build. The write starts again from the beginning.", "tip_restart": "Power-cycle the FM-1 and check its screen. If it stays in update mode, reconnect and resume the same build.", "badHash": "The firmware checksum does not match the published build. Reload the page."});
+Object.assign(TEXT.ja, {"kicker": "M-VAVE FM-1 用ファームウェア", "installTitle": "Melodee をインストール", "factTime": "約3分", "connectTitle": "FM-1 を接続", "connectHelp": "電源を入れ、音楽アプリや別のエディタタブを閉じてください。MIDI の許可を求められたら許可してください。", "find": "接続を確認", "chooseTitle": "バージョンを選ぶ", "backupFirst": "更新前にエディタで曲と音色をバックアップしてください。", "beforeStart": "開始前に確認", "stayHere": "このタブを開いたまま前面に保つ", "stayWhy": "完了と表示されるまで、このページから離れないでください。", "keepPower": "FM-1 の接続と電源を保つ", "keepWhy": "ケーブルを抜かず、パソコンも電源につないでください。", "screenNormal": "更新中は UPDATING 表示や画面の消灯が正常です。", "backupAck": "バックアップを保存済み、または保存するデータはありません。", "cancel": "キャンセル", "startInstall": "インストール開始", "runWarning": "このタブを前面に保ち、FM-1 を抜かないでください。", "prepare": "準備", "stall": "FM-1 の応答を待っています。接続を保ってください。", "resumeInstall": "インストールを再開", "close": "閉じる", "details": "詳細", "pendingInstall": "未完了のインストールがあります。同じバージョンを選んで再開してください：", "differentPending": "中断したインストールと同じビルドを選んで再開してください：", "busy": "別のタブでインストール中です。そのタブで完了するか閉じてください。", "comeBack": "インストーラに戻ってください", "installingTitle": "Melodee インストール中", "etaSoon": "残り1分未満", "etaMinutes": "分（残り）", "backgroundKept": "タブを離れた間も処理を続けました。完了までこのタブに留まってください。", "backgroundSlow": "タブを離れた間にブラウザが処理を遅くしました。再開しています。このタブに留まってください。", "end_done": "インストール完了", "end_safe": "書き込みは行われませんでした", "end_paused": "インストールを中断", "end_restart": "FM-1 の再起動を確認できませんでした", "installedVerified": "FM-1 の再起動と、指定したファームウェアの識別情報を確認しました。", "tip_done": "エディタを開くか、FM-1 を取り外せます。", "tip_safe": "接続と音楽アプリを確認して、もう一度お試しください。", "tip_paused": "FM-1 を再接続し、同じビルドで再開してください。書き込みは最初から始まります。", "tip_restart": "FM-1 の電源を入れ直して画面を確認してください。更新モードのままなら、再接続して同じビルドで再開してください。", "badHash": "ファームウェアのチェックサムが一致しません。ページを再読み込みしてください。"});
 let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
 const t = (k) => TEXT[lang][k];
 let lastKey = null, lastArg = "";
@@ -250,7 +243,7 @@ $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; 
 applyLang();
 $("stock-skip-backup").addEventListener("change", applyLang);
 $("transit-skip-backup").addEventListener("change", applyLang);
-const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; };
+const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; session.message(t(k) + arg); };
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
 const buildIds = ["dual", "rc-dual", "nightly-dual"];
 const build = () => buildIds.find(k => $("build-" + k).checked) || "dual";
@@ -258,7 +251,7 @@ const selection = () => {     /* the release, or a channel ("nightly-dual": meta
   const kind = build(), dash = kind.indexOf("-");
   return dash < 0 ? {kind, channel: (meta.releases || []).find(r => r.version === $("release").value) || meta, key: kind} : {kind, channel: meta[kind.slice(0, dash)], key: kind.slice(dash + 1)};
 };
-const ready = () => { lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
+const ready = () => { $("hver").textContent = selection().channel.version; lastKey = "ready"; $("status").textContent = `Melodee ${selection().channel.version} (${t(build() + "Tag")})`; };
 const log = (t) => { const box = $("log"); box.textContent += t + "\n"; box.scrollTop = box.scrollHeight; };
 let image = null;
 const meta = /*META*/{};
@@ -278,11 +271,12 @@ $("rc-options").hidden = !meta.rc;
 if (meta.rc) $("rc-version").textContent = meta.rc.version;
 $("nightly-options").hidden = !meta.nightly;
 if (meta.nightly) $("nightly-info").textContent = `next · ${meta.nightly.commit.slice(0, 7)} · ${meta.nightly.builtAt}`;
+const session = createInstallSession({t});
 const images = {};                // a build ("dual", "nightly-dual" ..) -> its package's image, each fetched once
 
 let writing = false, stock = null, stockFileEpoch = 0, buildEpoch = 0;
 const lockInstaller = (on) => {
-  writing = on; $("release").disabled = on; $("go").disabled = on || !image;
+  writing = on; $("find").disabled = on; $("release").disabled = on; $("go").disabled = on || !image;
   buildIds.forEach(k => { $("build-" + k).disabled = on; });
   $("stock-go").disabled = on || !stock;
   ["stock-file", "stock-recovery", "stock-skip-backup", "transit-go", "transit-recovery", "transit-skip-backup"].forEach(id => { $(id).disabled = on; });
@@ -302,6 +296,7 @@ async function choose() {
       const url = channel.pkg[key] + (channel.commit ? "?commit=" + channel.commit : ""), r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
       const pkg = new Uint8Array(await r.arrayBuffer());
+      if (channel.sha256?.[key] && await sha256hex(pkg) !== channel.sha256[key]) throw new Error(t("badHash"));
       if (productOf(pkg) !== channel.product) { if (epoch === buildEpoch) sayK("badpkg"); return; }
       images[cacheKey] = logicalImage(pkg);
     }
@@ -321,40 +316,51 @@ choose();
 // package's head over the boot data, Melodee's would write only V15's application (docs/RECOVERY.md)
 const refuseLoader = (id) => id === STOCK_LOADER ? sayK("loaderStock") : id === MELODEE_LOADER ? sayK("loaderMelodee") : sayK("loaderUnknown", id);
 
-$("go").addEventListener("click", async () => {
-  if (writing || !image) return;
-  const product = selection().channel.product;
-  lockInstaller(true);
-  let midi;
-  try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
-  catch (e) { sayK("denied"); lockInstaller(false); return; }
+let finding = false, connectedIdentity = null;
+$("find").addEventListener("click", async () => {
+  if (writing || finding) return;
+  finding = true;lockInstaller(true);
   try {
-    const up = new Updater(midi, log);
-    const total = 74 + 1167;
-    const step = (k, a) => {
-      log(`${k} ${a ?? ""}`);
-      if (k === "start") sayK("start");
-      if (k === "verify") { sayK("verify"); $("bar").value = (a / total) * 100; }
-      if (k === "loader") sayK("loader");
-      if (k === "write") { sayK("write"); $("bar").value = ((74 + a) / total) * 100; }
-      if (k === "reboot") sayK("reboot");
-      if (k === "done") { $("bar").value = 100; sayK("done"); }
-    };
-    const ota = await up.find((id) => /^ota-/i.test(id.model));
+    if (!navigator.requestMIDIAccess) throw new Error(t("nomidi"));
+    const found = await session.probe(async () => {
+      const access = await navigator.requestMIDIAccess({sysex:true});
+      return await new SteadyUpdater(access).find();
+    });
+    if (!found) throw new Error(t("notfound"));
+    found.link.close();connectedIdentity = found.id;$("go").textContent = t(/^ota-/.test(found.id.model) ? "resumeInstall" : "install");$("devwhat").textContent = found.id.text;$("device").hidden = false;$("connmsg").textContent = "";
+  } catch (e) { connectedIdentity = null;$("device").hidden = true;$("connmsg").textContent = e.message; }
+  finally { finding = false;lockInstaller(false); }
+});
+
+$("go").addEventListener("click", async () => {
+  if (writing || finding || !image) return;
+  const {kind,channel} = selection(), chosen = image, product = channel.product;
+  const key = [kind,channel.version,channel.commit || "",product,channel.sha256?.dual || ""].join(":");
+  lockInstaller(true);
+  let complete = false, failure = null;
+  try {
+    if (!await session.begin({key,label:`Melodee ${channel.version}`,image:chosen,resume:/^ota-/.test(connectedIdentity?.model || ""),backup:!/^ota-/.test(connectedIdentity?.model || ""),onResume:() => $("go").click()})) return;
+    let midi;
+    try { midi = await navigator.requestMIDIAccess({sysex:true}); }
+    catch (e) { sayK("denied");failure = new Error(t("denied"));return; }
+    const up = new SteadyUpdater(midi, log);
+    const step = (k,n,bytes) => { log(`${k} ${n ?? ""}`);session.step(k,n,bytes);if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k); };
+    const ota = await up.find(id => /^ota-/i.test(id.model));
     if (ota) {
       ota.link.close();
-      if (ota.id.text !== MELODEE_LOADER) refuseLoader(ota.id.text);
-      else sayK((await up.resume(image, step, product, MELODEE_LOADER)) ? "done" : "stopped");
+      if (ota.id.text !== MELODEE_LOADER) { refuseLoader(ota.id.text);failure = new Error($("status").textContent);return; }
+      session.resume();
+      complete = await up.resume(chosen, step, product, MELODEE_LOADER);
+      sayK(complete ? "done" : "stopped");
     } else {
-      await up.install(image, product, step, MELODEE_LOADER);
+      await up.install(chosen, product, step, MELODEE_LOADER);complete = true;sayK("done");
     }
   } catch (e) {
-    if (e && e.code === "wrongloader") refuseLoader(e.detail);
-    else if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || "");
-    else sayK("error", e && e.message);
-    log(String(e && e.stack || e));
-  }
-  lockInstaller(false);
+    if (e.code === "wrongloader") refuseLoader(e.detail);
+    else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || "");
+    else sayK("error",e.message);
+    failure = {code:e.code,message:$("status").textContent};log(String(e.stack || e));
+  } finally { connectedIdentity = null; try { session.finish(complete,failure); } finally { lockInstaller(false); } }
 });
 
 $("stock-file").addEventListener("change", async () => {
@@ -385,21 +391,25 @@ function archiveInfo(a) {
   return {version,supported};
 }
 async function leaveMelodee(target) {
-  if (writing || (target === "stock" && !stock)) return;
+  if (writing || finding || (target === "stock" && !stock)) return;
   if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
   let selected = stock;
   const transit = target === "transit", ownLoader = transit ? MELODEE_LOADER : STOCK_LOADER;
   const skipBackup = $(target + "-skip-backup").checked;
   const confirmation = () => confirm(t(target + (skipBackup ? "ConfirmNoBackup" : "Confirm")));
-  const complete = () => { $("bar").value = 100; sayK(transit ? "transitDone" : "done"); };
+  let completed = false, failure = null;
+  const complete = () => { completed = true; $("bar").value = 100; sayK(transit ? "transitDone" : "done"); };
   lockInstaller(true); $("bar").value = 0;
   let link = null;
   try {
+    if (transit) { sayK("transitLoading"); selected = await fetchTransitPackage(); }
+    const key = transit ? "transit:0.1.3" : "stock:V15";
+    if (!await session.begin({key,label:transit ? "TransitFM1 0.1.3" : "M-VAVE V15",image:selected.image,onResume:() => leaveMelodee(target)})) return;
     let midi;
     try { midi = await navigator.requestMIDIAccess({sysex:true}); } catch (e) { sayK("denied"); return; }
-    if (transit) { sayK("transitLoading"); selected = await fetchTransitPackage(); }
-    const up = new Updater(midi, log);
-    const step = (k, n) => {
+    const up = new SteadyUpdater(midi, log);
+    const step = (k, n, bytes) => {
+      session.step(k,n,bytes);
       log(`${k} ${n ?? ""}`);
       if (["start","verify","loader","write","reboot","done"].includes(k)) sayK(k);
       if (k === "verify") $("bar").value = Math.min(10, n / 10);
@@ -411,6 +421,7 @@ async function leaveMelodee(target) {
       if (loader.id.text !== ownLoader) { refuseLoader(loader.id.text); return; }
       if (!skipBackup && !$(target + "-recovery").checked) { sayK("stockNeedBackup"); return; }
       if (!confirmation()) return;
+      session.resume();
       if (await up.resume(selected.image, step, selected.product, ownLoader)) complete();
       else sayK("stopped");
     } else {
@@ -435,11 +446,11 @@ async function leaveMelodee(target) {
     if (!transit && e.code === "stopped" && e.lastRead >= selected.head.from && e.lastRead < selected.head.to) sayK("stockHead");
     else if (e.code === "wrongloader") refuseLoader(e.detail);
     else if (e.code && TEXT[lang][e.code]) sayK(e.code,e.detail || ""); else sayK("error",e.message);
+    failure = {code:e.code,message:$("status").textContent};
     log(String(e.stack || e));
-  } finally { if (link) link.close(); lockInstaller(false); }
+  } finally { if (link) link.close(); try { session.finish(completed,failure || new Error($("status").textContent)); } finally { lockInstaller(false); } }
 }
 $("stock-go").addEventListener("click", () => leaveMelodee("stock"));
 $("transit-go").addEventListener("click", () => leaveMelodee("transit"));
 </script>
-</body>
-</html>
+</body></html>

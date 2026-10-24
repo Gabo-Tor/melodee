@@ -16,6 +16,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
+import {mockInstallSession} from "./installer_test_helpers.mjs";
 import { logicalImage, productOf } from "./fm1pkg.js";
 import { MELODEE_LOADER, STOCK_LOADER, Updater, pack7, unpack7 } from "./fm1ota.js";
 
@@ -1598,7 +1599,8 @@ async function stockRestore() {
       },
       captureBackup:async () => { calls.push("backup"); if (backupError) throw new Error("Backup failed"); return {}; },
     });
-    vm.runInContext(script, context);
+    mockInstallSession(context);
+  vm.runInContext(script, context);
     await new Promise(resolve => setImmediate(resolve));
     element("stock-file").files = [{size:1,arrayBuffer:async () => Uint8Array.of(1).buffer}];
     await element("stock-file").listeners.change();
@@ -1700,6 +1702,7 @@ async function installerBuilds() {
     MELODEE_LOADER, STOCK_LOADER,
     Updater:class { async find() { return null; } async install(image, product, step, loader) { installed.push([image, product, loader]); } },
   });
+  mockInstallSession(context);
   vm.runInContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
   ok(fetched.join() === "melodee-1.0.2.fwsc" && element("status").textContent === "Melodee 1.0.2 (standard)"
@@ -1749,6 +1752,7 @@ async function installerBuildRaces() {
   });
   const finish = url => pending.get(url)({ok:true,arrayBuffer:async()=>Uint8Array.from(Buffer.from(url)).buffer});
   const tick = () => new Promise(resolve=>setImmediate(resolve));
+  mockInstallSession(context);
   vm.runInContext(script, context);
   ok(element("advanced-installs").hidden && element("rc-options").hidden && element("nightly-options").hidden, "installer: unavailable RC/nightly channels and Advanced installs are hidden");
   element("release").value="1.0.1";

@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
+import {mockInstallSession} from "./installer_test_helpers.mjs";
 
 const template = readFileSync(new URL("index_pkg.html", import.meta.url), "utf8");
 class Element {
@@ -31,7 +32,8 @@ const context = vm.createContext({
 });
 const script = template.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace("/*LIB*/", "").replace("/*META*/{}", JSON.stringify(meta));
-vm.runInContext(script, context);
+mockInstallSession(context);
+  vm.runInContext(script, context);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function finish(request, product, marker) {
   request.resolve({ok: true, arrayBuffer: async () => Uint8Array.of(product, marker).buffer});
@@ -82,7 +84,7 @@ elements.release.listeners.change();
 assert.equal(pending.length, 0);
 vm.runInContext('log("write 123")', context);
 assert.equal(elements.log.scrollTop, 777);
-assert.match(template, /max-height: 200px; overflow-y: auto/);
+assert.match(readFileSync(new URL("install/installer.css", import.meta.url), "utf8"), /max-height: 200px; overflow-y: auto/);
 assert.doesNotMatch(template, /Melodee 1\.0/);
 assert.doesNotMatch(template, /build-(?:rc-|nightly-)?single|singleWhy|fallback-options/);
 console.log("installer: dual-core release/channel selection, cache separation, fetch races, language, write lock and scrolling passed");

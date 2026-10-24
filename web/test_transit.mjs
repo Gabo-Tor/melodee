@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
+import {mockInstallSession} from "./installer_test_helpers.mjs";
 import {fetchTransitPackage, TRANSIT_RELEASE, logicalImage, productOf} from "./fm1pkg.js";
 import {MELODEE_LOADER, STOCK_LOADER} from "./fm1ota.js";
 
@@ -77,6 +78,7 @@ async function run({skip=false, loader=null, recovery=false, supported=true, con
       async resume(image, step, product, own) { calls.push("resume"); writes.push([image[0], product, own]); return resumed; }
     },
   });
+  mockInstallSession(context);
   vm.runInContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
   element("transit-skip-backup").checked = skip;
