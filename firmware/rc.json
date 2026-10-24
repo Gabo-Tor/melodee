@@ -1,13 +1,13 @@
 {
-  "version": "1.5.0-rc.1",
+  "version": "1.5.0-rc.2",
   "product": "FM-1_91050",
   "branch": "next",
-  "commit": "89bb2f5f271355091dd2d2c7f910dfc818dc5117",
-  "builtAt": "2026-10-24T17:45:06.985123+00:00",
+  "commit": "8c3508d6ff0a24a83523436e21b62b4fa80f264b",
+  "builtAt": "2026-10-24T21:21:13.630354+00:00",
   "pkg": {
-    "dual": "../../firmware/melodee-1.5.0-rc.1.fwsc"
+    "dual": "../../firmware/melodee-1.5.0-rc.2.fwsc"
   },
   "sha256": {
-    "dual": "54f58f5e2f00ebdfc487930d588f6d39bed98065d6ac7a839c81a6a60aafa283"
+    "dual": "899116020c62c16176e0b84f24202e61347fcaf648f70ae6864d41e2e02d167d"
   }
 }
