@@ -33,17 +33,16 @@ Both options save a complete backup first. If your firmware cannot export one, y
 For a black-screen device already in ROM UBOOT, use the
 [direct USB recovery tool](BUILDING.md#recover-a-black-screen-fm-1).
 
-Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current release:
-**[Melodee 1.4.5](https://github.com/keremimo/melodee/releases/tag/v1.4.5)**
-([release notes](docs/RELEASE_1.4.5.md), [what's new](#whats-new-in-145)).
+Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current stable release:
+**[Melodee 1.4.5](https://github.com/keremimo/melodee/releases/tag/v1.4.5)**.
 
-The stock-restore installer accepts 1.4's backup capabilities. Existing Melodee 1.4.0
-users can return to official V15 directly from the updated web installer.
-
-The stable installer includes the latest UI, recording, effects, SID and preset-bank
-changes. Read the [illustrated manual](https://keremimo.github.io/melodee/webapp/manual/)
-for this release, or the [nightly guide](https://keremimo.github.io/melodee/webapp/manual/nightly/)
-for development firmware.
+Release candidate: **[Melodee 1.5.0-rc.1](https://github.com/keremimo/melodee/releases/tag/v1.5.0-rc.1)**
+([release notes](docs/RELEASE_1.5.0-rc.1.md)); choose **Release candidate** in the web installer.
+It adds USB MIDI Track, four additional MIDI-only tracks, USB Host input/output,
+the revised punch and insert effects, and the current audio-memory optimizations.
+Stable remains the default installer channel. Read the
+[stable manual](https://keremimo.github.io/melodee/webapp/manual/) or the
+[nightly guide](https://keremimo.github.io/melodee/webapp/manual/nightly/) for development firmware.
 
 Melodee is a modified version of [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita
 ([@kurogedelic](https://github.com/kurogedelic)), [Hügelton Instruments](https://hugelton.com), and
