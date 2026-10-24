@@ -37,7 +37,7 @@ static struct {
     volatile uint8_t run;                               /* TIMER5 owns the active MIDI endpoints */
     volatile uint8_t fault;                             /* TIMER5 -> main loop: reset the bus and look again */
     uint8_t seen, next_addr, dev, tried;
-    uint8_t in_ep, out_mps, tx_count, tx_errors;
+    uint8_t in_ep, out_mps, tx_count, tx_errors, line_idle;
     uint8_t msg;                                        /* one UH_MSG_* for main.c to show */
     volatile uint8_t errors;
     uint32_t t_ms, retry_ms;
@@ -218,6 +218,7 @@ static void uh_start_ep(const uh_midi_t *m)
     uh.in_ep = m->in_ep;
     uh.out_mps = (uint8_t)m->out_mps;
     uh.tx_count = uh.tx_errors = 0;
+    uh.line_idle = 0;
     if (m->in_ep) {
         fm1_usb_ep_rxbuf(1, uh_rx);
         sie_wr(S_RXMAXP, 0xFF);
@@ -408,9 +409,11 @@ static void uh_poll(void)
 {
     uint32_t csr, n, i;
     if (!fm1_usb_line()) {
-        uh_fail();
+        /* EOP also drives SE0 briefly. Require 8 ms of idle samples, not one sample during a packet. */
+        if (++uh.line_idle >= 16u) uh_fail();
         return;
     }
+    uh.line_idle = 0;
     sie_wr(S_INDEX, 1);
     if (uh.out_mps) uh_tx_poll();
     if (!uh.run || !uh.in_ep) return;

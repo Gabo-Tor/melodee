@@ -534,6 +534,8 @@ static void test_host_output(int via_hub)
     connect(via_hub ? HUB : KBD);
     host_on(); assert(enumerate());
     assert(usb_midi_out_ready() && !usb.config);
+    line_state = 0; usb_poll(); assert(uh.run);        /* an EOP sample is not an unplug */
+    line_state = 2; usb_poll(); assert(uh.run && !uh.line_idle);
     assert(regs[1][24] == 0x22 && regs[1][25] == 0 && regs[1][18] == 0x20);
     uint32_t first = mo_r, toggles = tx_toggle_clears;
     for (uint32_t i = 0; i < MQ; i++)
@@ -604,7 +606,7 @@ static void test_endpoint_selection(void)
     for (uint32_t i = 0; i < 3; i++) assert(midi_track_emit(0x643c9009u + (i << 16)));
     usb_poll(); assert(ep_cnt[1] == 8); ack_tx(); usb_poll();
     assert(ep_cnt[1] == 4); ack_tx(); usb_poll(); assert(wire_n == 3 && mo_r == mo_w);
-    line_state = 0; usb_poll(); assert(!uh.run && uh.fault); /* idle output-only unplug still detected */
+    line_state = 0; poll_n(16); assert(!uh.run && uh.fault); /* idle output-only unplug still detected */
     uh.want = 0; uh_task(fm1_ms);
     puts("USB host: output-only synth, input-only controller, alternate boundaries, protocol/packet validation: OK");
 }
