@@ -248,7 +248,8 @@ static inline __attribute__((always_inline)) int32_t fx_tone_input(fx_state_t *f
     float x=fx_tone_section(&f->q[0][0],(float)input,slew,1);
     return (int32_t)fx_tone_section(&f->q[0][1],x,slew,0);
 }
-#include "fx_echoverb.h"
+#include "fx_sloop_reverb.h"
+#include "fx_sloop_insert.h"
 /* ROOM: four damped combs at 13..26 ms, quarter-rate, 2 KiB. */
 static __attribute__((noinline,section(".dsp_text"))) void fx_time(fx_state_t *restrict f,int16_t *restrict mem,uint32_t n,int32_t target)
 {
@@ -386,6 +387,14 @@ static __attribute__((noinline,section(".dsp_text"))) void fx_up(fx_state_t *f,u
 }
 static __attribute__((noinline,section(".dsp_text"))) void fx_copy(fx_state_t *f,uint32_t n)
 {
+    if(fx_sloop_type(f->type)){
+        uint32_t mono=1,signal=0;
+        for(uint32_t i=0;i<n;i++){
+            int32_t l=fx_left[i],r=fx_right[i];fx_dry_l[i]=l;fx_dry_r[i]=r;
+            signal|=(uint32_t)l|(uint32_t)r;if(l!=r)mono=0;
+        }
+        f->mono=(uint8_t)mono;f->echo=(int32_t)signal;return;
+    }
     uint32_t mono=f->type<=FX_ECHO && f->type!=FX_WIDTH;
     for(uint32_t i=0;i<n;i++){
         fx_dry_l[i]=fx_left[i];fx_dry_r[i]=fx_right[i];if(fx_left[i]!=fx_right[i])mono=0;
@@ -442,7 +451,7 @@ static __attribute__((noinline,section(".audio_text"))) int fx_active(const trac
     }
     return 0;
 }
-typedef struct {fx_state_t *f;int16_t *mem;int32_t target;uint8_t active;} fx_plan_t;
+typedef struct {fx_state_t *f;int16_t *mem;int32_t target;int16_t third;uint8_t active,shared;} fx_plan_t;
 /* CPU0 owns allocation, releases and control snapshots. A worker receives
  * only fixed handles, preventing a retired worker from interrupting the arena. */
 static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
@@ -487,13 +496,15 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     if(profiling){f->rate=(fx_profile_control>>12u)&127u;f->character=(fx_profile_control>>19u)&127u;}
 #endif
     int16_t *mem=0;
-    if(f->type==FX_ROOM || f->type==FX_CHORUS || f->type==FX_REVERB){
-        uint32_t bytes=f->type==FX_REVERB?sizeof(fx_echoverb_t):2048u;
+    if(f->type==FX_ROOM || f->type==FX_CHORUS || f->type==FX_REVERB || fx_sloop_type(f->type)){
+        uint32_t bytes=f->type==FX_REVERB?sizeof(fx_sloop_reverb_t):fx_sloop_type(f->type)?fx_sloop_insert_bytes(f->type):2048u;
         if(!f->failed && !resource[RES_FX0+si].size){
             void *(*volatile allocate)(uint32_t,uint32_t)=fx_memory;mem=allocate(RES_FX0+si,bytes);if(!mem)f->failed=1;
         }else if(resource[RES_FX0+si].size)mem=resource[RES_FX0+si].ptr;
         if(!mem){f->mix=0;return;}
     }
+    plan->shared=si/FX_SLOTS==NPART;
+    plan->third=plan->shared?song.g[G_MFXTONE+si%FX_SLOTS]:trk[si/FX_SLOTS].p[P_FXTONE+si%FX_SLOTS];
     plan->f=f;plan->mem=mem;plan->target=target;plan->active=1;
 }
 static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx_plan_t *plan,uint32_t n)
@@ -501,7 +512,10 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
     if(!plan->active)return 0;
     fx_state_t *f=plan->f;int16_t *mem=plan->mem;int32_t target=plan->target;
     void (*volatile copy)(fx_state_t *,uint32_t)=fx_copy;copy(f,n);
-    if(f->type==FX_REVERB){fx_echoverb_run(f,(fx_echoverb_t *)mem,n,target,fx_left,fx_right);}
+    if(fx_sloop_type(f->type)){
+        fx_sloop_insert_run(f,(fx_sloop_insert_t *)mem,n,target,fx_left,fx_right,plan->third,plan->shared);
+    }
+    else if(f->type==FX_REVERB){fx_sloop_reverb_run(f,(fx_sloop_reverb_t *)mem,n,target,fx_left,fx_right);}
     else if(f->type==FX_CHORUS){
         if(!n)return 1;
         if(!f->age){f->rev_l=f->rev_r=256*65536;f->age=1;}

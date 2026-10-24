@@ -167,8 +167,9 @@ place status cards over knobs, lists, waveforms, or notes.
   `ERASING`, then `WAIT LOOP` (waiting for the selected track's loop boundary), then master punch status, then brief action feedback, then
   the normal context. Keep transport, BPM, and REC visible. Use REC colour for recording states.
 - **Master punch:** show the active effect's compact SLOOP name through its final
-  wet fade; FX HOLD / FX LOCK while its layer is open without an active effect;
-  FX MEMORY while a requested buffered effect cannot allocate. Clear on release,
+  wet fade, once its layer has closed; while the layer is open its own header
+  says [FX] HOLD, [FX] LOCK or [FX] MEMORY (a requested buffered effect cannot
+  allocate) and the layer names the key. Clear on release,
   cancellation or layer close, as appropriate. Use the label font if necessary;
   never turn this ongoing state into a toast.
 - **Optional context:** octave, song row, page dots, and the low-battery glyph use the remaining header space in
@@ -252,12 +253,15 @@ gone). Its sheet (OCT+ held, or OCT+ on RETURN) holds Routing too and Clear shar
 
 A **slot's page** shows while the slot holds an effect, so SELECT never stops on an empty one: FX, the slots in use,
 SHARED, its slots in use. The header names the effect. Audio controls are MIX, RATE (ROOM: SIZE), the
-effect's DEPTH / FOCUS / JITTER / BITE / DECAY / DIFFUSE, and TONE (ROOM and ECHOVERB).
-The picture says what the effect does and draws its sound; WIDTH says "Mono changes the tone", a time effect without its
+effect's DEPTH / FOCUS / JITTER / BITE / DECAY / DAMP, and TONE (ROOM and REVERB).
+The picture (no words) draws what the effect does: DRIVE's shaped wave, CRUSH's steps, FLANGER's comb, PEDAL PHASER's
+notches, PEDAL CHORUS's voices, ROOM/REVERB's tail, NOTE ECHO's echoes (2026-10-24, canvas QDJMbY7BjJiwEL8WKK394N).
+KNOB 1 on a rack shows the effect's family (Space, Motion, Dirt, Colour, Notes); the picker and the list (OCT+ on an
+empty slot: KNOB 1 family, KNOB 2 effect) give the effects in those families. WIDTH says "Mono changes the tone", a time effect without its
 buffer "MEMORY FULL". No hint rows. A shared slot's footer is "All tracks" with the four track colours. These controls
 belong to the project and track, never the instrument preset; shared MIX defaults fully wet.
 
-**TONE** (ROOM and ECHOVERB; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
+**TONE** (ROOM and REVERB; the knob is empty for the others) is one knob from DARK through FULL to THIN: below
 FULL a high cut from 2640 Hz down to 120 Hz, above it a low cut from 150 Hz up to 1280 Hz (core.h `fx_tone_hz`, fine
 steps where the ear needs them). Smooth 6 dB/octave cuts shape the wet input; the dry signal stays intact.
 
@@ -272,28 +276,38 @@ records load FULL.
 Screens for every effect, the racks (picker, list, SPLIT), SHARED's sheet and TONE's two sides are rendered and linted
 in every palette by `tests/ui_render.c` (fx_*).
 
-Audio ECHO remains retired: stored ID 6 imports as OFF. ECHOVERB is restored
-at its previous audition ID 8 (2026-10-20), in track and shared racks. It runs
-at 44.1 kHz with 10–500 ms PCM16 mono delay, nested allpass diffusion, TIME,
-DIFFUSE and TONE. It allocates 60,340 bytes per active slot and releases on
-bypass. There is no fidelity setting or private reverb worker. ROOM and CHORUS
-retain their 2 KiB buffers; filter effects allocate no audio delay memory.
+Audio ECHO remains retired: ID 6 imports OFF. SLOOP REVERB replaces Echoverb
+at ID 8 (2026-10-20): SIZE sets feedback decay, DAMP reduces highs in the
+feedback, TONE shapes wet input. Mono input, stereo return, 44.1 kHz; one
+19,396-byte tank per active slot, released after bypass. Echoverb's kernel,
+TIME/DIFFUSE controls and 60,340-byte tank are removed. Old ID 8 slots select
+the replacement reverb with their stored amount/controls and routing intact.
+
+Append-only IDs 12–19 offer DRIVE (SOFT/HARD/FOLD/FUZZ, its SHAPE on KNOB 4), CRUSH, FLANGER, PEDAL PHASER and
+PEDAL CHORUS from SLOOP's insert DSP. Existing PHASER/CHORUS remain separate sounds.
+Drives use DRIVE/TONE/SHAPE, CRUSH uses BITS/ALIAS (bits, kHz), and the swept processors use
+RATE/DEPTH with signed RESO in the old per-slot TONE field. RESO has no frequency
+strip. Drives retain unity output level; CRUSH's protective low-pass is fixed.
+Delay storage is allocated only for FLANGER/PEDAL CHORUS. Mono processing folds
+only until actual stereo arrives; that transition preserves the delay history.
+Shared returns remove the swept pedal's own dry half to avoid dry doubling.
+Normal CHORUS retains its independent stereo delay and dormancy optimization.
 
 ### MIDI track inserts (2026-10-19)
 
-The three track insert slots also offer **MIDIVerb** and **MIDIDelay**. Neither
+The three track insert slots also offer **NOTE TAIL** (was MIDIVerb) and **NOTE ECHO** (was MIDIDelay). Neither
 appears in the shared rack. They process internal notes before audio rendering;
 the normal audio inserts still process the resulting sound. Instrument presets,
 stored notes, captured performances and USB MIDI output retain their original data.
 These insert settings save with projects and templates, like the audio inserts.
 
-- **MIDIVerb:** KNOB 1 REL controls the track's envelope release (zero bypasses).
+- **NOTE TAIL:** no page of its own (one knob): its rack row's KNOB 4 REL controls the track's envelope release (zero bypasses).
   The rack's amount knob edits the same release. The other knobs are blank.
   Prophet's amp/filter release, FM6's operator release rates, CZ-1's amplitude
   release and SID's release follow it without rewriting their instrument patches.
   The response follows each engine's envelope law; a one-shot sound's own decay
-  still limits its tail. Multiple MIDIVerb slots use the longest release.
-- **MIDIDelay:** MIX scales delayed-note velocity relative to the original;
+  still limits its tail. Multiple NOTE TAIL slots use the longest release.
+- **NOTE ECHO:** LEVEL (the slot's MIX) scales delayed-note velocity relative to the original;
   TIME selects a tempo division (1/32 through 4 bars, including triplets); DECAY
   sets the velocity lost per repeat, including the first. KNOB 4 is blank. New selections start at
   1/8 and 50% decay. Echoes use gates of half the delay time and continue after
@@ -316,7 +330,7 @@ effects, in its original white/black key layout. Double-tap FX locks the layer;
 tap FX again to close it. The latest pressed effect key owns the sound until
 that key releases; releasing another key does not change it. A key held before
 FX remains a normal instrument note. Effect keys generate no notes or MIDI and
-are not recorded. KNOB 1 browses a readable key reference; other knobs are
+are not recorded. The layer draws the 27 keys as a keyboard tinted by family, the key held white, and under it the key's family, name and picture; KNOB 1 walks the keys; other knobs are
 consumed, including their release frame, without editing the underlying page.
 
 The complete dry stereo mix and shared returns pass through punch DSP before
@@ -330,8 +344,8 @@ all effect keys close. Hold FX briefly before reverse/rewind to capture past
 audio. If allocation fails, buffered effects stay dry and the header says
 FX MEMORY; filter/kill/gate/mono/fade effects still work. Close and reopen FX
 to retry after reducing memory use. FREEZE reuses this same allocation for
-Echoverb, captures 186 ms of the master, then holds undamped feedback until
-release. It does not require a rack Echoverb slot. See ../SLOOP_PUNCH_FX.md.
+SLOOP Reverb, captures 186 ms of the master, then holds undamped feedback until
+release. It does not require a rack reverb slot. See ../SLOOP_PUNCH_FX.md.
 
 ## Large type (2026-10-14)
 

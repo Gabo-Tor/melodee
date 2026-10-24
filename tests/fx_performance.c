@@ -45,7 +45,7 @@ static double run(const char *kind,const uint8_t modes[3],int tracks,int setting
     return ipc;
 }
 int main(int argc,char **argv){
-    uint32_t matrix_rows=0;int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes,rejected_echoverb_slots");
+    uint32_t matrix_rows=0;int full=argc>1;puts("kind,slot1,slot2,slot3,tracks,extreme,host_instructions_per_frame,host_ns_per_frame,allocated_bytes,rejected_reverb_slots");
     for(int setting=0;setting<2;setting++)for(int tracks=1;tracks<=4;tracks+=3)for(int type=0;type<FX_AUDIO_COUNT;type++){
         if(fx_retired(type))continue;
         uint8_t modes[3]={type,0,0};double cost=run("single",modes,tracks,setting,0,2048);

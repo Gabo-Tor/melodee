@@ -528,7 +528,7 @@ const CZ = {
 };
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
-const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13, TONE: 17 };
+const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13, TONE: 17, BITS: 18, ALIAS: 19 };
 
 const v14enc = (v) => { const u = Math.max(-8192, Math.min(8191, Math.round(v))) + 8192; return [u & 0x7F, (u >> 7) & 0x7F]; };
 const v14dec = (lo, hi) => (lo | (hi << 7)) - 8192;
@@ -1015,9 +1015,14 @@ function fmtValue(d, v) {
       return v ? [`${v < 0 ? "Dark" : "Thin"} ${hz}`, "Hz"] : ["Full", ""];
     }
     case F.CUTOFF: { const h = 30 * Math.pow(16000 / 30, (v & 127) / 127); return h < 1000 ? [String(Math.round(h)), "Hz"] : [(h / 1000).toFixed(1), "kHz"]; }
+    case F.BITS: return [String(1 + ((127 - Math.max(0, Math.min(127, v))) >> 3)), "bit"];   /* params.c F_BITS: CRUSH */
+    case F.ALIAS: {                                /* params.c F_ALIAS: CRUSH's held samples (CRUSH_HOLD) */
+      const hold = [64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1][(127 - Math.max(0, Math.min(127, v))) >> 3], h = Math.floor(44100 / hold);
+      return h < 1000 ? [String(h), "Hz"] : [(Math.floor((h + 50) / 100) / 10).toFixed(1), "kHz"];
+    }
     case F.DB: return v <= 0 ? ["OFF", ""] : [((v - 112) / 2).toFixed(1), "dB"];
     case F.SEMI: return [sign(v), "st"];
-    case F.ENUM: return [d.names[v - d.min] ?? String(v), d.unit || ""];
+    case F.ENUM: return [enumLabel(d, v) ?? String(v), d.unit || ""];
     case F.BPM: return [String(v), "BPM"];
     case F.NOTE: return [NOTE_NAMES[((v % 12) + 12) % 12], ""];
     case F.ONOFF: return [v ? "ON" : "OFF", ""];
@@ -2133,11 +2138,11 @@ function makeMockDevice(opt = {}) {
     D("DEG", F.INT, 1, 12, 1));                      /* 83: QNT MPC, the degree of each bank's pad 02 */
   TP.push(...["KICK","SNARE","CLAP","HATCL","HATOP","TOM","RIM","BELL"].map(n=>D(n,F.PCT,0,127,127)));
   TP.push(E("SYNC", ["OFF","4BAR","2BAR","1/1","1/2","1/4","1/8","8T","1/16","16T","1/32"],0), E("TRIG",["NOTE","FREE"],0), E("POL",["BI","UNI"],0), D("SPRD",F.PCT,0,127,0));
-  for(let slot=0;slot<3;slot++)TP.push(E("FX", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","ECHOVERB","CHORUS","MIDIVerb","MIDIDelay"],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
+  for(let slot=0;slot<3;slot++)TP.push(E("FX", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","REVERB","CHORUS","NOTE TAIL","NOTE ECHO","DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
   TP.push(D("SEND",F.PCT,0,127,0),D("SEND 2",F.PCT,0,127,0),D("SEND 3",F.PCT,0,127,0));
   for(let slot=0;slot<3;slot++)TP.push(D("TONE",F.TONE,-63,63,0));
   TP.push(E("STRUM",["OFF","1/8","1/16","1/32","1/64","1/128","16T","32T"],0),E("STROKE",["DOWN","UP","ALT"],0));
-  for(let slot=0;slot<3;slot++)GP.push(E("TYPE", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","ECHOVERB","CHORUS"],0),D("MIX",F.PCT,0,127,127),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
+  for(let slot=0;slot<3;slot++)GP.push(E("TYPE", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","REVERB","CHORUS","","","DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"],0),D("MIX",F.PCT,0,127,127),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
   GP.push(D("RETURN",F.PCT,0,127,100),E("MODE",["CHAIN","SPLIT"],0),D("BUDGET",F.INT,8,32,16,null,"pts"));
   for(let slot=0;slot<3;slot++)GP.push(D("TONE",F.TONE,-63,63,0));
   const P_COUNT = 124, G_COUNT = 45, NSTEP = 64, P_E0 = 116, G_ENGSEL = 20, P_RESERVED45 = 45;
@@ -2171,8 +2176,30 @@ function makeMockDevice(opt = {}) {
   const czDesc = (id) => { const n = ["W1", "W2", "A2", "P"][Math.floor((id - 61) / 5)];
     const k = (id - 61) % 5; return D(["A", "D", "S", "R", "LV"][k] + n,
       [F.TIME,F.TIME,F.PCT,F.TIME,F.PCT][k], 0,127,k === 2 || k === 4 ? 127 : 0); };
-  const desc = (scope, id) => scope === 0 && id === P_MPCDEG ? {...TP[id], max: SCALE_DEGREES[st.p[26]] ?? 12} : scope === 0 && st.engine === 2 && id >= 61 && id <= 80 ? czDesc(id) : (scope === 0 && id < P_COUNT ? (id >= P_E0 ? ENG[st.engine].edit[id - P_E0] : TP[id])
+  const rawDesc = (scope, id) => scope === 0 && id === P_MPCDEG ? {...TP[id], max: SCALE_DEGREES[st.p[26]] ?? 12} : scope === 0 && st.engine === 2 && id >= 61 && id <= 80 ? czDesc(id) : (scope === 0 && id < P_COUNT ? (id >= P_E0 ? ENG[st.engine].edit[id - P_E0] : TP[id])
     : scope === 1 && id < G_COUNT ? GP[id] : null);
+  const desc = (scope, id) => {
+    const original = rawDesc(scope, id), start = scope === 0 ? 96 : 27, third = scope === 0 ? 111 : 42;
+    const p = scope === 0 ? st.p : st.g;
+    let col, type;
+    if (id >= start && id < start + 12) { col = (id - start) % 4; type = p[id - col]; }
+    else if (id >= third && id < third + 3) { col = 4; type = p[start + (id - third) * 4]; }
+    else return original;
+    const d = {...original};
+    if (type >= 17 && type <= 19) {
+      if (col === 3) d.label = "DEPTH";
+      if (col === 4) { d.label = "RESO"; d.fmt = F.BIPCT; }
+    } else if (type >= 12 && type <= 15) {
+      if (col === 2) { d.label = "DRIVE"; d.fmt = F.PCT; }
+      if (col === 3) { d.label = "TONE"; d.fmt = F.CUTOFF; }
+    } else if (type === 16 && (col === 2 || col === 3)) {
+      d.label = col === 2 ? "BITS" : "ALIAS"; d.fmt = col === 2 ? F.BITS : F.ALIAS;
+    } else if (type === 8) {
+      if (col === 2) { d.label = "SIZE"; d.fmt = F.PCT; }
+      if (col === 3) d.label = "DAMP";
+    }
+    return d;
+  };
   const EMPTY = { n: 0, notes: [0, 0, 0, 0], time: 2, flags: 0, vel: 0, hit: 0, acc: 0 };
   const isDrum = () => ENG[st.engine].name === "DRUM";
   const clearSteps = () => st.step.forEach((s) => Object.assign(s, EMPTY, { notes: [0, 0, 0, 0] }));
@@ -2804,6 +2831,11 @@ async function readDevicePreferences(rq, info, names, previous = null) {
 /* an enum value or a preset named like an earlier one is an alias kept for stored numbers (SAMPLE / GRAIN 1,
    once TRANH: PIANO): the device loads the earlier one, the lists hide it. -> the first index with names[i] */
 function aliasOf(names, i) { const k = names ? names.indexOf(names[i]) : -1; return k >= 0 && k < i ? k : i; }
+/* DRIVE keeps four stored IDs; expose their shapes in the editor's selector. */
+function enumLabel(d, v) {
+  const name = d.names[v - d.min];
+  return name === "DRIVE" && v >= 12 && v <= 15 ? `DRIVE · ${["SOFT", "HARD", "FOLD", "FUZZ"][v - 12]}` : name;
+}
 
 /* the order the device shows its engines in (src/engines.c ENGINE_ORDER): the lists here follow it, the protocol keeps
    the engine numbers. engineOrder(names): the indices of names in that order, "-" (a reserved number) left out; a name
@@ -3213,8 +3245,8 @@ const LAYOUT = (pe0) => [
     ...[0, 1, 2, 3].map((k) => [`OP${k + 1}`, 0, [61 + 5 * k, 62 + 5 * k, 63 + 5 * k, 64 + 5 * k]]),
     ["OP LVL", 0, [65, 70, 75, 80]]] }] : []),
   ...(pe0>=92 && engName()==="DRUM"?[{t:"DRUM LEVELS",pages:[["LANES",0,[84,85,86,87]],["LANES 2",0,[88,89,90,91]]]}]:[]),
-  ...(pe0>=100 ? [{t:"FX",pages:Array.from({length:pe0>=108?3:1},(_,k)=>[[`FX ${k+1}`,0,[96+k*4,97+k*4,98+k*4,99+k*4]], ...(pe0>=114&&[6,7,8].includes(dev.dump.p[96+k*4])?[[`FX ${k+1} TONE`,0,[111+k]]]:[])]).flat()}] : []),
-  ...(pe0>=109 ? [{t:"FX SEND",pages:[["TRACK SEND",0,[108]], ["RETURN",1,[39]], ...(pe0>=111?[["SEND MODE",1,[40]],["SEPARATE SENDS",0,[108,109,110]]]:[]), ...Array.from({length:3},(_,k)=>[[`SEND FX ${k+1}`,1,[27+k*4,28+k*4,29+k*4,30+k*4]], ...(pe0>=114&&[6,7,8].includes(dev.dump.g[27+k*4])?[[`SEND FX ${k+1} TONE`,1,[42+k]]]:[])]).flat()]}] : []),
+  ...(pe0>=100 ? [{t:"FX",pages:Array.from({length:pe0>=108?3:1},(_,k)=>[[`FX ${k+1}`,0,[96+k*4,97+k*4,98+k*4,99+k*4]], ...(pe0>=114&&[6,7,8,17,18,19].includes(dev.dump.p[96+k*4])?[[`FX ${k+1} ${dev.dump.p[96+k*4]>=17?"RESO":"TONE"}`,0,[111+k]]]:[])]).flat()}] : []),
+  ...(pe0>=109 ? [{t:"FX SEND",pages:[["TRACK SEND",0,[108]], ["RETURN",1,[39]], ...(pe0>=111?[["SEND MODE",1,[40]],["SEPARATE SENDS",0,[108,109,110]]]:[]), ...Array.from({length:3},(_,k)=>[[`SEND FX ${k+1}`,1,[27+k*4,28+k*4,29+k*4,30+k*4]], ...(pe0>=114&&[6,7,8,17,18,19].includes(dev.dump.g[27+k*4])?[[`SEND FX ${k+1} ${dev.dump.g[27+k*4]>=17?"RESO":"TONE"}`,1,[42+k]]]:[])]).flat()]}] : []),
   { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]], ...(pe0>=96 ? [["VOICE 3",0,[95]]] : [])] },
   { t: "SCL", pages: [["SCL", 0, [25, 26, 27, 28]], ...(pe0 >= 83 ? [["CHORD", 0, [...P_CHORD, ...(pe0 >= 116 ? [114,115] : [])]]] : []),   /* CHRD VOIC 81, 82 */
     ...(pe0 >= 84 ? [["MPC", 0, [P_MPCDEG]]] : [])] },                                                 /* DEG 83 */
@@ -3609,7 +3641,8 @@ function paramRow(s, id) {
     for (let v = d.min; v <= d.max; v++) {
       const [txt] = fmtValue(d, v);
       const name = d.fmt === F.ENUM && d.names[v - d.min] == null ? String(v) : modDst(d, txt);
-      const alias = d.fmt === F.ENUM && aliasOf(d.names, v - d.min) !== v - d.min;   /* shown when set, not offered */
+      const first = d.fmt === F.ENUM ? aliasOf(d.names, v - d.min) + d.min : v;
+      const alias = first !== v && enumLabel(d, first) === enumLabel(d, v);   /* shown when set, not offered */
       input.append(el("option", { value: v, ic: wave && WAVE_IC[name], hidden: alias || !name }, name));
     }
     input.addEventListener("change", () => userSet(s, id, +input.value, true));

@@ -20,9 +20,9 @@ enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_STUT, PX_REV, PX_STOP, PX_HA
        /* the black keys, F#3 .. F#5 */
        PX_KLOW, PX_KMID, PX_KHIGH, PX_RWD, PX_OCT, PX_FLANGE, PX_PAN, PX_FREEZE, PX_LOOP8T, PX_MONO, PX_FADE };
 static const char *const PUNCH_NAME[PUNCH_NFX] = {
-    "LOOP 4", "LOOP 8", "LOOP 16", "LOOP 32", "STUTTER", "REVERSE", "STOP", "HALF",
-    "LOW", "HIGH", "PHONE", "CRUSH", "ALIAS", "GATE", "ECHO", "WOBBLE",
-    "KILL LOW", "KILL MID", "KILL HIGH", "REWIND", "OCT UP", "FLANGER", "AUTO-PAN", "FREEZE", "LOOP 8T", "MONO",
+    "LOOP 1/4", "LOOP 1/8", "LOOP 1/16", "LOOP 1/32", "STUTTER", "REVERSE", "STOP", "HALF",
+    "LOW PASS", "HIGH PASS", "PHONE", "CRUSH", "ALIAS", "GATE", "ECHO", "WOBBLE",
+    "KILL LOW", "KILL MID", "KILL HIGH", "REWIND", "OCT UP", "FLANGER", "AUTO-PAN", "FREEZE", "LOOP 1/8T", "MONO",
     "FADE OUT"};
 #define PX_OCT_W 2048u                    /* OCT UP: the window of its two read taps (46 ms) */
 #define PX_FRZ_CAP 8192u                  /* FREEZE: samples of the mix poured into the held reverb (186 ms) */
@@ -248,7 +248,7 @@ static int32_t ring_raw_q16(uint32_t p)             /* ring_q16 without the x 8 
     return a + (((b - a) * (int32_t)((p >> 1) & 0x7FFFu)) >> 15);
 }
 
-/* FREEZE uses Melodee's restored Echoverb kernel in held-feedback mode.
+/* FREEZE uses SLOOP's stereo reverb kernel in held-feedback mode.
  * The same arena memory is history for the other punch effects; no second
  * tank is needed. 186 ms of the master feeds it, then it holds its contents. */
 static void punch_freeze_block(const int32_t *l,const int32_t *r,uint32_t n,int32_t *wl,int32_t *wr)
@@ -256,9 +256,9 @@ static void punch_freeze_block(const int32_t *l,const int32_t *r,uint32_t n,int3
     for(uint32_t i=0;i<n;i++){wl[i]=l[i];wr[i]=r[i];}
     uint32_t feed=punch.t<PX_FRZ_CAP?PX_FRZ_CAP-punch.t:0;
     if(feed>n)feed=n;
-    fx_echoverb_t *s=(fx_echoverb_t *)punch_ring;
-    if(feed)fx_echoverb_run_mode(&punch.freeze,s,feed,32768,wl,wr,1);
-    if(feed<n)fx_echoverb_run_mode(&punch.freeze,s,n-feed,32768,wl+feed,wr+feed,2);
+    fx_sloop_reverb_t *s=(fx_sloop_reverb_t *)punch_ring;
+    if(feed)fx_sloop_reverb_run_mode(&punch.freeze,s,feed,32768,wl,wr,1);
+    if(feed<n)fx_sloop_reverb_run_mode(&punch.freeze,s,n-feed,32768,wl+feed,wr+feed,2);
 }
 
 /* l, r: the mix before the master (fx.c mix_block), n samples, in place */

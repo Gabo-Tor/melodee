@@ -638,9 +638,21 @@ channel, with shared coefficients and polarity smoothed over about 15 ms.
 Coefficient targets are calculated only when JITTER or the random target
 changes. It avoids the six separate filter passes and hardware EQ waits, and
 needs no delay allocation. The other filter effects retain the optional EQ path.
-Filter effects, Echo and Room run at FS/4 (11.025 kHz). Reverb runs at FS/8 (5.5125 kHz), with a 4 KiB allocation per slot. Two modular running sums provide a triangular CIC input filter; cached block-local converter state avoids repeated SRAM accesses. The seven-tap quarter-rate response and fifteen-tap eighth-rate response reject aliases, with a low-pass pole and upper-mid compensation for Reverb. Wet interpolation and wet/dry mixing are fused in the sample kernels; bounded power-of-two divisions use exact shifts, without a hardware divide.
+The existing filter effects and ROOM run at FS/4 (11.025 kHz), with full-rate
+dry audio and fused wet interpolation/mixing. SLOOP REVERB runs natively at
+44.1 kHz: two input allpasses, four damped Hadamard delay lines, one slowly
+modulated tap and stereo output. SIZE controls feedback decay, DAMP its highs,
+TONE wet input. It uses one optional 19,396-byte tank per active slot. Echoverb
+is removed, including its 60,340-byte allocation and full-rate diffusion chain.
 
-The eight-line fixed-point Reverb tank uses an orthogonal Householder reflection, input/output diffusers, length-normalised decay and a bounded wet return. SIZE/DEPTH coefficients are cached; drift targets update once per control block. DEPTH retains bass/body and increases return level and tail duration. Synths and the dry mixer retain FS = 44.1 kHz. OFF / MIX 0 releases the slot's delay memory; memory exhaustion bypasses only the failing slot.
+SLOOP insert algorithms (SOFT/HARD/FOLD/FUZZ/CRUSH/FLANGER/PEDAL PH/PEDAL CH)
+use fixed-point sample loops, block-local controls and arena-owned state. Only
+flanger/chorus allocate the two 256-sample delay lines. Mono input runs once
+until a stereo signal requires independent histories; that transition copies
+the earlier mono state. Swept bus returns exclude the pedal's embedded dry
+half. These append effect IDs, retaining existing algorithms and project IDs.
+OFF/MIX 0 releases working memory after the existing fade. Allocation failure
+bypasses only that slot. All production performance defaults remain enabled.
 
 Track SEND is post-level/pan/mute/solo and feeds one three-slot stereo auxiliary chain. Shared MIX defaults 127, RETURN defaults 100, SEND and TYPE default 0. CPU0 prepares control values and all allocations, then snapshots the final pointers after compaction. CPU1 owns the shared workspace while CPU0 computes dry master gain, and CPU0 joins before return summing, DC rejection, limiting or any events/flash access. Existing FM6/Prophet voice pairing remains in place. There is no additional block of audio latency. Offline CPU1 runs the same callback serially; a failed in-flight callback is discarded, never rerun with partly advanced histories. Individual USB stems exclude the shared return. The parallel return ramps to silence when the final active slot is bypassed or changes type; RETURN edits are smoothed over about 6 ms.
 

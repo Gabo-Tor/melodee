@@ -87,7 +87,8 @@ enum {
     F_INT, F_PCT, F_BIPCT, F_TIME, F_LFOHZ, F_CUTOFF, F_DB, F_SEMI, F_ENUM, F_BPM, F_NOTE,
     F_ONOFF, F_OCT, F_STEPS,
     F_OFS, F_FMNOTE, F_FMFRQ,   /* FM6's pages: 0 at the middle of the range, the DX7 break point, an operator's frequency */
-    F_TONE                      /* an FX slot's TONE: DARK (a high cut) .. FULL .. THIN (a low cut), fx_tone_hz */
+    F_TONE,                     /* an FX slot's TONE: DARK (a high cut) .. FULL .. THIN (a low cut), fx_tone_hz */
+    F_BITS, F_ALIAS             /* CRUSH's bits and the rate of its held samples */
 };
 
 typedef struct {
@@ -136,10 +137,13 @@ enum {                          /* per-track parameters */
 };
 #define FX_SLOTS 3u
 #define FX_PARAMS 4u
-/* Append-only IDs: shared descriptors stop at FX_AUDIO_COUNT. */
-enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_AUDIO_COUNT, FX_MIDIVERB = FX_AUDIO_COUNT, FX_MIDIDELAY, FX_COUNT };
-/* Slot 6 stays retired. Slot 8 restores our native Echoverb audition. */
+/* Append-only effect IDs; shared pickers leave MIDI-only IDs empty. */
+enum { FX_OFF, FX_PHASER, FX_WIDTH, FX_FORMANT, FX_TAPE, FX_SPIT, FX_ECHO, FX_ROOM, FX_REVERB, FX_CHORUS, FX_AUDIO_COUNT, FX_MIDIVERB = FX_AUDIO_COUNT, FX_MIDIDELAY, FX_SOFT, FX_HARD, FX_FOLD, FX_FUZZ, FX_CRUSH, FX_FLANGER, FX_PEDAL_PHASER, FX_PEDAL_CHORUS, FX_COUNT };
+/* Slot 6 stays retired. Slot 8 is the SLOOP reverb replacement. */
 static int fx_retired(int32_t type) { return type == FX_ECHO; }
+static int fx_sloop_type(int32_t t){return t>=FX_SOFT && t<=FX_PEDAL_CHORUS;}
+static int fx_sloop_swept(int32_t t){return t>=FX_FLANGER && t<=FX_PEDAL_CHORUS;}
+static int fx_third_control(int32_t t){return fx_sloop_swept(t) || t==FX_ROOM || t==FX_REVERB;}
 static int fx_is_midi(int32_t type) { return type == FX_MIDIVERB || type == FX_MIDIDELAY; }
 #define FX_CHAIN_COUNT (NPART+1u)
 #define FX_STATE_COUNT (FX_CHAIN_COUNT*FX_SLOTS)

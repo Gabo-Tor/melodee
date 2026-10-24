@@ -1108,7 +1108,8 @@ static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
-    v = enum_step(d, *vp, clamp(*vp + accel(EN_K1 + slot, steps, desc_range(d)), d->min, d->max));
+    v = accel(EN_K1 + slot, steps, desc_range(d));
+    v = fx_names(d) ? fx_step(d, *vp, v) : enum_step(d, *vp, clamp(*vp + v, d->min, d->max));
     if (pg->scope == SC_TRACK && pg->graph == GR_FXRACK && slot == 0u && *vp != v && fx_is_midi(v)) {
         /* Note effects have their own useful starting controls. */
         if (!vp[1]) vp[1] = 64;
@@ -1792,13 +1793,14 @@ static int fx_rack_enter(void)
 {
     const page_t *pg = cur_page();
     uint32_t sh = pg->scope == SC_GLOBAL, r = fx_rack_row[sh] & 3u;
-    int16_t *vp;
+    int16_t *vp = 0;
     if (ui.home || pg->graph != GR_FXRACK || (sh && r == FX_SLOTS))
         return 0;
     if (r == FX_SLOTS) {
         fx_go(page_titled("SHARED"));
     } else if (page_desc(pg, 0, &vp) && vp && *vp == FX_OFF) {
         vlist_open(ui.page, 0);
+    } else if (vp && *vp == FX_MIDIVERB) {              /* NOTE TAIL: no page (its row: KNOB 4 REL) */
     } else {
         fx_go(fx_slot_page(sh, r));
     }
@@ -2263,7 +2265,7 @@ static void ui_input(void)
     if (pop.on == POP_SHEET || pop.on == POP_LIST) {   /* an action sheet, a value's list: KNOB 1 / 2, OCT+ / OCT-
                                                          * (ui_popup.c) */
         int32_t k1 = panel_enc(EN_K1), k2 = panel_enc(EN_K2);
-        if (pop.on == POP_LIST) vlist_input(k2, oct);
+        if (pop.on == POP_LIST) vlist_input(k1, k2, oct);
         else sheet_input(k1, k2, oct);
         ui.pg_down = 0;
         enc_drop();

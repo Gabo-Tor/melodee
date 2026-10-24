@@ -5,7 +5,7 @@ from [isod89/sloop-fm1 at 4ec1ac8](https://github.com/isod89/sloop-fm1/blob/4ec1
 Source history identifies isod89's original punch implementation in `a3f9fd0`
 and its 27-effect expansion in `d30d655`. The retained band-kill SVF equations
 come from Felucca DSP by Leo Kuroshita. These notices are preserved in the port.
-Melodee integration, ownership, arena handling, UI and Echoverb changes are
+Melodee integration, ownership, arena handling, UI and reverb changes are
 Copyright (C) 2026 Kerem Kilic (Ellic Studio). A shared licence or API was not
 used as evidence of authorship.
 
@@ -19,16 +19,16 @@ Stop, project changes and modal cancellation end a request.
 
 | White key | Effect | Black key | Effect |
 | --- | --- | --- | --- |
-| F3 | LOOP 4 | F#3 | KILL LOW |
-| G3 | LOOP 8 | G#3 | KILL MID |
-| A3 | LOOP 16 | A#3 | KILL HIGH |
-| B3 | LOOP 32 | C#4 | REWIND |
+| F3 | LOOP 1/4 | F#3 | KILL LOW |
+| G3 | LOOP 1/8 | G#3 | KILL MID |
+| A3 | LOOP 1/16 | A#3 | KILL HIGH |
+| B3 | LOOP 1/32 | C#4 | REWIND |
 | C4 | STUTTER | D#4 | OCT UP |
 | D4 | REVERSE | F#4 | FLANGER |
 | E4 | STOP | G#4 | AUTO-PAN |
 | F4 | HALF | A#4 | FREEZE |
-| G4 | LOW | C#5 | LOOP 8T |
-| A4 | HIGH | D#5 | MONO |
+| G4 | LOW PASS | C#5 | LOOP 1/8T |
+| A4 | HIGH PASS | D#5 | MONO |
 | B4 | PHONE | F#5 | FADE OUT |
 | C5 | CRUSH | | |
 | D5 | ALIAS | | |
@@ -52,23 +52,36 @@ past audio. It is released when the layer, effect keys and wet fade have ended.
 Under memory pressure, buffered effects bypass and show FX MEMORY; unbuffered
 effects keep working. Allocation is attempted once per layer session, with
 normal retry on reopen. Existing engine allocations are never stolen. Several
-large Echoverb slots and the punch history may exceed available SRAM.
+large reverb slots and the punch history may exceed available SRAM.
 
-FREEZE adapts the behavior to Melodee's restored Echoverb rather than reviving
-SLOOP's always-on reverb bus. It reuses the history allocation for Echoverb's
-native PCM history and nested allpasses, captures the master for 8,192 samples
-(186 ms), then recirculates it with unity feedback, no damping and no moving
-delay taps. Its tank is independent of rack slots. It does not allocate a second
-tank. Echoverb's normal rack behavior retains the original PCM history, delay
-crossfades and diffusion/feedback law, at stored audition ID 8.
+FREEZE uses SLOOP's four-line stereo reverb. The same optional history
+allocation is reused for its tank: 8,192 samples (186 ms) of master audio feed
+the diffusers, then the unmodulated feedback network holds at unity gain,
+without damping. It needs no rack reverb and no second punch allocation.
+
+The rack reverb is extracted from SLOOP fx.c at the same source revision.
+History identifies `f2b44c2` (isod89) as the stereo Hadamard network and input
+allpass update, and `d30d655` as the freeze extension. The original Felucca
+input-diffuser work retains Leo Kuroshita's copyright. Rack/arena, input
+headroom, wet-only return and bounded arithmetic adaptations are Melodee work.
+The native-rate tank uses 19,396 bytes, replacing the removed Echoverb kernel.
+Effect ID 8 selects REVERB, with SIZE/DAMP/TONE controls; other IDs stay fixed.
+
+SLOOP insert processors from `d30d655` (after Felucca 1.5, Discussions #78/#177)
+are ported in fx_sloop_insert.h, retaining their actual third-party notices.
+The new effect IDs append at 12–19. A compact per-channel state is always
+allocated; the 256-sample delay per side is present only for flanger/chorus.
+Controls and wet/dry fades stay in Melodee's racks. Swept auxiliary returns
+remove the original pedal's dry half; insert pedals retain it. Drum/synth
+stereo is preserved. Existing PHASER and CHORUS are not silently replaced.
 
 ## Validation
 
 `tests/punch_master_test.c` covers every effect's audio, long-held captured
 loops, effect transitions, exact dry bypass, key ownership, transport phase,
 memory rejection, freeze sustain and the completed stereo master/return sum.
-`tests/echoverb_test.c` checks exact native PCM history, delay extremes,
-decaying normal tails and insert/shared integration. UI renders cover both
-fonts, crowded recording headers, lock, memory status and restored Echoverb.
+`tests/sloop_fx_test.c` checks stereo reverb decay and controls, all eight
+insert processors, mono/stereo transitions, wet-only returns and rack storage. UI renders cover both
+fonts, crowded recording headers, lock, memory status and SLOOP Reverb and inserts.
 Physical musical feel, output sound and stressed device deadlines require
 hardware listening/measurement; builds and simulated audio alone do not prove them.

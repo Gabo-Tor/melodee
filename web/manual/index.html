@@ -160,7 +160,7 @@
           <li>Named values often open a picker. Hold <kbd>HOME</kbd> and set <strong>PICKER POPUPS</strong> to <strong>OFF</strong> to edit those names on the knob instead. The choice is remembered. Sheets, and lists you open yourself, stay as they are. Short pages (CHORD, ENV DEST, LFO DEST, LFO 2, ARP 2) put their settings straight on the four knobs.</li>
         </ul>
         <h3>Holds and locks</h3>
-        <p>Hold <kbd>GLO</kbd> or <kbd>SCL</kbd> for a quick layer on the keys and knobs (hold time is set in the global settings menu as <strong>HOLD</strong>). Double-press the same button within about 300&nbsp;ms to lock the layer open with both hands free; press it again to close. Press <kbd>FX</kbd> to open the track effects rack. Its track insert slots also offer <strong>MIDIVerb</strong> (REL extends the envelope release) and <strong>MIDIDelay</strong> (MIX sets repeat velocity, TIME selects a tempo division, DECAY sets velocity loss per repeat). Both save with the project and are available only on individual tracks. Hold <kbd>EDIT</kbd> to undo, <kbd>SAVE</kbd> to write the project back to its slot, <kbd>HOME</kbd> for the menu, <kbd>SEQ</kbd> for the PATTERNS grid, <kbd>REC</kbd> to capture.</p>
+        <p>Hold <kbd>GLO</kbd> or <kbd>SCL</kbd> for a quick layer on the keys and knobs (hold time is set in the global settings menu as <strong>HOLD</strong>). Double-press the same button within about 300&nbsp;ms to lock the layer open with both hands free; press it again to close. Press <kbd>FX</kbd> to open the track effects rack. Its track insert slots also offer <strong>NOTE TAIL</strong> (its rack row's REL extends the envelope release) and <strong>NOTE ECHO</strong> (LEVEL sets repeat velocity, TIME selects a tempo division, DECAY sets velocity loss per repeat). Both save with the project and are available only on individual tracks. Hold <kbd>EDIT</kbd> to undo, <kbd>SAVE</kbd> to write the project back to its slot, <kbd>HOME</kbd> for the menu, <kbd>SEQ</kbd> for the PATTERNS grid, <kbd>REC</kbd> to capture.</p>
         <h3>Sheets and undo</h3>
         <p>Hold <kbd>OCT+</kbd> on pages that have a sheet (Stage, sound pages, NOTES, PATTERNS, SONG, and others) to open actions such as Init sound, Copy to…, or Sound designer.</p>
         <p><strong>Undo / redo:</strong></p>
@@ -584,7 +584,7 @@
           <figure class="shot"><img src="fx_tone_dark.png" alt="Effect tone filter set to dark" width="240" height="240"><figcaption>TONE: the lit band reaches the effect.</figcaption></figure>
         </div>
         <p>On the rack, <kbd>KNOB 2</kbd> picks a row, <kbd>KNOB 1</kbd> chooses its effect, and <kbd>KNOB 4</kbd> sets its amount (an insert’s MIX, or the track’s SEND on the Shared row in CHAIN mode). Empty slots show <strong>--</strong>. <kbd>OCT+</kbd> opens the selected slot, its effect picker if empty, or the SHARED rack. <kbd>SELECT</kbd> visits the racks and occupied slots; empty slot pages are skipped. Pressing <kbd>FX</kbd> from a slot returns to its rack.</p>
-        <p>On a slot’s page, <kbd>KNOB 1</kbd> is MIX, <kbd>KNOB 2</kbd> is RATE / TIME / SIZE, <kbd>KNOB 3</kbd> shapes its character, and <kbd>KNOB 4</kbd> is TONE for ROOM (unused for other types):</p>
+        <p>The effect picker groups choices into Space, Motion, Dirt, Colour and Notes. On an empty slot, <kbd>OCT+</kbd> opens the browser: <kbd>KNOB 1</kbd> picks a family, <kbd>KNOB 2</kbd> an effect, and <kbd>OCT+</kbd> confirms. On a slot’s page, <kbd>KNOB 1</kbd> is MIX, <kbd>KNOB 2</kbd> is RATE / TIME / SIZE / DRIVE / BITS, and <kbd>KNOB 3</kbd> shapes its character. <kbd>KNOB 4</kbd> is TONE for ROOM and REVERB, SHAPE for DRIVE, or RESO for the swept pedals:</p>
         <table>
           <thead><tr><th>Effect</th><th><kbd>KNOB 2</kbd></th><th><kbd>KNOB 3</kbd></th></tr></thead>
           <tbody>
@@ -594,16 +594,19 @@
             <tr><td>TAPE</td><td>RATE</td><td>JITTER — drifting filters.</td></tr>
             <tr><td>SPIT</td><td>RATE</td><td>BITE — a resonant band that jumps and saturates.</td></tr>
             <tr><td>ROOM</td><td>SIZE</td><td>DECAY — a small space.</td></tr>
-            <tr><td>ECHOVERB</td><td>TIME</td><td>DIFFUSE — 10–500 ms echo into a diffuse space.</td></tr>
+            <tr><td>REVERB</td><td>SIZE</td><td>DAMP — SLOOP’s stereo reverb; TONE shapes its input.</td></tr>
+            <tr><td>DRIVE</td><td>DRIVE</td><td>TONE, and SHAPE on KNOB 4: Soft, Hard, Fold or Fuzz — SLOOP drive processors, unity output gain.</td></tr>
+            <tr><td>CRUSH</td><td>BITS</td><td>ALIAS — bit reduction and sample hold (the held rate in kHz).</td></tr>
+            <tr><td>FLANGER / PEDAL PHASER / PEDAL CHORUS</td><td>RATE</td><td>DEPTH and signed RESO — feedback pedals; shared returns exclude their dry half.</td></tr>
             <tr><td>CHORUS</td><td>RATE</td><td>DEPTH — stereo pitch movement. Start MIX near 50%.</td></tr>
           </tbody>
         </table>
         <p><strong>TONE</strong> goes from DARK through FULL to THIN. Below FULL it cuts highs; above FULL it cuts lows from what enters the wet effect. The dry sound stays intact. ROOM also keeps a low cut at FULL to stop bass building up in their tails.</p>
         <p>MIX at zero, or OFF, fades that slot dry. If a time effect cannot get its buffer, the picture says <strong>MEMORY FULL</strong>; turn the slot off and on to try again. Hold <kbd>OCT+</kbd> for the sound sheet. Tap <kbd>OCT−</kbd> to return from a slot to its rack, from SHARED to FX, and from FX to Stage.</p>
-        <p>ECHOVERB is available again with TIME (10–500 ms), DIFFUSE and TONE. It uses about 59 KiB per slot; bypass releases the buffer. Old audio Echo slots load OFF. ROOM and CHORUS retain their 2 KiB buffers. MIDIVerb and MIDIDelay remain note inserts.</p>
+        <p>SLOOP REVERB replaces Echoverb at effect ID 8, with SIZE, DAMP and TONE. The native-rate stereo tank uses 19,396 bytes per slot, down from Echoverb’s 60,340 bytes; bypass releases it. Existing ID 8 settings select the replacement reverb. Old audio Echo slots load OFF. ROOM and CHORUS retain their 2 KiB buffers. NOTE TAIL and NOTE ECHO remain note inserts. The new SLOOP pedals work in track and shared racks; the existing PHASER and CHORUS remain distinct choices.</p>
         <h3>Master punch effects</h3>
         <p>Hold <kbd>FX</kbd> and press a key to apply one of SLOOP’s 27 audio effects to the whole stereo master, including shared returns and USB stereo capture. Release the effect key for dry audio. Double-tap FX to lock the layer and tap again to close. KNOB 1 browses the key reference. Keys held before FX keep playing; effect keys produce no notes or MIDI.</p>
-        <p>The effects include loops, reverse, tape stop, half speed, filter sweeps, phone, crush, alias, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan, freeze, mono and fade. FREEZE uses Echoverb to hold 186 ms of captured master audio. The optional punch history uses 64 KiB while the layer is in use; hold FX briefly before reverse/rewind. If memory is unavailable the header shows FX MEMORY; close FX, reduce effect memory use and reopen to retry.</p>
+        <p>The effects include loops, reverse, tape stop, half speed, filter sweeps, phone, crush, alias, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan, freeze, mono and fade. FREEZE uses SLOOP Reverb to hold 186 ms of captured master audio. The optional punch history uses 64 KiB while the layer is in use; hold FX briefly before reverse/rewind. If memory is unavailable the header shows FX MEMORY; close FX, reduce effect memory use and reopen to retry.</p>
         <h3>Shared return</h3>
         <p>The Shared row feeds one shared three-slot return after this track’s level and pan. In the <strong>SHARED</strong> rack, <kbd>KNOB 2</kbd> selects slots A–C or RETURN, <kbd>KNOB 1</kbd> chooses a slot’s effect, <kbd>KNOB 3</kbd> sets <strong>ROUTE</strong>, and <kbd>KNOB 4</kbd> sets the selected amount. <kbd>OCT+</kbd> opens a slot. Hold <kbd>OCT+</kbd>, or tap it on RETURN, for Routing and Clear shared FX (asks first).</p>
         <ul>

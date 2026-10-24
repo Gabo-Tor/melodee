@@ -109,8 +109,8 @@ static void freeze(void)
         }
     }
     assert(early>100000 && late>early/10 && late<early*3);
-    assert(((fx_echoverb_t *)punch_ring)->initialized && punch.freeze.type==FX_REVERB);
-    puts("Punch FREEZE: Echoverb holds captured audio for eight seconds after input ends");
+    assert(punch.freeze.type==FX_REVERB);
+    puts("Punch FREEZE: SLOOP reverb holds captured audio for eight seconds after input ends");
 }
 static void tempo_memory(void)
 {

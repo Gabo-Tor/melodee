@@ -57,11 +57,12 @@ static void controls(void)
 {
     ui_power_on();
     assert(FX_ECHO == 6 && FX_ROOM == 7 && FX_REVERB == 8 && FX_CHORUS == 9 && FX_MIDIVERB == 10 && FX_MIDIDELAY == 11);
-    assert(!N_FX[FX_ECHO][0] && str_eq(N_FX[FX_REVERB],"ECHOVERB") && !N_AUDIO_FX[FX_ECHO][0] && str_eq(N_AUDIO_FX[FX_REVERB],"ECHOVERB"));
+    assert(!N_FX[FX_ECHO][0] && str_eq(N_FX[FX_REVERB],"REVERB") && !N_AUDIO_FX[FX_ECHO][0] && str_eq(N_AUDIO_FX[FX_REVERB],"REVERB"));
     assert(enum_orig(&TP[P_FXTYPE],FX_ECHO)==FX_OFF && enum_orig(&GP[G_MFXTYPE],FX_REVERB)==FX_REVERB);
-    assert(enum_step(&TP[P_FXTYPE],FX_SPIT,FX_ECHO)==FX_ROOM);
+    assert(enum_step(&TP[P_FXTYPE],FX_OFF,FX_OFF+1)==FX_ROOM);
+    assert(enum_step(&TP[P_FXTYPE],FX_SPIT,FX_SPIT+1)==FX_MIDIDELAY);
     assert(enum_step(&TP[P_FXTYPE],FX_ROOM,FX_REVERB)==FX_REVERB);
-    assert(enum_rows(&TP[P_FXTYPE])==FX_COUNT-1 && enum_rows(&GP[G_MFXTYPE])==FX_AUDIO_COUNT-1);
+    assert(enum_rows(&TP[P_FXTYPE])==16 && enum_rows(&GP[G_MFXTYPE])==14);
     press(B_FX);assert(cur_page()->fam==FAM_FX);
     btn_down(B_FX);frames(800);assert(ui.layer==LAYER_FX);
     key_down(white(0));frame();assert(!gates() && kb_layer);key_up(white(0));frame();assert(!gates());

@@ -229,7 +229,7 @@ static void pv_words(const char *label, const char *val, const char *unit, char 
     str_cpy(u, unit, 8);
     if (str_eq(unit, "STEP")) {
         str_cpy(u, str_eq(val, "1") ? "step" : "steps", 8);
-    } else if (unit[0] && unit[1] && !str_eq(unit, "dB")) {
+    } else if (unit[0] && unit[1] && !str_eq(unit, "dB") && !str_eq(unit, "Hz") && !str_eq(unit, "kHz")) {
         for (i = 0; u[i]; i++)
             if (u[i] >= 'A' && u[i] <= 'Z') u[i] = (char)(u[i] + 32);
     }
@@ -610,64 +610,155 @@ static uint32_t pv_pic(int32_t *cut, int32_t *res)
     }
     return *cut >= 0 ? 3u : 0u;
 }
-/* FX (README "FX rack"): an effect slot's page (FX 1-3, SEND FX 1-3: MIX, TIME or RATE, its DEPTH, TONE): what the
- * effect does, its sound as a curve in the track's colour and, for ECHO, ROOM and REVERB, TONE as a strip under it:
- * the band that reaches the effect lit in TONE's colour (at FULL dimmed, from the effect's own low cut), the cut TONE
- * sets under its edge. WIDTH
- * says what mono does; a time effect without its buffer says MEMORY FULL. No hints */
-static int32_t pv_hz_x(int32_t hz)                       /* 20 Hz .. 2.64 kHz, a log scale: x 16 .. 223 */
+/* FX (README "FX rack"): an effect slot's page (FX 1-3, SEND FX 1-3): no words, a picture of what the effect does,
+ * in the track's colour, the dry sound dimmer behind it where it reshapes it: DRIVE its wave through the SHAPE (the
+ * DSP's own shape, fx_sloop_insert.h ins_shape), CRUSH its steps (BITS) and holds (ALIAS), FLANGER its comb and PEDAL
+ * PHASER its two notches (dim: where DEPTH sweeps them to), PEDAL CHORUS its voices, ROOM and REVERB their tail (the
+ * lighter top: the highs, which DAMP shortens), NOTE ECHO its echoes at TIME, their height the velocity; the older
+ * effects their curves. ROOM, REVERB: TONE as a strip under it (the band that reaches the effect, from its own low
+ * cut, the cut TONE sets under its edge; FULL dimmed); DRIVE: its TONE, the low-pass it ends in. WIDTH says what mono
+ * does; a time effect without its buffer says MEMORY FULL */
+static int32_t pv_log_x(int32_t hz, int32_t top, int32_t span)   /* 20 Hz .. top on a log scale: x 16 .. 223;
+                                                                  * span: log2(top / 20) Q8 */
 {
-    uint32_t v = (uint32_t)clamp(hz, 20, 2640) * 16u / 20u, o = 4;   /* (v 16 .. 2112: its log2 4 .. 11.04) */
+    uint32_t v = (uint32_t)clamp(hz, 20, top) * 16u / 20u, o = 4;   /* (v 16 ..: its log2 from 4) */
     while (v >> (o + 1u))
         o++;
-    return 16 + (int32_t)((o - 4u) * 256u + ((v << 8) >> o) - 256u) * 208 / 1803;   /* (log2 132 = 1803 / 256) */
+    return 16 + (int32_t)((o - 4u) * 256u + ((v << 8) >> o) - 256u) * 208 / span;
+}
+static int32_t pv_hz_x(int32_t hz) { return pv_log_x(hz, 2640, 1803); }   /* (log2 132 = 1803 / 256) */
+/* a strip under the picture: the band x a .. b lit in c (dim: FULL, calm), "320 Hz" under the edge x when hz */
+static void pv_fx_strip(int32_t sy, int32_t ly, int32_t a, int32_t b, int32_t x, int32_t hz, uint16_t c, int dim)
+{
+    const aafont_t *lf = TY_LB;
+    char t[12];
+    cv_rrect(16, sy, 208, 5, 2, T_LINE, T_PANEL);
+    cv_rrect(a, sy, b - a > 5 ? b - a : 5, 5, 2, dim ? ux_mix(T_LINE, c, 45) : c, T_LINE);
+    if (!hz)
+        return;
+    fmt_int(t, hz < 1000 ? hz : hz / 1000);
+    if (hz >= 1000) {
+        uint32_t n = str_len(t);
+        t[n] = '.';
+        t[n + 1u] = (char)('0' + hz % 1000 / 100);
+        t[n + 2u] = 0;
+    }
+    str_cpy(t + str_len(t), hz < 1000 ? " Hz" : " kHz", 6);
+    if (x < 16 + text_w(lf, t) / 2) cv_text_on(16, ty_y(ly + lf->h / 2, lf), lf, t, c, T_PANEL);
+    else if (x > 224 - text_w(lf, t) / 2) cv_text_r(224, ty_y(ly + lf->h / 2, lf), lf, t, c, T_PANEL);
+    else cv_text_c(x, ty_y(ly + lf->h / 2, lf), lf, t, c, T_PANEL);
+}
+/* the picture's value at column i (0 .. 207) of trace k (0: the dry or dim one), 1/16 px from cy, amp the half height */
+static int32_t pv_fx_y(uint32_t type, uint32_t k, int32_t i, const int16_t *p, int32_t tone, int32_t amp)
+{
+    int32_t mix = p[1], rate = p[2], cha = p[3], s, v, n;
+    uint32_t ph2 = (uint32_t)i * 41297762u;            /* (two turns over the 208 columns) */
+    if (fx_drive((int32_t)type)) {                      /* DRIVE: the sine, through the SHAPE at DRIVE */
+        s = sine_i(ph2);
+        v = k ? ins_shape(type - FX_SOFT + IT_SOFT, (s * (4096 + rate * rate * 3)) >> 12, 0) : s;
+        return -v * amp / 36000;
+    }
+    if (type == FX_CRUSH) {                             /* CRUSH: held (ALIAS) and stepped (BITS) */
+        int32_t bits = 1 + ((127 - clamp(rate, 0, 127)) >> 3), hw = 2 + CRUSH_HOLD[(127 - clamp(cha, 0, 127)) >> 3] / 2;
+        if (!k)
+            return -sine_i(ph2) * amp / 36000;
+        s = sine_i((uint32_t)(i / hw * hw) * 41297762u);
+        v = (s * bits + (s >= 0 ? 16384 : -16384)) / 32768;
+        return -v * amp * 32 / (bits * 36);
+    }
+    if (type == FX_FLANGER) {                           /* its comb: notches across (DEPTH), sharper with RESO */
+        n = k ? 96 + cha * 300 / 127 : 30 + cha * 80 / 127;   /* (notches x 64 over the width) */
+        s = sine_i((uint32_t)(i * n) * 322638u + 0x40000000u);   /* (a turn: 2^32 / 208 / 64) */
+        v = (32768 + s) / 2;                            /* 0 .. 32768: cos^2 */
+        if (tone > 0) v += tone * ((v * v >> 15) - v) / 63;
+        else if (tone < 0) v -= tone * ((32768 - ((32768 - v) * (32768 - v) >> 15)) - v) / 63;
+        return amp - v * amp * 2 / 33000;
+    }
+    if (type == FX_PEDAL_PHASER) {                      /* two notches, DEPTH apart, narrower with RESO */
+        int32_t c = k ? 116 + cha / 4 : 60 + cha / 8, w = 14 - (tone < 0 ? -tone : tone) * 7 / 63, j, m = 256;
+        for (j = -1; j <= 1; j += 2) {
+            int32_t t = (i - c - j * 30) * 16 / w;
+            m -= 65536 / (256 + t * t);
+        }
+        m = clamp(m, 0, 256);
+        return amp - m * amp * 7 / 1000;
+    }
+    if (type == FX_PEDAL_CHORUS) {                      /* the dry wave and its voices, apart by DEPTH, drifting */
+        uint32_t ph3 = (uint32_t)i * 61946643u, drift = (uint32_t)(sine_i((uint32_t)i * 20648881u) + 32768) * 4000u;
+        return -sine_i(ph3 - (uint32_t)k * ((uint32_t)cha * 2900000u + drift)) * amp / 46000;
+    }
+    s = sine_i((uint32_t)i * 0x06000000u) >> 10;       /* the older effects (MIX: their reach) */
+    if (type == FX_PHASER || type == FX_WIDTH || type == FX_CHORUS) return s * mix / 9;
+    if (type == FX_FORMANT) return -((s + 32) * mix) / 15;
+    if (type == FX_TAPE || type == FX_SPIT) return (s * ((i * (cha + 1) / 32) % 32)) / 4;
+    return 0;
 }
 static void pv_fx(int32_t h)
 {
     const aafont_t *lf = TY_LB;
     const page_t *pg = cur_page();
-    uint32_t master = pg->scope == SC_GLOBAL, slot = (pg->id[0] - (master ? G_MFXMIX : P_FXMIX)) / FX_PARAMS;
+    uint32_t master = pg->scope == SC_GLOBAL, slot = (pg->id[0] - (master ? G_MFXMIX : P_FXMIX)) / FX_PARAMS, k;
     const int16_t *p = (master ? song.g : TSEL->p) + pg->id[0] - 1u;   /* TYPE MIX RATE CHAR */
     uint32_t type = (uint32_t)clamp(p[0], 0, FX_COUNT - 1), failed = fx_state[(master ? NPART : song.sel % NPART) * FX_SLOTS + slot].failed;
-    static const char *const hint[FX_COUNT]={"Dry signal","Moving notches","All-pass L / dry R","Random vowels","Phase / crossover jitter","Jumping resonance","Dry signal","Small lo-fi space","Echo into diffuse space","Stereo pitch shimmer","Envelope release tail","Repeating notes"};
-    int32_t mix = p[1], cha = p[3], tone = master ? song.g[G_MFXTONE + slot] : TSEL->p[P_FXTONE + slot];
-    int32_t ly = h - lf->h - 4, sy = ly - 9, low = (fx_has_tone((int32_t)type) && !failed ? sy - 6 : h - lf->h - 10) * 16;
-    int32_t top = (lf->h + 10) * 16, cy = (top + low) / 32, py = cy * 16;
-    const char *description=hint[type];
-
-    cv_free_text(12, 6, lf, description, T_MID, T_PANEL, PV_PANEL_W - 24);
-    for (int32_t x = 0; x < 208; x++) {
-        int32_t ph = (int32_t)(sine_i((uint32_t)x * 0x06000000u) >> 10), y = cy * 16;
-        if (type == FX_PHASER || type == FX_WIDTH || type == FX_CHORUS) y += ph * mix / 9;
-        else if (type == FX_FORMANT) y -= ((ph + 32) * mix) / 15;
-        else if (type == FX_TAPE || type == FX_SPIT) y += (ph * ((x * (cha + 1) / 32) % 32)) / 4;
-        else if (type >= FX_ECHO) y += (ph * mix * (208 - x)) / 1900;
-        y = clamp(y, top, low);
-        cv_vspan_aa(16 + x, py, y, type && mix ? T_THEME : T_DIM);
-        py = y;
+    int32_t mix = p[1], rate = p[2], cha = p[3], tone = master ? song.g[G_MFXTONE + slot] : TSEL->p[P_FXTONE + slot];
+    int strip = (fx_has_tone((int32_t)type) || fx_drive((int32_t)type)) && !failed, i;
+    int32_t ly = h - lf->h - 4, sy = ly - 9, top = 8 * 16;
+    int32_t low = (strip ? sy - 6 : failed || type == FX_WIDTH ? h - lf->h - 10 : h - 8) * 16;
+    int32_t cy = (top + low) / 2, amp = (low - top) / 2;
+    uint16_t th = type && mix ? T_THEME : T_DIM, gh = ux_mix(T_PANEL, th, 38);
+    if (type == FX_ROOM || type == FX_REVERB) {         /* the tail: SIZE long (ROOM: DECAY too), its highs lighter */
+        int32_t len = type == FX_ROOM ? 30 + rate * 70 / 127 + cha * 60 / 127 : 40 + rate * 150 / 127;
+        int32_t kb = 32768 - 9 * 32768 / len, kh = 32768 - 9 * 32768 * 10 / (len * (10 - (type == FX_REVERB ? cha * 7 / 127 : 5)));
+        int32_t eb = 32767, eh = 32767, base = low >> 4, hgt = (low - top) >> 4;
+        uint32_t r = 0x2545F491u;
+        uint16_t hc = ux_mix(th, T_TEXT, 55);
+        for (i = 20; i < 224 && eb > 400; i += 3) {
+            int32_t a = i < 24 ? (i - 19) * 6553 : 32767, b, c;
+            r = r * 1103515245u + 12345u;
+            b = hgt * (eb >> 7) / 256 * (18000 + (int32_t)(r >> 17) % 14768) / 32768 * a / 32768;
+            r = r * 1103515245u + 12345u;
+            c = hgt * 45 / 100 * (eh >> 7) / 256 * (16384 + (int32_t)(r >> 17) % 16384) / 32768 * a / 32768;
+            if (b > 0) cv_rect(i, base - b, 2, b, th);
+            if (c > 1) cv_rect(i, base - c, 2, c, hc);
+            eb = eb * kb >> 15;
+            eh = eh * kh >> 15;
+        }
+    } else if (type == FX_MIDIDELAY) {                  /* the note and its echoes at TIME, LEVEL and DECAY */
+        static const uint8_t DIVQ[10] = {16, 8, 4, 2, 5, 3, 32, 64, 128, 255};   /* N_DIV in 1/16 beats */
+        int32_t step = 52 * DIVQ[clamp(rate, 0, 9)] / 16, x = 18, v = 127, n = 0, base = (low >> 4) - 6, hgt = ((low - top) >> 4) - 6;
+        for (k = 0; k < 5u; k++)                        /* the beats */
+            cv_rect(18 + (int32_t)k * 51, base + 5, 2, 4, k % 4u ? T_LINE : T_DIM);
+        if (step < 3) step = 3;
+        while (x < 222 && v > 0 && n < 32) {
+            int32_t b = hgt * v / 127, w = step * 55 / 100 < 3 ? 3 : step * 55 / 100;
+            if (b > 0)
+                cv_rrect(x, base - b, w, b, w > 5 ? 3 : 1, n ? ux_mix(T_PANEL, th, 95 - (n < 7 ? n : 7) * 9) : th, T_PANEL);
+            v = n ? v * (127 - clamp(cha, 0, 127)) / 127 : v * (127 - clamp(cha, 0, 127)) / 127 * clamp(mix, 0, 127) / 127;
+            x += step;
+            n++;
+        }
+    } else {
+        int ghost = fx_sloop_type((int32_t)type);       /* (the older effects: their curve alone) */
+        for (k = ghost ? 0u : 1u; k < (type == FX_PEDAL_CHORUS ? 3u : 2u); k++) {   /* the dry trace (dim), the
+                                                                                    * sound; PEDAL CHORUS: two voices */
+            int32_t py = 0;
+            uint16_t c = !k ? gh : k == 1u && type == FX_PEDAL_CHORUS ? ux_mix(T_PANEL, th, 70) : th;
+            for (i = 0; i < 208; i++) {
+                int32_t y = clamp(cy + pv_fx_y(type, k, i, p, tone, amp), top, low);
+                cv_vspan_aa(16 + i, i ? py : y, y, c);
+                py = y;
+            }
+        }
     }
     if (failed || type == FX_WIDTH) {
         cv_free_text(12, h - lf->h - 6, lf, failed ? "MEMORY FULL" : "Mono changes the tone", T_DIM, T_PANEL, PV_PANEL_W - 24);
+    } else if (fx_drive((int32_t)type)) {               /* DRIVE's TONE: the low-pass, lit up to its cut (20 Hz .. 20 kHz) */
+        int32_t hz = (int32_t)CUTOFF_HZ[cha & 127], x = pv_log_x(hz, 20000, 2551);
+        pv_fx_strip(sy, ly, 16, x, x, hz, T_KNOB(2), 0);
     } else if (fx_has_tone((int32_t)type)) {             /* TONE: what passes, lit (from the effect's floor) */
         int32_t lo = fx_low_cut_hz((int32_t)type, tone), hz = tone < 0 ? fx_tone_hz(tone) : lo;
-        int32_t a = pv_hz_x(lo), b = tone < 0 ? pv_hz_x(hz) : 224, x = tone < 0 ? b : a;
-        uint16_t kc = T_KNOB(3);
-        char t[12];
-        cv_rrect(16, sy, 208, 5, 2, T_LINE, T_PANEL);
-        cv_rrect(a, sy, b - a > 5 ? b - a : 5, 5, 2, tone ? kc : ux_mix(T_LINE, kc, 45), T_LINE);   /* (FULL: calm) */
-        if (tone) {                                     /* "320 Hz", "1.2 kHz" under the edge */
-            fmt_int(t, hz < 1000 ? hz : hz / 1000);
-            if (hz >= 1000) {
-                uint32_t n = str_len(t);
-                t[n] = '.';
-                t[n + 1u] = (char)('0' + hz % 1000 / 100);
-                t[n + 2u] = 0;
-            }
-            str_cpy(t + str_len(t), hz < 1000 ? " Hz" : " kHz", 6);
-            if (x < 16 + text_w(lf, t) / 2) cv_text_on(16, ty_y(ly + lf->h / 2, lf), lf, t, kc, T_PANEL);
-            else if (x > 224 - text_w(lf, t) / 2) cv_text_r(224, ty_y(ly + lf->h / 2, lf), lf, t, kc, T_PANEL);
-            else cv_text_c(x, ty_y(ly + lf->h / 2, lf), lf, t, kc, T_PANEL);
-        }
+        int32_t a = pv_hz_x(lo), b = tone < 0 ? pv_hz_x(hz) : 224;
+        pv_fx_strip(sy, ly, a, b, tone < 0 ? b : a, tone ? hz : 0, T_KNOB(3), !tone);
     }
 }
 static void pv_picture(void)

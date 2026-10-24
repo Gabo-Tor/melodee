@@ -23,7 +23,7 @@ static uint64_t fx_signal(uint32_t type,int rate,int character,int mix,const cha
             if(frame%173u==0u && !i)b[i]+=18000;
         }
         int on=fx_process(t,b,CTL);
-        assert(resource[RES_FX0].size==((type==FX_CHORUS || type==FX_ROOM) && mix?2048u:type==FX_REVERB && mix?sizeof(fx_echoverb_t):0u));
+        assert(resource[RES_FX0].size==((type==FX_CHORUS || type==FX_ROOM) && mix?2048u:type==FX_REVERB && mix?sizeof(fx_sloop_reverb_t):0u));
         for(uint32_t i=0;i<CTL;i++){
             int32_t l=on?fx_left[i]:b[i],r=on?fx_right[i]:b[i];
             assert(l>=-1000000 && l<=1000000 && r>=-1000000 && r<=1000000);
@@ -453,6 +453,59 @@ static void tone_test(void)
     }
     puts("FX tone: bass/treble rejection, -3 dB cutoffs, smooth edits across FULL, per-slot editor/routing, persistence and frozen FUN20/TPLJ, FUN21/TPLK imports: OK");
 }
+static void grouped_fx_test(void)
+{
+    static const uint8_t order[] = {FX_OFF, FX_ROOM, FX_REVERB, FX_WIDTH, FX_PHASER, FX_CHORUS,
+        FX_FLANGER, FX_PEDAL_PHASER, FX_PEDAL_CHORUS, FX_SOFT, FX_CRUSH, FX_FORMANT, FX_TAPE, FX_SPIT,
+        FX_MIDIDELAY, FX_MIDIVERB};
+    ui_power_on();
+    for (uint32_t shared = 0; shared < 2; shared++) {
+        const param_desc_t *d = shared ? &GP[G_MFXTYPE] : &TP[P_FXTYPE];
+        uint32_t n = NELEM(order) - (shared ? 2u : 0u);
+        assert(enum_rows(d) == n);
+        for (uint32_t i = 0; i < n; i++) {
+            assert(enum_value(d, i) == order[i] && enum_rank(d, order[i]) == i);
+            assert(fx_step(d, order[i], 1) == order[i + (i + 1u < n)]);
+            assert(fx_step(d, order[i], -1) == order[i - (i > 0)]);
+        }
+        assert(fx_step(d, FX_HARD, 0) == FX_HARD && fx_step(d, FX_FUZZ, 1) == FX_CRUSH);
+        go_title(shared ? "SHARED" : "FX");
+        fx_rack_row[shared] = 0;
+        vlist_open(ui.page, 0);assert(vl.sel == FX_ROOM);
+        turn(EN_K1, 1);assert(vl.sel == FX_PHASER);   /* Space -> Motion */
+        turn(EN_K2, 1);assert(vl.sel == FX_CHORUS);
+        press(B_OCTDN);assert(!pop.on);              /* cancel leaves the empty slot alone */
+        int16_t *p = shared ? song.g + G_MFXTYPE : TSEL->p + P_FXTYPE;
+        assert(!p[0]);
+        vlist_open(ui.page, 0);
+        for (uint32_t f = 0; f < 8; f++) turn(EN_K1, 1);
+        assert(vl.sel == (shared ? FX_FORMANT : FX_MIDIDELAY));
+        turn(EN_K2, 1);
+        assert(vl.sel == (shared ? FX_TAPE : FX_MIDIVERB));
+        press(B_OCTUP);assert(!pop.on && p[0] == (shared ? FX_TAPE : FX_MIDIVERB));
+        /* Every slot's SHAPE edits its type, retaining the hidden signed tone
+         * and all other controls. SHAPE's names use absolute stored IDs. */
+        for (uint32_t slot = 0; slot < FX_SLOTS; slot++) {
+            int16_t *type = p + slot * FX_PARAMS;
+            int16_t *tone = shared ? &song.g[G_MFXTONE + slot] : &TSEL->p[P_FXTONE + slot];
+            *type = FX_SOFT;*tone = -31;
+            type[1] = 91;type[2] = 53;type[3] = 87;
+            fx_go(fx_slot_page(shared, slot));
+            int16_t *vp;const param_desc_t *shape = page_desc(cur_page(), 3, &vp);
+            assert(vp == type && enum_rows(shape) == 4);
+            for (uint32_t s = 0; s < 4; s++) {
+                char value[8];const char *unit;
+                assert(*type == FX_SOFT + s && enum_value(shape, s) == *type && enum_rank(shape, *type) == s);
+                assert(str_eq(enum_name(shape, *type), N_SHAPE[*type]));
+                param_format(shape, *type, value, &unit);assert(str_eq(value, N_SHAPE[*type]));
+                edit_param(3, 1);
+            }
+            assert(*type == FX_FUZZ);edit_param(3, -99);assert(*type == FX_SOFT);
+            assert(*tone == -31 && type[1] == 91 && type[2] == 53 && type[3] == 87);
+        }
+    }
+    puts("FX redesign: grouped order, family browser, cancel/confirm, shared exclusion and all-slot DRIVE shapes: OK");
+}
 static void rack_test(void)
 {
     ui_power_on();char chip[16];
@@ -501,7 +554,7 @@ int main(int argc,char **argv)
         0x7705dc943db0ff6bull,0x5cc781ef5a3621a3ull,0xef747476fc21a401ull,
         0xd4c3687f410daf9cull
     };
-    legacy();frozen_three_slots();send_return();separate_sends();fx_chain_test();rate_and_pan();tape_smooth();chorus_test();tone_test();rack_test();
+    legacy();frozen_three_slots();send_return();separate_sends();fx_chain_test();rate_and_pan();tape_smooth();chorus_test();tone_test();grouped_fx_test();rack_test();
     uint64_t dry=fx_signal(FX_OFF,60,64,0,0);
     assert(dry==original_pcm[FX_OFF]);
     for(uint32_t mode=FX_PHASER;mode<FX_AUDIO_COUNT;mode++){
@@ -535,7 +588,7 @@ int main(int argc,char **argv)
     }
     for(uint32_t id=0;id<RES_COUNT;id++)resource_release(id);
     ui_power_on();press(B_FX);assert(!ui.home && cur_page()->fam==FAM_FX && !ui.layer);
-    fx_rack_row[0]=0;turn(EN_K1,2);assert(TSEL->p[P_FXTYPE]==FX_WIDTH);turn(EN_K4,50);assert(TSEL->p[P_FXMIX]>0);
+    fx_rack_row[0]=0;turn(EN_K1,3);assert(TSEL->p[P_FXTYPE]==FX_WIDTH);turn(EN_K4,50);assert(TSEL->p[P_FXMIX]>0);
     project_t q;project_capture(&q);project_store_t p;assert(proj_pack(&p,&q));
     assert(proj_import(&proj_scratch,&p,sizeof p));assert(proj_scratch.t[0].p[P_FXTYPE]==FX_WIDTH);
     frames(400);press(B_OCTUP);assert(cur_page()->id[0]==P_FXMIX);press(B_OCTUP);assert(pop.on==POP_SHEET);

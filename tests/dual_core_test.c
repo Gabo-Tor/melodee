@@ -382,8 +382,8 @@ static int dual_core_suite(void)
             }
     for(uint32_t eng=0;eng<3;eng++){fm6_control_jobs(0,eng);fm6_control_jobs(1,eng);}
     puts("FM6 control jobs: immediate/deferred PCM and complete native state exact under stealing, modulation and MIDI release edits");
-    for(uint32_t type=1;type<FX_AUDIO_COUNT;type++){if(fx_retired(type))continue;shared_bus_case(0,type);shared_bus_case(1,type);}
-    puts("Shared FX bus: 8 three-effect chains, four live synth tracks, serial/concurrent bit equality and joins: OK");
+    for(uint32_t type=1;type<FX_COUNT;type++){if(fx_retired(type) || fx_is_midi(type))continue;shared_bus_case(0,type);shared_bus_case(1,type);}
+    puts("Shared FX bus: all audio types in three-effect chains, four live synth tracks, serial/concurrent bit equality and joins: OK");
     shared_bus_retire();
     prophet_allocation();
     uint32_t prophet_cases=0;

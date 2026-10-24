@@ -141,7 +141,7 @@ and an optional autosave setting. The original release downloads included
 standard and single-core firmware; the current installer offers dual-core firmware only.
 
 - **Effects:** three inserts per track and a shared three-slot return, with independent
-  sends. Choose Phaser, Width, Formant, Tape, Spit, Room or Chorus; tracks also offer MIDIVerb and MIDIDelay.
+  sends. Choose Phaser, Width, Formant, Tape, Spit, Room or Chorus; tracks also offer Note tail and Note echo.
   Effects save with projects and templates; sound changes preserve the track's effects.
 - **One-pass recording:** arm a track before PLAY to record from step zero, or arm it
   during playback to record at its next pattern start. Recording ends after one pass.
@@ -263,7 +263,7 @@ and patterns; settings represented by multiple patch bytes can use multiple even
 - **More sound and performance:** dual-core rendering is on by default, DSP signal paths use the
   FM-1's native single-precision FPU. Modulation, stereo spread and screen sleep are included;
   **FX** opens the selected track's rack.
-  Track inserts also offer **MIDIVerb** (envelope release) and **MIDIDelay** (timed note repeats with velocity decay).
+  Track inserts also offer **Note tail** (envelope release) and **Note echo** (timed note repeats with velocity decay).
 - **808 and 909 kits:** both DRUM kits synthesize every voice in real time. The 909 kick, snare,
   toms, rim and clap use circuit models from
   [fm1-x0x](https://github.com/charlesvestal/fm1-x0x/tree/201e5c5c1ac056a028a006bd1eabb23ac1bb174d);
@@ -689,9 +689,14 @@ nominal steps are capped at that duration.
 Each track has **three FX insert slots**. Press **FX** for the rack; KNOB 2 selects
 its row, KNOB 1 the effect, and KNOB 4 its amount. OCT+ opens an effect's controls;
 SELECT visits occupied slots and the shared rack. Audio choices are **Phaser,
-Width, Formant, Tape, Spit, Room and Chorus**. Track slots also offer **MIDIVerb**
-(envelope release) and **MIDIDelay** (note repeats with tempo divisions and
+Width, Formant, Tape, Spit, Room, Reverb, Chorus, Drive, Crush, Flanger,
+Pedal phaser and Pedal chorus**. Track slots also offer **Note tail**
+(envelope release) and **Note echo** (note repeats with tempo divisions and
 velocity decay). The MIDI effects are available only on individual tracks.
+The picker groups effects into Space, Motion, Dirt, Colour and Notes. OCT+ on
+an empty slot opens the effect browser: KNOB 1 selects a family, KNOB 2 an
+effect, and OCT+ confirms. Note tail has its single REL control on the rack;
+Note echo has LEVEL, TIME and DECAY on its page.
 
 Phaser sweeps all-pass sections, Width processes the left side with the right
 dry, Formant makes vowel shapes, Tape drifts smooth crossover filters, and Spit
@@ -708,7 +713,7 @@ SPLIT, each shared slot has its own track send. Effects, routing and send levels
 save with projects and templates; sound changes preserve them. Four mono USB
 stems include each track's inserts; the stereo master includes the shared return.
 
-**SLOOP master punch FX and ECHOVERB are available.** Hold FX and press any of
+**SLOOP master punch FX and REVERB are available.** Hold FX and press any of
 its 27 keys for loops, reverse, tape stop, half speed, filter sweeps, crush,
 aliasing, gate, echo, wobble, band kills, rewind, octave up, flanger, auto-pan,
 freeze, mono or fade. Double-tap FX to lock the layer; tap it again to close.
@@ -716,13 +721,27 @@ Release the effect key to restore dry audio. KNOB 1 browses the key reference.
 The effects process the complete stereo master, including shared returns and
 USB stereo capture. They do not alter notes or instrument patches.
 
-ECHOVERB returns at its previous audition ID 8, with TIME (10–500 ms), DIFFUSE
-and TONE in track/shared racks. FREEZE uses the same Echoverb code to hold a
-capture of the master, without requiring a rack slot. Buffered punches request
-64 KiB while in use; ECHOVERB uses about 59 KiB per slot. MEMORY FULL / FX MEMORY
-indicates insufficient working memory. Hold FX briefly before reverse/rewind
-so the optional history contains past audio. See [implementation and key map](docs/SLOOP_PUNCH_FX.md).
-Audio Echo ID 6 stays retired and loads OFF. MIDIVerb and MIDIDelay remain note
+SLOOP's **REVERB** replaces Echoverb at effect ID 8, with SIZE (decay), DAMP
+and TONE in track/shared racks. It has a mono input and a stereo return at
+44.1 kHz, using 19,396 bytes per active slot. Echoverb's DSP and 60,340-byte
+allocation are removed. Existing ID 8 slots now play the new reverb; the other
+effect IDs and routing stay intact. FREEZE uses this reverb in the optional
+punch allocation, with no second tank.
+
+The racks also offer SLOOP-style **DRIVE**, **CRUSH**, **FLANGER**,
+**PEDAL PHASER** and **PEDAL CHORUS**. DRIVE exposes DRIVE, TONE and SHAPE
+(SOFT, HARD, FOLD or FUZZ) with unity output level; CRUSH has BITS and ALIAS
+with bit-depth and sample-rate readouts and a fixed protective low-pass.
+The swept effects expose RATE, DEPTH and signed RESO. They preserve stereo,
+process equal mono input once until stereo arrives, and run on both inserts
+and CHAIN/SPLIT shared returns. Shared swept returns exclude the pedal's dry
+half. The existing PHASER/CHORUS remain distinct choices: the normal CHORUS is
+cheaper in host instruction measurements, while PEDAL CHORUS offers feedback.
+
+Buffered punches request 64 KiB while in use. MEMORY FULL / FX MEMORY indicates
+insufficient working memory. Hold FX briefly before reverse/rewind so the
+optional history contains past audio. See [implementation and key map](docs/SLOOP_PUNCH_FX.md).
+Audio Echo ID 6 stays retired and loads OFF. Note tail and Note echo remain note
 inserts. The old FX RATE fidelity setting is removed.
 
 With **CLK TRS** or **CLK USB**, musical timing follows MIDI clock pulses directly, so tempo

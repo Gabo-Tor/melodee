@@ -483,7 +483,7 @@ enum { S_HOME, S_HOME_IDLE, S_HOME_NOTE, S_HOME_CHORD, S_HOME_INVERSION, S_HOME_
        S_REF_SHEET_MOTION, S_REF_MOD, S_REF_PICKER_MOD, S_REF_ARP, S_REF_PATTERN,
        S_REF_FMEG, S_REF_GRID, S_REF_SCALES, S_FX_PHASER, S_FX_WIDTH, S_FX_FORMANT, S_FX_TAPE, S_FX_SPIT, S_FX_ROOM, S_FX_CHORUS, S_FX_FULL, S_FX_SLOT2, S_FX_SLOT3, S_FX_RACK, S_FX_RACK_SPLIT, S_FX_RACK_PICK, S_FX_RACK_LIST, S_FX_BUS1, S_FX_BUS2, S_FX_BUS3, S_FX_SHARED, S_FX_SHARED_SPLIT, S_FX_SHARED_SHEET, S_FX_TONE_DARK, S_FX_TONE_THIN, S_BOOT_MIGRATION, S_BOOT_UPDATE, S_BOOT_ERROR, S_BOOT_COMPLETE, S_BOOT_WIPE_CONFIRM, S_BOOT_WIPING, S_BOOT_UPDATE_ERROR, S_MAP_DRUM_KIT, S_MAP_DRUM_HIT, S_MAP_DRUM_CATEGORY,
        S_STAGE_UNUSED1, S_STAGE_UNUSED3, S_MIXER_UNUSED2, S_MENU_TRACKS,
-       S_FX_MIDIVERB, S_FX_MIDIDELAY, S_FX_MIDI_RACK, S_FX_MIDI_LIST, S_PUNCH_PEEK, S_PUNCH_ACTIVE, S_PUNCH_LOCK, S_PUNCH_MEMORY, S_PUNCH_END, S_ECHOVERB, S_COUNT };
+       S_FX_MIDIVERB, S_FX_MIDIDELAY, S_FX_MIDI_RACK, S_FX_MIDI_LIST, S_PUNCH_PEEK, S_PUNCH_ACTIVE, S_PUNCH_LOCK, S_PUNCH_MEMORY, S_PUNCH_END, S_REVERB, S_PEDAL_DRIVE, S_PEDAL_CRUSH, S_PEDAL_PHASER, S_PEDAL_CHORUS, S_PEDAL_FLANGER, S_PUNCH_LOOP, S_PEDAL_FOLD, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "home_chord", "home_inversion", "home_wide", "home_released", "home_fm6", "message", "message_key", "presets", "presets_nofav", "presets_cat", "presets_pending", "presets_recent", "user",
     "project", "project_boot", "tempo", "song_empty", "song", "step", "pattern", "motion", "drum",
     "mixer", "mixer_pan", "env", "env_dest", "lfo", "mod", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -509,7 +509,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "home_note", "h
     "stage_long", "stage_3tracks_long", "stage_2tracks_long", "stage_1track_long",
     "ref_stage_held", "ref_stage_released", "ref_stage_cutoff", "ref_stage_drum", "ref_browser", "ref_patterns", "ref_song", "ref_env", "ref_lfo", "ref_edit_osc", "ref_mixer", "ref_notes", "ref_settings", "ref_dialog", "ref_sheet_sound", "ref_sheet_song", "ref_picker_wave", "ref_picker_mode", "ref_sections_p5", "ref_map_p5", "ref_map_fm6", "ref_scl_list", "ref_sheet_project", "ref_sheet_note", "ref_sheet_hit", "ref_motion", "ref_sheet_motion", "ref_mod", "ref_picker_mod", "ref_arp", "ref_pattern", "ref_fmeg", "ref_grid", "ref_scales", "fx_phaser", "fx_width", "fx_formant", "fx_tape", "fx_spit", "fx_room", "fx_chorus", "fx_full", "fx_slot2", "fx_slot3", "fx_rack", "fx_rack_split", "fx_rack_pick", "fx_rack_list", "fx_bus1", "fx_bus2", "fx_bus3", "fx_shared", "fx_shared_split", "fx_shared_sheet", "fx_tone_dark", "fx_tone_thin", "boot_migration", "boot_update", "boot_error", "boot_complete", "boot_wipe_confirm", "boot_wiping", "boot_update_error", "map_drum_kit", "map_drum_hit", "map_drum_category",
     "stage_unused_1track", "stage_unused_3tracks", "mixer_unused_2tracks", "menu_unused_tracks",
-    "fx_midiverb", "fx_mididelay", "fx_midi_rack", "fx_midi_list", "punch_peek", "punch_active", "punch_lock", "punch_memory", "punch_end", "fx_echoverb"};
+    "fx_midiverb", "fx_mididelay", "fx_midi_rack", "fx_midi_list", "punch_peek", "punch_active", "punch_lock", "punch_memory", "punch_end", "fx_reverb", "fx_pedal_drive", "fx_pedal_crush", "fx_pedal_phaser", "fx_pedal_chorus", "fx_pedal_flanger", "punch_loop", "fx_pedal_fold"};
 
 /* the scenes of the UI design screens: the state the UI-redesign
  * prototype drew them from (its setup(): two pattern tracks, the drum pattern on track 4, a synthetic scope),
@@ -1208,8 +1208,9 @@ static void setup(int s)
         TSEL->p[P_FXTYPE] = FX_MIDIVERB; TSEL->p[P_FXMIX] = 84;
         TSEL->p[P_FX2TYPE] = FX_MIDIDELAY; TSEL->p[P_FX2MIX] = 84;
         TSEL->p[P_FX2RATE] = 4; TSEL->p[P_FX2CHAR] = 72;
-        if (s == S_FX_MIDIVERB || s == S_FX_MIDIDELAY) go_title(s == S_FX_MIDIVERB ? "FX 1" : "FX 2");
-        else { go_title("FX"); fx_rack_row[0] = 1; if (s == S_FX_MIDI_LIST) { vlist_open(ui.page, 0); vl.sel = FX_MIDIDELAY; } }
+        if (s == S_FX_MIDIDELAY) go_title("FX 2");       /* (NOTE TAIL: no page, its rack row) */
+        else { go_title("FX"); fx_rack_row[0] = s == S_FX_MIDIVERB ? 0 : 1;
+               if (s == S_FX_MIDI_LIST) { TSEL->p[P_FX3TYPE] = FX_OFF; fx_rack_row[0] = 2; vlist_open(ui.page, 0); vl.sel = FX_MIDIDELAY; } }
         break;
     case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ROOM: case S_FX_CHORUS: case S_FX_FULL:
         TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ROOM:s==S_FX_ROOM?FX_ROOM:s==S_FX_CHORUS?FX_CHORUS:s-S_FX_PHASER+1);go_title("FX 1");
@@ -1345,12 +1346,16 @@ static void setup(int s)
     /* the FX layer's map: held alone; REPEAT 1/16 + LPF + a mute playing with the macros turned;
      * at 72 BPM: a REPEAT 1/16 waiting for its 1/16 (shown THEME) beside TAPE STOP playing, and REPEAT 1/8
      * held, too long at that tempo (it and REVERSE dimmed) */
-    case S_PUNCH_PEEK:go_home();ui.layer=LAYER_FX;break;
+    case S_PUNCH_PEEK:go_home();ui.layer=LAYER_FX;ui.punch_view=PX_REV;break;
+    case S_PUNCH_LOOP:go_home();ui.layer=LAYER_FX;punch.req=punch.cur=PX_LOOP8;song.playing=1;break;
     case S_PUNCH_ACTIVE:go_home();ui.layer=LAYER_FX;punch.req=punch.cur=PX_KHIGH;ui.punch_view=PX_KHIGH;song.rec=1;song.g[G_BPM]=300;break;
     case S_PUNCH_LOCK:go_home();ui.layer=ui.lock=LAYER_FX;punch.req=punch.cur=PX_FREEZE;ui.punch_view=PX_FREEZE;break;
     case S_PUNCH_MEMORY:go_home();ui.layer=LAYER_FX;punch.req=PX_ECHO;punch_memory_failed=1;break;
     case S_PUNCH_END:go_home();punch.req=punch.cur=-1;ui.layer=0;break;
-    case S_ECHOVERB:go_title("FX 1");TSEL->p[P_FXTYPE]=FX_REVERB;TSEL->p[P_FXMIX]=80;break;
+    case S_PEDAL_DRIVE:case S_PEDAL_CRUSH:case S_PEDAL_PHASER:case S_PEDAL_CHORUS:case S_PEDAL_FLANGER:case S_PEDAL_FOLD:
+        go_title("FX 1");TSEL->p[P_FXTYPE]=s==S_PEDAL_DRIVE?FX_SOFT:s==S_PEDAL_FOLD?FX_FOLD:s==S_PEDAL_CRUSH?FX_CRUSH:s==S_PEDAL_PHASER?FX_PEDAL_PHASER:s==S_PEDAL_CHORUS?FX_PEDAL_CHORUS:FX_FLANGER;TSEL->p[P_FXMIX]=80;TSEL->p[P_FXTONE]=s==S_PEDAL_PHASER?-20:32;
+        if(s==S_PEDAL_FOLD || s==S_PEDAL_PHASER){ui.hot_col=3;ui.hot_t=30;}break;
+    case S_REVERB:go_title("FX 1");TSEL->p[P_FXTYPE]=FX_REVERB;TSEL->p[P_FXMIX]=80;break;
     case S_MENU_CLICK: ui.menu=1;ui.menu_sel=MI_CLICK;settings_click=2;break;
     case S_MENU_CLICK_LEVEL: ui.menu=1;ui.menu_sel=MI_CLICK_LEVEL;settings_click_level=2;break;
     case S_MENU_COUNTIN: ui.menu=1;ui.menu_sel=MI_COUNTIN;settings_countin=2;break;
@@ -1979,6 +1984,46 @@ static void roll_cost(void)
             t_full / CLOCKS_PER_SEC / N * 1e6, (unsigned long long)(px_full / N), (unsigned long long)(bl_full / N));
 }
 
+/* New effect pictures and grouped lists have state beyond the default slot's
+ * column sweep: cover every key, family, shape and control endpoint. */
+static void fx_redesign_sweep(const char *out)
+{
+    char name[96], file[48];
+    for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++) {
+        for (uint32_t fx = 0; fx < PUNCH_NFX; fx++) for (uint32_t mode = 0; mode < 3; mode++) {
+            state();pal(p);go_home();ui.layer = LAYER_FX;ui.punch_view = (uint8_t)fx;
+            punch.req = mode ? (int8_t)fx : -1;punch.cur = punch.req;
+            punch_memory_failed = mode == 2;
+            snprintf(name, sizeof name, "%s%s/punch %u mode %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, fx, mode);
+            cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            if (p == 0 && mode == 1) {
+                snprintf(file, sizeof file, "punch_key_%02u", fx);
+                write_ppm(out, render_pixel ? "PIXEL" : "NIGHT", file);
+            }
+        }
+        for (uint32_t i = 1; i < NELEM(FX_ORDER); i++) {
+            state();pal(p);go_title("FX");fx_rack_row[0] = 0;vlist_open(ui.page, 0);vl.sel = FX_ORDER[i];
+            snprintf(name, sizeof name, "%s%s/FX browser %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, i);
+            cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            if (p == 0) {
+                snprintf(file, sizeof file, "fx_browser_%02u", i);
+                write_ppm(out, render_pixel ? "PIXEL" : "NIGHT", file);
+            }
+        }
+        for (uint32_t type = FX_REVERB; type < FX_COUNT; type++) {
+            if (type == FX_MIDIVERB) continue;          /* rack only */
+            for (uint32_t end = 0; end < 2; end++) {
+                state();pal(p);TSEL->p[P_FXTYPE] = (int16_t)type;TSEL->p[P_FXMIX] = 100;
+                TSEL->p[P_FXRATE] = type == FX_MIDIDELAY ? (end ? 9 : 0) : end ? 127 : 0;
+                TSEL->p[P_FXCHAR] = end ? 127 : 0;TSEL->p[P_FXTONE] = end ? 63 : -63;
+                go_title("FX 1");
+                snprintf(name, sizeof name, "%s%s/FX type %u endpoint %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, type, end);
+                cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
+            }
+        }
+    }
+    cur_name = 0;
+}
 static void designer_sweep(const char *out)
 {
     char name[96],file[64];
@@ -2104,6 +2149,7 @@ int main(int argc, char **argv)
             for (k = 0; k < UI_RENDER_SHOW; k++)    /* (the suite: NIGHT DAY CONTRAST; -DUI_RENDER_SHOW=8 all) */
                 if (!strcmp(UI_PALETTES[p].name, SHOW[k])) write_ppm(out, SHOW[k], S_NAME[s]);
         }
+    fx_redesign_sweep(out);
     render_pixel = 1;                               /* every screen again in Melodee Pixel (NIGHT) */
     for (s = 0; s < S_COUNT; s++) {
         char name[64];
@@ -2117,6 +2163,7 @@ int main(int argc, char **argv)
         lint();
         write_ppm(out, "PIXEL", S_NAME[s]);
     }
+    fx_redesign_sweep(out);
     sweep_waiting_headers(out);
     sweep_screen_messages();
     sweep_mpc_octaves(out);

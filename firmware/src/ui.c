@@ -259,9 +259,12 @@ static int native_page(uint32_t i, uint32_t fam)       /* page i: one of fam's n
 
 static int page_visible(uint32_t i)
 {
-    if (PAGES[i].fam == FAM_FX && PAGES[i].graph != GR_FXRACK)   /* a slot's page (its MIX first): while it holds an
-                                                                 * effect (the rack shows it either way) */
-        return (PAGES[i].scope == SC_GLOBAL ? song.g : TSEL->p)[PAGES[i].id[0] - 1u] != FX_OFF;
+    if (PAGES[i].fam == FAM_FX && PAGES[i].graph != GR_FXRACK) {   /* a slot's page (its MIX first): while it holds
+                                                                     * an effect (the rack shows it either way); NOTE
+                                                                     * TAIL none: its row is all of it, KNOB 4 REL */
+        int16_t t = (PAGES[i].scope == SC_GLOBAL ? song.g : TSEL->p)[PAGES[i].id[0] - 1u];
+        return t != FX_OFF && t != FX_MIDIVERB;
+    }
     if (list_gone(i))
         return 0;
     if (PAGES[i].graph == GR_MOTION)                   /* MOTION: once there is motion (Kerem: an empty page; the one

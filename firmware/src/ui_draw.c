@@ -140,6 +140,14 @@ static int32_t roll_text(uint32_t k, int32_t x, int32_t y, const char *s, uint16
  * name); a battery glyph only while it runs low. Which track: Stage's rows, the pages' sound bar (its numeral) */
 static uint32_t page_sheet(void);                       /* ui_popup.c */
 static void list_words(char *d, const char *label, uint32_t n);   /* ui_list.c */
+/* an effect family's colour (params.c FX_FAM_NAME: the rack's KNOB 1, the picker, the effects' list), from the
+ * palette: Space and Dirt knob shades, Motion, Colour and Notes track colours */
+static uint16_t fx_fam_col(uint32_t f)
+{
+    const ui_pal_t *p = &UI_PALETTES[ux.pal];
+    return f == FXF_SPACE ? p->knob[3][2] : f == FXF_MOTION ? p->trk[3] : f == FXF_DIRT ? p->knob[0][2] :
+           f == FXF_COLOUR ? p->trk[1] : f == FXF_NOTES ? p->trk[2] : T_DIM;
+}
 static int sec_on(void);                                /* ui_sections.c */
 static uint32_t sec_of(uint32_t i);
 static void sec_chip(uint32_t i, char *b, uint32_t n);
@@ -214,20 +222,21 @@ static uint8_t toast_shown;                             /* the toast drawn (its 
 /* Ongoing transport states belong in the header, never in timed messages.
  * Placement and priority: docs/design/README.md "Status indicators". */
 static int head_waiting(void) { return (song.rec_wait >> song.sel) & 1u; }
-static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer && ui.layer!=LAYER_FX ? layer_head() : ""; }
-static const char *head_punch(void)
+static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : ""; }
+static const char *head_punch(void)                     /* (the FX layer names it itself: [FX] HOLD, its key below) */
 {
-    if(punch_memory_failed && punch.req>=0 && punch_needs_ring(punch.req))return "FX MEMORY";
     int32_t fx=punch.cur;
-    if(fx>=0 && fx<(int32_t)PUNCH_NFX)return PUNCH_NAME[fx];
-    return ui.layer==LAYER_FX ? (ui.lock==LAYER_FX?"FX LOCK":"FX HOLD") : "";
+    if(ui.layer!=LAYER_FX && fx>=0 && fx<(int32_t)PUNCH_NFX)return PUNCH_NAME[fx];
+    return "";
 }
 static int head_toast(int32_t x)
 {
     const char *m = head_msg();
     uint32_t n;
-    int32_t w = text_w(TY_TX, m);
-    if (kc_tag(m, &n) >= 0 || (m[0] && str_len(m) > 6u && m[str_len(m) - 1u] == ']'))
+    int32_t w = text_w(TY_TX, m), id = kc_tag(m, &n);
+    if (id >= 0)                                        /* (a keycap first, "[FX] MEMORY": its pill, then the words) */
+        w = kc_w((uint32_t)id) + KH_GAP + text_w(TY_TX, m + n + (m[n] == ' '));
+    else if (m[0] && str_len(m) > 6u && m[str_len(m) - 1u] == ']')
         w += 40;                                        /* (a keycap: its pill wider than its word) */
     return !head_punch()[0] && m[0] && w > 236 - x;
 }
@@ -288,8 +297,14 @@ static void draw_head(void)
     } else if (msg) {                                   /* a message, or the layer's name (may hold a keycap) */
         cv_free_hint(x + 6, ty_y(H_HEAD / 2, TY_TX), ui.msg_t ? ui.msg : layer_head(), T_TEXT, T_BG, 236 - x - 6);
     } else {
-        int32_t cw = text_w(TY_TX, chip) + 4;           /* (where you are: plain words in the track's colour;
+        const aafont_t *cf = TY_TX;                     /* (where you are: plain words in the track's colour;
                                                          * PATTERNS plain, the grid is in colour) */
+        int32_t cw = text_w(cf, chip) + 4;
+        if (x + 6 + cw + (low ? 22 : 0) > 236) {        /* (a long name, "PEDAL PHASER", and the battery: the label
+                                                         * face) */
+            cf = TY_LB;
+            cw = text_w(cf, chip) + 4;
+        }
         if (octave) {                                   /* selected MPC bank's octave, else the shared octave */
             int32_t w;
             b[0] = octave > 0 ? '+' : '-';
@@ -319,7 +334,7 @@ static void draw_head(void)
         }
         if (low)                                        /* the battery, only when it runs low */
             cv_icon_mid(236 - cw - 20, H_HEAD / 2, 16, batt_level() ? ICON_X_BAT1 : ICON_X_BAT0, T_REC, T_BG);
-        cv_text_r(236, ty_y(H_HEAD / 2, TY_TX), TY_TX, chip,
+        cv_text_r(236, ty_y(H_HEAD / 2, cf), cf, chip,
                   !ui.home && cur_page()->graph == GR_PATGRID && !ptc_on() ? T_MID : T_THEME, T_BG);
     }
     cv_blit(0, Y_HEAD);
@@ -826,12 +841,13 @@ static void draw_columns(void)
         } else {
             param_format(d, *vp, val, &unit);
             /* Rows have room for enum names that the compact parameter formatter abbreviates. */
-            if (d->fmt == F_ENUM && (col_style == CS_CAPTURE ||
-                ((d->names == N_FX || d->names == N_AUDIO_FX) && *vp == FX_CHORUS)))
+            if (d->fmt == F_ENUM && col_style == CS_CAPTURE)
                 str_cpy(val, d->names[clamp(*vp, d->min, d->max)], sizeof val);
-
+            else if (fx_names(d))                       /* a rack's KNOB 1: the effect's family (its row names it) */
+                str_cpy(val, FX_FAM_NAME[fx_family(*vp)], sizeof val);
         }
-        draw_column(c, d->label, val, unit, (cur_page()->scope == SC_CZ1 &&   /* CZ-1: no effect on the tone as it is */
+        draw_column(c, d->label, val, unit, fx_names(d) && col_style != CS_CAPTURE ? fx_fam_col(fx_family(*vp)) :
+                    (cur_page()->scope == SC_CZ1 &&   /* CZ-1: no effect on the tone as it is */
                     !cz_ed_active(cz_patch[song.sel % NTRK].raw, cur_page()->id[c])) ||
                     (cur_page()->scope == SC_P5 && !p5_ed_active(TSEL, cur_page()->id[c])) ||
                     (vp == &TSEL->p[P_LRATE] && TSEL->p[P_LSYNC]) ? T_DIM : VAL(c),   /* LFO 2 SYNC on: RATE does nothing */
