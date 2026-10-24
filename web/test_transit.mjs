@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
-import {mockInstallSession} from "./installer_test_helpers.mjs";
+import {mockInstallSession,strip} from "./installer_test_helpers.mjs";
 import {fetchTransitPackage, TRANSIT_RELEASE, logicalImage, productOf} from "./fm1pkg.js";
 import {MELODEE_LOADER, STOCK_LOADER} from "./fm1ota.js";
 
@@ -29,19 +29,20 @@ if (process.argv[2]) {
 }
 
 const template = readFileSync(new URL("index_pkg.html", import.meta.url), "utf8");
-const script = template.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-  .replace("/*LIB*/", "").replace("/*META*/{}", JSON.stringify({version:"1.4.1", product:"FM-1_91041", pkg:{dual:"melodee.fwsc"}}));
+const script = strip(readFileSync(new URL("install/leave.js",import.meta.url),"utf8")) + `
+setupLeaving({getLanguage:()=>"en",isBusy:()=>writing,setBusy:on=>{writing=on;for(const id of ["go","release","build-dual"])document.getElementById(id).disabled=on;},log:()=>{}});`;
+
 async function run({skip=false, loader=null, recovery=false, supported=true, confirm=true, backupError=false,
                     packageError=false, midiError=false, installError=null, resumed=true, beforeComplete=null} = {}) {
   const calls = [], writes = [], elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {checked:id === "build-dual", disabled:false, textContent:"", options:[], listeners:{},
       replaceChildren(...options) { this.options = options; this.value = options[0]?.value; },
-      addEventListener(k, fn) { this.listeners[k] = fn; }});
+      addEventListener(k, fn) { this.listeners[k] = fn; }, head:{from:0,to:0}});
     return elements.get(id);
   };
   const context = vm.createContext({
-    Uint8Array, Blob, setTimeout:() => 0,
+    Uint8Array, Blob, writing:false, setTimeout:() => 0,
     navigator:{language:"en", requestMIDIAccess:async () => { if (midiError) throw Error("denied"); return {}; }},
     document:{documentElement:{}, querySelectorAll:() => [], getElementById:element,
       body:{append() {}}, createElement:() => ({click() { calls.push("save"); }, remove() {}})},
@@ -54,6 +55,7 @@ async function run({skip=false, loader=null, recovery=false, supported=true, con
       return {product:"FM-1_015", image:Uint8Array.of(3)};
     },
     confirm:message => { calls.push("confirm", message); return confirm; },
+    sha256hex:async()=>"", validateStockPackage:async()=>{}, STOCK_V15_SIZE:0,
     BackupConnection:class {
       constructor() { calls.push("backup-open"); }
       async request() {

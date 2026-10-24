@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Charles Vestal
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Ported from keremimo/saadet web/install/index.html at f358c01. */
+ * Saadet installer at f358c01, unchanged styles. */
 
   :root {
     --paper: #f6f5f1; --card: #fff; --ink: #121212; --dim: #63625d; --faint: #8f8e88; --line: #e2e0d9; --chip: #eeede7;
@@ -189,12 +189,3 @@
     .row .btn { flex: 1; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
-
-  select { font: inherit; max-width: 100%; padding: 8px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
-  main > section:not(.hero) { margin-top: 24px; }
-  main > details { margin-top: 16px; }
-  .small { font-size: 13px; color: var(--dim); }
-  #status { min-height: 1.6em; }
-  #log { max-height: 200px; overflow-y: auto; }
-  #bar { width: 100%; accent-color: var(--ink); }
-  #run .run-main { padding-top: 48px; }

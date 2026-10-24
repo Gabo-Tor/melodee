@@ -33,6 +33,7 @@
 #define OTA_LDR_LEN 0x4DE1u
 #define OTA_FRAME_MAX 640u                       /* 512-B response = 605 wire bytes */
 #define OTA_PARM_N 112u
+#include "ota_sha256.h"
 #ifndef OTA_SCRATCH                              /* 2 KiB of work space while staging (melodee.c: the project staging) */
 static uint8_t ota_scratch[0x800];
 #define OTA_SCRATCH ota_scratch
@@ -268,7 +269,8 @@ static int ota_ufw(uint8_t *hdr, uint32_t *fl_off, uint32_t *fl_len, uint32_t *o
 static int ota_stage(void)                       /* steps 1..6; 0 = host said success */
 {
     uint8_t *hdr = OTA_SCRATCH, *b = hdr + 0x400, *mine = b + 512;
-    uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official;
+    uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official, boot;
+    ota_sha256_t hash;
     int rc;
     /* 1. UFW header + entry list */
     ota_show(1, 0);
@@ -277,7 +279,7 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     /* Any partition installs here: the package's own loader decides (ldr_core.c: this Melodee's moves the
      * Prophet banks up before its app area, 0x93000, is written; an older one's ends at 0x89000). */
     (void)fl_len;
-    if (!fl_off || !ota_off)
+    if (!ota_off)
         return -3;
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Melodee's own (app area only, checks the chip key) */
@@ -291,9 +293,13 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     official = ota_rd16(b) == OTA_LDR_HCRC && ota_rd16(b + 2) == OTA_LDR_DCRC && len == OTA_LDR_LEN;
     for (i = 0x48, own = 0; i + 16u <= 0x48u + 64u && !own; i++)    /* first LZ4 literals: crt0_ldr.S */
         own = ota_memeq(b + i, (const uint8_t *)"FELUCCA-LOADER-1", 16) && ota_rd32(b + 0x20 + 4) <= 0x14000u;
-    if (!official && !own)
+    /* m-bootloader v1.2's FM-1 installer has no flash.bin. Accept only this
+     * pinned writer, checked with SHA-256 from flash before its head/commit.
+     * Keep the existing restrictions for all application update packages. */
+    boot = !fl_off && !fl_len && len == 0x4250u;
+    if ((!fl_off && !boot) || (!official && !own && !boot))
         return -7;
-    if (official) {                    /* the official loader writes the head: it must equal ours */
+    if (official && !boot) {            /* the official loader writes the head: it must equal ours */
         ota_show(2, 0);
         for (i = 0; i < 0x4000u; i += 512u) {
             if (ota_read(fl_off + i, b, 512) || ota_fread(i, mine, 512))
@@ -322,14 +328,26 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         }
         if (crc != c)
             return -11;
+        if (boot) ota_sha256_init(&hash);
         for (i = 0, crc = 0; i < len; i += n) {             /* read back from flash */
             n = len - i > 512u ? 512u : len - i;
             if (ota_fread(OTA_AREA + 32u + i, b, n))
                 return -11;
             crc = ota_crc16(b, n, crc);
+            if (boot) ota_sha256_update(&hash, b, n);
         }
         if (crc != c)
             return -11;
+        if (boot) {
+            /* Official release v1.2, source 22e2559 (Julius Vitkauskas, MIT).
+             * SHA-256 of ota.bin excluding its outer 32-byte JLFS header. */
+            static const uint8_t expected[32] = {
+                0x6b,0xb8,0xeb,0xd4,0x6c,0x4a,0xa5,0x0e,0x27,0x96,0xa0,0x95,0x49,0x6f,0xbe,0xd6,
+                0xef,0x67,0x6c,0x0b,0x11,0xf8,0x9e,0x43,0x9f,0x08,0x07,0x7f,0x44,0x4b,0xb9,0x2c
+            };
+            ota_sha256_final(&hash, mine);
+            if (!ota_memeq(mine, expected, sizeof expected)) return -7;
+        }
     }
     if (ota_stage_head(len))
         return -12;

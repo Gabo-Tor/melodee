@@ -111,6 +111,8 @@
 #define OTA_SCRATCH proj_wire_borrow()   /* the update entry stages in the project staging RAM */
 #include "ota.c"
 #include "ota_hw.c"
+#include "installer_report.c"
+#define INSTALLER_REPORT_FRAME installer_report_frame
 #include "editor.c"              /* web editor SysEx (needs the OTA SysEx plumbing) */
 #endif
 #if MELODEE_CDC

@@ -100,6 +100,8 @@ export function createInstallSession({ t }) {
       active = {key,label,image,release,onResume,pct:0,phase:'prepare',pm:progressModel(image,resume),staged:resume,lastAt:Date.now()};
       if (resume) save({key,label});
       $('run').dataset.state = 'running';$('end').hidden = true;
+      $('legacy-actions').hidden = false;$('endactions').replaceChildren();
+      document.querySelectorAll('#phases li').forEach(li => { li.hidden = li.dataset.ph === 'boot'; });
       $('backnote').hidden = $('stall').hidden = true;$('eta').textContent = '';
       $('log').textContent = '';$('runtitle').textContent = label;
       $('run-close').hidden = true;$('run-resume').hidden = true;
@@ -116,6 +118,7 @@ export function createInstallSession({ t }) {
     if (!ok && run.phase === 'restart') state = 'restart';
     if (ok) { pct(100);save(null); }
     $('run').dataset.state = state;$('end').hidden = false;
+    $('endicon').setAttribute('href', ok ? '#i-check' : state === 'safe' ? '#i-info' : '#i-alert');
     $('endtitle').textContent = t('end_' + state);
     $('endtext').textContent = ok ? run.label + '. ' + t('installedVerified') : error?.message || t('stopped');
     $('endtips').textContent = t('tip_' + state);

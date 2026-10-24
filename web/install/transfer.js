@@ -46,6 +46,33 @@ function sendLater(link, bytes, delay) {
 function fail(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
 export class SteadyUpdater extends Updater {
+  // Ported from Saadet's fm1ota.js at f358c01. This installer returns to the
+  // same app; there is no MIDI update-loader phase to resume.
+  async installBoot(image, product, onStep) {
+    const step = onStep || (() => {}), sleep = ms => new Promise(r => setTimeout(r,ms));
+    const dev = await this.find();
+    if (!dev) throw fail("notfound", "FM-1 not found");
+    if (dev.id.text !== product || dev.id.model !== "FM-1" || dev.id.open) {
+      dev.link.close();throw fail("bootrefused", "Update Melodee first before installing m-bootloader");
+    }
+    step("bootstart");
+    let served;
+    try {
+      if (!dev.link.send([0xF0,0x22,0x24,0x35,0x7F,0xF7])) throw fail("lost","USB connection lost");
+      await sleep(2000);
+      served = await this.serve(dev.link,image,0xE0000000,8000);
+    } finally { dev.link.close(); }
+    if (!served.finished) throw fail(served.lost ? "lost" : "bootrefused","Firmware refused m-bootloader; its boot area was not written");
+    step("bootwrite");await sleep(3000);
+    const back = await this.waitFor(id => !/^ota-/i.test(id.model),40000);
+    if (!back) throw fail("noreturn","The FM-1 did not return after the bootloader installer");
+    back.link.close();
+    if (back.id.text !== product) {
+      const error=fail("mismatch",`The FM-1 reports ${back.id.text}`);error.detail=back.id.text;throw error;
+    }
+    // An app restart proves that it booted; PLAY at power-on verifies the menu.
+    step("bootdone",back.id.text);return back.id.text;
+  }
   // Updater.serve's contract: answer reads until the device asks finishAddr -> { served, finished, lost }
   async serve(link, image, finishAddr, idleMs, onProgress) {
     let served = 0, bytes = 0, last = Date.now(), lastRead = -1;

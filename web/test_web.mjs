@@ -16,7 +16,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
-import {mockInstallSession} from "./installer_test_helpers.mjs";
+import {mockInstallSession,strip} from "./installer_test_helpers.mjs";
 import { logicalImage, productOf } from "./fm1pkg.js";
 import { MELODEE_LOADER, STOCK_LOADER, Updater, pack7, unpack7 } from "./fm1ota.js";
 
@@ -1550,8 +1550,8 @@ async function patternProtocol() {
 }
 async function stockRestore() {
   const installer = readFileSync(join(HERE, "index_pkg.html"), "utf8");
-  const script = installer.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"0.10",product:"FM-1_9010",pkg:{dual:"test.fwsc"}}));
+  const script = strip(readFileSync(join(HERE,"install/leave.js"),"utf8")) + `
+setupLeaving({getLanguage:()=>"en",isBusy:()=>writing,setBusy:on=>{writing=on;},log:()=>{}});`;
   const HEAD = {from:1024, to:1024 + 0x4000};
   // loader: the identity of the update loader the FM-1 is waiting in (false: running firmware);
   // button: "stock-go" (Return to official V15) or "go" (Install)
@@ -1566,6 +1566,7 @@ async function stockRestore() {
     const info = [...Buffer.from("MELODEE v1.4.0"),0,0,92,0,64,84,4,
       ...(supported ? [16,0x55,1,0,0x4d,motionVersion,64,1,0x42,backupVersion,backupCaps] : [])];
     const context = vm.createContext({
+      writing:false,
       navigator:{language:"en", requestMIDIAccess:async () => ({})},
       document:{documentElement:{}, querySelectorAll:() => [], getElementById:element,
         body:{append() {}}, createElement:() => ({click() { calls.push("save"); }, remove() {}})},
@@ -1621,7 +1622,7 @@ async function stockRestore() {
   ok(r.calls.includes("install") && !r.calls.includes("info") && !r.calls.includes("backup-open")
     && r.calls.some(c => c.includes("without creating a backup")) && r.label.includes("without backup") && r.unlocked,
     "stock: explicit skip bypasses backup protocol and confirms data loss");
-  ok(same(r.writes, [official]) && r.calls.filter(c => c.startsWith("fetch")).join() === "fetch test.fwsc"
+  ok(same(r.writes, [official]) && !r.calls.some(c => c.startsWith("fetch"))
     && !/buildStockRestorePackage|application-only/.test(installer),
     "stock: the unmodified official file goes only to the official loader, no Melodee loader is fetched");
   r = await run({skip:true, confirm:false});
@@ -1645,7 +1646,7 @@ async function stockRestore() {
     "stock: a failed backup never silently falls through to flashing");
   r = await run({skip:true, installError:fail("stopped", {lastRead:HEAD.from + 0x200})});
   ok(r.status.includes("CHECK HEAD") && r.status.includes("FAILED -5") && r.status.includes("report") && r.unlocked
-    && /RECOVERY\.md#return-to-stock-from-running-melodee"[^>]*data-t="stockHelp"/.test(installer),
+    && /RECOVERY\.md#return-to-stock-from-running-melodee"[^>]*data-leave-t="stockHelp"/.test(installer),
     "stock: a stop at CHECK HEAD is refused with the FAILED -5 notes, no other path");
   r = await run({skip:true, installError:fail("stopped", {lastRead:0x40})});
   ok(r.status.startsWith("Stopped.") && !r.status.includes("FAILED -5"), "stock: other step-1 stops keep the generic message");
@@ -1665,111 +1666,9 @@ async function stockRestore() {
     ok(!r.writes.length && !r.calls.includes("confirm") && r.status.includes(says) && r.unlocked,
       `stock: never resumes in ${other}`);
   }
-  r = await run({button:"go"});
-  ok(same(r.writes, [melodee]) && r.calls.includes("install"), "install: a running FM-1 gets Melodee through Melodee's loader only");
-  r = await run({button:"go", loader:MELODEE_LOADER});
-  ok(same(r.writes, [melodee]) && r.calls.includes("resume"), "install: resumes in Melodee's loader");
-  for (const [other, says] of [[STOCK_LOADER, "official update mode"], ["ota-FM-1_123", "ota-FM-1_123"]]) {
-    r = await run({button:"go", loader:other});
-    ok(!r.writes.length && r.status.includes(says), `install: never resumes in ${other}`);
-  }
-  r = await run({button:"go", installError:fail("wrongloader", {detail:STOCK_LOADER})});
-  ok(r.status.includes("official update mode"), "install: an official loader started by step 1 gets nothing");
 }
-async function installerBuilds() {
-  const installer = readFileSync(join(HERE, "index_pkg.html"), "utf8");
-  const script = installer.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"1.0.2",product:"FM-1_91002",
-      pkg:{dual:"melodee-1.0.2.fwsc"},
-      rc:{version:"1.4.0-rc.1",product:"FM-1_91040",commit:"a".repeat(40),
-        pkg:{dual:"melodee-1.4.0-rc.1.fwsc"}},
-      nightly:{version:"next-abcdef0",product:"FM-1_900",commit:"abcdef0123456789abcdef0123456789abcdef0123",builtAt:"2026-10-15T02:00:00Z",
-        pkg:{dual:"melodee-nightly.fwsc"}}}));
-  const ALL = ["dual", "rc-dual", "nightly-dual"];
-  const fetched = [], installed = [], elements = new Map();
-  const element = (id) => {
-    if (!elements.has(id)) elements.set(id, {checked:id === "build-dual", disabled:false, textContent:"", value:0, listeners:{}, options:[],
-      replaceChildren(...options) { this.options = options; this.value = options.find(o => o.selected)?.value || options[0]?.value || ""; },
-      addEventListener(k, fn) { this.listeners[k] = fn; }});
-    return elements.get(id);
-  };
-  const context = vm.createContext({
-    navigator:{language:"en", requestMIDIAccess:async () => ({})},
-    document:{documentElement:{}, querySelectorAll:() => [], getElementById:element, createElement:() => ({})},
-    window:{addEventListener() {}},
-    fetch:async (url) => { fetched.push(url); return {ok:true, arrayBuffer:async () => new Uint8Array(Buffer.from(url)).buffer}; },
-    productOf:(pkg) => /-rc\./.test(String.fromCharCode(...pkg)) ? "FM-1_91040" : /nightly/.test(String.fromCharCode(...pkg)) ? "FM-1_900" : "FM-1_91002", logicalImage:(pkg) => String.fromCharCode(...pkg),
-    MELODEE_LOADER, STOCK_LOADER,
-    Updater:class { async find() { return null; } async install(image, product, step, loader) { installed.push([image, product, loader]); } },
-  });
-  mockInstallSession(context);
-  vm.runInContext(script, context);
-  await new Promise(resolve => setImmediate(resolve));
-  ok(fetched.join() === "melodee-1.0.2.fwsc" && element("status").textContent === "Melodee 1.0.2 (standard)"
-    && !element("go").disabled, "installer: dual-core stable firmware is the default");
-  await element("go").listeners.click();
-  ok(installed[0][0] === "melodee-1.0.2.fwsc" && installed[0][1] === "FM-1_91002" && installed[0][2] === MELODEE_LOADER,
-    "installer: stable installs its own package and identity, through Melodee's loader only");
-  for (const [kind, version, file, commit, product, tag] of [
-    ["nightly-dual", "next-abcdef0", "melodee-nightly.fwsc", "abcdef0123456789abcdef0123456789abcdef0123", "FM-1_900", "nightly"],
-    ["rc-dual", "1.4.0-rc.1", "melodee-1.4.0-rc.1.fwsc", "a".repeat(40), "FM-1_91040", "release candidate"],
-  ]) {
-    for (const k of ALL) element("build-" + k).checked = k === kind;
-    await element("build-" + kind).listeners.change();
-    ok(element("status").textContent === `Melodee ${version} (${tag})`, "installer: development channels report their own versions");
-    await element("go").listeners.click();
-    const [image, actualProduct] = installed.at(-1);
-    ok(image === file + "?commit=" + commit && actualProduct === product, "installer: development channels install their own package and identity");
-    for (const k of ALL) element("build-" + k).checked = k === "dual";
-    await element("build-dual").listeners.change();
-    await element("go").listeners.click();
-    ok(installed.at(-1)[1] === "FM-1_91002", "installer: returning to stable restores its identity");
-  }
-  ok(fetched.length === 3, "installer: each dual-core channel is fetched once");
-  ok(!element("nightly-options").hidden && element("nightly-info").textContent.includes("abcdef0"), "installer: nightly source and timestamp are visible");
-  ok(!element("rc-options").hidden && element("rc-version").textContent === "1.4.0-rc.1", "installer: RC version is visible");
-  ok(!/build-(?:rc-|nightly-)?single/.test(installer), "installer: no channel offers single-core firmware");
-}
-async function installerBuildRaces() {
-  const script = readFileSync(join(HERE, "index_pkg.html"), "utf8").match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace("/*META*/{}", JSON.stringify({version:"1.0.2",product:"FM-1_91002",pkg:{dual:"dual"}, releases:[
-      {version:"1.0.2",product:"FM-1_91002",pkg:{dual:"dual"}},
-      {version:"1.0.1",product:"FM-1_91001",pkg:{dual:"older"}},
-    ]}));
-  const elements = new Map(), pending = new Map(); let installDone, installed;
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, {checked:id === "build-dual",disabled:false,textContent:"",listeners:{}, options:[],
-      replaceChildren(...options) { this.options = options; this.value = options.find(o => o.selected)?.value || options[0]?.value || ""; },
-      addEventListener(k,fn) { this.listeners[k] = fn; }});
-    return elements.get(id);
-  };
-  const context = vm.createContext({navigator:{language:"en",requestMIDIAccess:async()=>({})},
-    document:{documentElement:{},querySelectorAll:()=>[],getElementById:element,createElement:()=>({})},window:{addEventListener(){}},
-    fetch:url=>new Promise(resolve=>pending.set(url,resolve)),
-    productOf:pkg=>String.fromCharCode(...pkg)==="older"?"FM-1_91001":"FM-1_91002",
-    logicalImage:pkg=>String.fromCharCode(...pkg), MELODEE_LOADER, STOCK_LOADER,
-    Updater:class { async find(){ return null; } async install(img){installed=img;await new Promise(resolve=>installDone=resolve);} }
-  });
-  const finish = url => pending.get(url)({ok:true,arrayBuffer:async()=>Uint8Array.from(Buffer.from(url)).buffer});
-  const tick = () => new Promise(resolve=>setImmediate(resolve));
-  mockInstallSession(context);
-  vm.runInContext(script, context);
-  ok(element("advanced-installs").hidden && element("rc-options").hidden && element("nightly-options").hidden, "installer: unavailable RC/nightly channels and Advanced installs are hidden");
-  element("release").value="1.0.1";
-  element("release").listeners.change();
-  ok(element("go").disabled,"installer: Install is disabled while the selected package loads");
-  finish("older");await tick();finish("dual");await tick();
-  ok(element("status").textContent === "Melodee 1.0.1 (standard)","installer: a late download cannot replace the selected release");
-  const flash = element("go").listeners.click();await tick();
-  ok(installed === "older" && element("build-dual").disabled && element("release").disabled,
-    "installer: package and release selection are locked throughout writing");
-  await element("build-dual").listeners.change();
-  installDone();await flash;
-  ok(!element("build-dual").disabled && !element("release").disabled,"installer: selection unlocks after writing");
-}
+// Installer channel/race and real dialog tests live in test_installer.mjs and test_install_safety.mjs.
 await stockRestore();
-await installerBuilds();
-await installerBuildRaces();
 await patternProtocol();
 await editorMock();
 await editorSamplePresets();

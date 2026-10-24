@@ -144,6 +144,27 @@ class NightlySite(unittest.TestCase):
         self.assertEqual((self.site / "firmware/melodee-1.3.2.fwsc").read_bytes(), self.dual.read_bytes())
         self.assertEqual((self.site / "firmware/melodee-nightly.fwsc").read_bytes(), self.normal.read_bytes())
 
+    def test_pinned_bootloader_is_published_with_its_notice(self):
+        import mboot
+        files = mboot.checked_files()
+        self.assertEqual((self.site / "firmware/m-bootloader-1.2.fwsc").read_bytes(), files["fm1-uboot.fwsc"])
+        self.assertEqual((self.site / "firmware/m-bootloader-LICENSE.txt").read_bytes(), files["LICENSE"])
+        installer = self.site / "webapp/installer/index.html"
+        before = installer.read_bytes()
+        with patch.object(mboot, "checked_files", side_effect=ValueError("checksum mismatch")):
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                self.build_site(self.dual, "1.3.2", self.site, installer_only=True)
+        self.assertEqual(installer.read_bytes(), before)
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            for name, data in files.items():
+                (directory / name).write_bytes(data)
+            for name in files:
+                (directory / name).write_bytes(files[name] + b"changed")
+                with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                    mboot.checked_files(directory)
+                (directory / name).write_bytes(files[name])
+
     def test_inline_only_legacy_release_metadata_still_loads(self):
         manifest = self.site / "firmware/release.json"
         legacy = json.loads(manifest.read_text())

@@ -49,8 +49,42 @@ export function remaining(done, total, ms) {
 // what a failure leaves: "safe" (nothing written), "paused" (in update mode: resume), "restart" (written; the FM-1
 // did not come back as expected), "partial" (the firmware installed, m-bootloader not)
 export function afterFailure(code, phase) {
-  if (phase === "boot") return code === "noreturn" ? "restart" : "partial";
+  if (phase === "boot") return code === "noreturn" || code === "mismatch" ? "restart" : "partial";
   if (phase === "done") return "restart";
   if (phase === "staged") return code === "noreturn" || code === "mismatch" ? "restart" : "paused";
   return "safe";
+}
+
+// "FM-1_9010200" -> "1.2", "FM-1_9010203" -> "1.2.3" (fm1-base tools/build.py: the prefix, then XXYYZZ)
+export function releaseVersion(product, prefix = "FM-1_9") {
+  if (!product.startsWith(prefix)) return null;
+  const m = /^(\d)(\d{1,2})(\d)$/.exec(product.slice(prefix.length));
+  return m ? `${+m[1]}.${+m[2]}.${+m[3]}` : null;
+}
+
+// a connected FM-1, from its identity: { kind, version }
+//   loader   in update mode: an install waits to be finished
+//   this     the version this page installs
+//   melodee   another Melodee release; dev: a development build (FM-1_900)
+//   stock    M-VAVE's own firmware (version: "V16"); open: M-VAVE's Open firmware (must go back to stock first)
+//   other    another firmware for the FM-1; model: not an FM-1
+export function describeDevice(id, product) {
+  if (!id) return { kind: "none" };
+  if (/^ota-/i.test(id.model)) return { kind: "loader" };
+  if (id.open || /^FM1_(OFFICIAL_OPEN|COMMUNITY_\d+)$/.test(id.text)) return { kind: "open" };
+  if (id.model !== "FM-1") return { kind: "model", text: id.text };
+  if (id.text === "FM-1_900") return { kind: "dev" };
+  if (id.text === product) return { kind: "this", version: releaseVersion(product) };
+  const v = releaseVersion(id.text);
+  if (v) return { kind: "melodee", version: v };
+  if (/^FM-1_0\d\d$/.test(id.text) && id.text !== "FM-1_099") return { kind: "stock", version: "V" + parseInt(id.text.slice(5), 10) };
+  return { kind: "other", text: id.text };
+}
+
+// what pressing Install does for a device: { firmware, resume, boot } or null (nothing to do)
+export function planFor(kind, wantBoot) {
+  if (kind === "loader") return { firmware: true, resume: true, boot: wantBoot };
+  if (kind === "this") return wantBoot ? { firmware: false, resume: false, boot: true } : { firmware: true, resume: false, boot: false };
+  if (kind === "open" || kind === "model" || kind === "none") return null;
+  return { firmware: true, resume: false, boot: wantBoot };
 }

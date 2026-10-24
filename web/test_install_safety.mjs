@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash, webcrypto} from 'node:crypto';
 import {productOf, logicalImage} from './fm1pkg.js';
 import {JSDOM} from 'jsdom';
+import {controllerSource} from './installer_test_helpers.mjs';
 import {MELODEE_LOADER, STOCK_LOADER, pack7} from './fm1ota.js';
 import {SteadyUpdater, GAP_MS} from './install/transfer.js';
 import {fakeAccess} from './install/fakefm1.js';
@@ -153,14 +154,20 @@ for (const valid of [false,true]) {
   win.fetch=async()=>({ok:true,arrayBuffer:async()=>firmware.slice().buffer});
   win.navigator.requestMIDIAccess=async()=>{midiCalls++;return simulated.access;};
   const metadata={version:'1.4.5',product:productOf(firmware),pkg:{dual:'test.fwsc'},sha256:{dual:valid?digest:'0'.repeat(64)}};
-  const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace('/*LIB*/',()=>libraries).replace('/*META*/{}',JSON.stringify(metadata));
+  const script=html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace('/*LIB*/',()=>libraries).replace('/*META*/{}',JSON.stringify(metadata)).replace('/*INSTALLER*/',()=>`(() => {${controllerSource}})();`);
   win.eval(script);await new Promise(r=>nativeSet(r,30));
-  assert.equal(win.document.getElementById('go').disabled,!valid);
+  assert(win.document.getElementById('go').disabled);
+  if(valid){
+    win.document.getElementById('find').click();
+    const until=Date.now()+3000;
+    while(win.document.getElementById('device').hidden && Date.now()<until)await new Promise(r=>nativeSet(r,10));
+    assert(!win.document.getElementById('device').hidden);assert(!win.document.getElementById('go').disabled);
+  }
   if(valid){
     win.document.getElementById('go').click();await tick();
-    assert(win.document.getElementById('preflight').open);assert.equal(midiCalls,0,'preflight precedes any MIDI permission or access');
+    assert(win.document.getElementById('preflight').open);const callsAtPreflight=midiCalls;
     win.document.getElementById('preflight').dispatchEvent(new win.Event('cancel',{cancelable:true}));await tick();
-    assert(!win.document.getElementById('go').disabled);assert.equal(midiCalls,0);
+    assert(!win.document.getElementById('go').disabled);assert.equal(midiCalls,callsAtPreflight,'canceling preflight adds no MIDI access');
     win.document.getElementById('go').click();await tick();
     win.document.getElementById('pfok').checked=true;win.document.getElementById('pfok').dispatchEvent(new win.Event('change'));
     win.document.querySelector('#preflight form').dispatchEvent(new win.SubmitEvent('submit',{cancelable:true,submitter:win.document.getElementById('pfgo')}));
@@ -169,7 +176,62 @@ for (const valid of [false,true]) {
     assert.equal(win.document.getElementById('run').dataset.state,'done',win.document.getElementById('log').textContent);
     assert.equal(win.document.getElementById('bar').getAttribute('aria-valuenow'),'100');
     assert(simulated.device.log.includes('written: '+productOf(firmware)));
-  }else assert.match(win.document.getElementById('status').textContent,/checksum/);
+  }else assert(!win.document.getElementById('pagefail').hidden);
   page.window.close();
 }
 console.log('Published bundle: starts with actual firmware; checksum mismatch blocks Install; cancellation sends no MIDI; complete controller install verifies the returned identity');
+
+// Saadet's optional last stage, with the real pinned boot package.
+const bootRaw=new Uint8Array(readFileSync(new URL('m-bootloader/fm1-uboot.fwsc',import.meta.url)));
+const bootDigest=createHash('sha256').update(bootRaw).digest('hex');
+for(const scenario of ['update+boot','boot-only','refused','bad-boot-hash','wrong-return','wrong-loader','pending-build']){
+ const page=new JSDOM(html.replace(/<script type="module">[\s\S]*?<\/script>/,''),{url:'https://example.test/webapp/installer/',runScripts:'outside-only'});
+ const win=page.window,doc=win.document,$=id=>doc.getElementById(id);
+ // A release identity lets the current-version branch choose boot-only.
+ const releaseRaw=firmware.slice();
+ for(let i=0;i<20;i++)releaseRaw[i*48+47]=i<PRODUCT.length?PRODUCT.charCodeAt(i)+i+1:0x7d;
+ const loaderScenario=['wrong-loader','pending-build'].includes(scenario);
+ const model=fakeAccess({images:{firmware:logicalImage(releaseRaw),boot:scenario==='refused'?null:logicalImage(bootRaw)},
+  identity:scenario==='boot-only'?PRODUCT:'FM-1_015',after:PRODUCT,state:loaderScenario?'loader':'app',
+  loader:scenario==='wrong-loader'?STOCK_LOADER:MELODEE_LOADER,stride:128,timers:clock});
+ if(scenario==='wrong-return'){
+  const restart=model.device.restart.bind(model.device);
+  model.device.restart=(state,id,ms)=>restart(state,state==='app' && model.device.log.includes('m-bootloader staged')?'FM-1_91044':id,ms);
+ }
+ const pageSet=win.setTimeout.bind(win);win.setTimeout=(f,ms=0,...a)=>pageSet(f,ms>=1000?ms/20:ms,...a);
+ win.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ win.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ win.TextEncoder=TextEncoder;Object.defineProperty(win.crypto,'subtle',{value:webcrypto.subtle});
+ win.fetch=async url=>({ok:true,arrayBuffer:async()=>url.includes('boot')?bootRaw.slice().buffer:releaseRaw.slice().buffer});
+ win.navigator.requestMIDIAccess=async()=>model.access;
+ const metadata={version:'1.4.5',product:PRODUCT,pkg:{dual:'test.fwsc'},sha256:{dual:createHash('sha256').update(releaseRaw).digest('hex')},
+  boot:{version:'1.2',pkg:'boot.fwsc',sha256:scenario==='bad-boot-hash'?'0'.repeat(64):bootDigest}};
+ if(scenario==='pending-build')win.localStorage.setItem('melodee-install-pending',JSON.stringify({key:'different-commit',label:'different nightly'}));
+ win.eval(html.match(/<script type="module">([\s\S]*?)<\/script>/)[1].replace('/*LIB*/',()=>libraries).replace('/*META*/{}',JSON.stringify(metadata)).replace('/*INSTALLER*/',()=>`(() => {${controllerSource}})();`));
+ await new Promise(r=>nativeSet(r,35));$('find').click();
+ const foundBy=Date.now()+3000;while($('device').hidden && Date.now()<foundBy)await new Promise(r=>nativeSet(r,10));
+ assert(!$('device').hidden,scenario);
+ if(scenario==='bad-boot-hash'){assert($('st-options').hidden);page.window.close();continue;}
+ $('mboot').checked=true;$('mboot').dispatchEvent(new win.Event('change'));
+ if(scenario==='boot-only')assert.match($('go').textContent,/Install m-bootloader/);
+ $('go').click();await tick();
+ if(scenario==='pending-build'){
+  assert(!$('preflight').open);assert.match($('connmsg').textContent,/same version/);
+  assert(!model.device.sends.some(s=>s.bytes[1]===0x22));page.window.close();continue;
+ }
+ assert($('preflight').open,scenario);assert(!$('pfboot').hidden);
+ if(scenario==='boot-only')assert($('pfcheck').hidden);
+ else{$('pfok').checked=true;$('pfok').dispatchEvent(new win.Event('change'));}
+ doc.querySelector('#preflight form').dispatchEvent(new win.SubmitEvent('submit',{cancelable:true,submitter:$('pfgo')}));
+ const deadline=Date.now()+10000;while($('run').dataset.state==='running' && Date.now()<deadline)await new Promise(r=>nativeSet(r,10));
+ const expected=scenario==='refused'?'partial':scenario==='wrong-return'?'restart':scenario==='wrong-loader'?'paused':'done';
+ assert.equal($('run').dataset.state,expected,scenario+' '+$('log').textContent);
+ if(scenario==='wrong-loader')assert(!model.device.log.some(s=>/staged|written/.test(s)));
+ else {
+  assert.equal(model.device.log.some(s=>s.startsWith('written:')),scenario!=='boot-only');
+  assert.equal(model.device.log.includes('m-bootloader installed'),scenario!=='refused');
+  assert.equal(win.localStorage.getItem('melodee-install-pending'),null,'bootloader failure must not offer firmware resume');
+ }
+ page.window.close();
+}
+console.log('Saadet flow: firmware+boot, boot-only, refused/altered boot package, wrong return, loader isolation and same-build resume passed');
