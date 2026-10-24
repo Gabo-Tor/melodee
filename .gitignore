@@ -3,6 +3,7 @@ build/
 __pycache__/
 fm1-recovery-backups/
 *.fwsc
+!web/m-bootloader/fm1-uboot.fwsc
 
 .nightly-deps/
 .nightly-pages/
