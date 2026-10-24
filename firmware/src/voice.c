@@ -225,7 +225,7 @@ static uint32_t voice_kills;                            /* voices given up (budg
 static uint32_t voice_kills_part[NPART];                /* identify the audible victim, not only total load */
 static void voice_kill(voice_t *v)                      /* fade out over the next block (env_tick stage 4) */
 {
-    uint32_t part = ((uintptr_t)v - (uintptr_t)trk) / sizeof(track_t);
+    uint32_t part = voice_part(v);
     v->gate = 0;
     v->stage = 4;
     voice_kills++;
@@ -496,7 +496,7 @@ static int trk_chord(const track_t *t) { return ENGINES[t->engine] == &ENG_SID &
 static void trk_note_on_work(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t any = 0, i, mode = trk_vmode(t);
-    if (t->p[P_MUTE] || (uint32_t)(t - trk) >= trk_n())   /* (a track not in use: silent) */
+    if (t->p[P_MUTE] || (uint32_t)(t - trk) >= trk_parts())   /* (a track not in use, a MIDI-only one: silent) */
         return;
     if (t->xf_on || t->eng_req != t->engine) {          /* engine switch under way: after the fade */
         for (i = 0; i < t->xp_n && t->xp_note[i] != note; i++)

@@ -88,6 +88,13 @@ on it) and **Remove track** (the selected; red, its question "Remove track 2?").
 track). Renders: `stage_1track*` (`_synth`: no pattern), `stage_2tracks`, `stage_3tracks`, `sheet_stage`, `confirm_track`, `mixer_*track*`,
 `patterns_2tracks`, `song_2tracks`, `layer_glo_2tracks`, `new_roles_1track`.
 
+Tracks 5–8 (2026-10-24): Stage’s Add track continues to eight; these extra tracks are always MIDI Track and open
+on CH/TRS instead of the sound browser. ALGORITHM cycles all tracks. Stage, MIXER, PATTERNS, SONG and GLO show the
+selected track’s group (1–4 or 5–8), reusing the four colours and displaying the actual track numerals. With SEQ held,
+D# switches groups; its track keys select within the group. GLO keeps mute/solo and shows CH in place of an audio
+level for MIDI tracks. Partial groups leave unused places blank. Renders: `stage_midi`, `stage_midi_partial`,
+`mixer_midi`, `patterns_midi`, `song_midi`, `layer_glo_midi`.
+
 HOME's second page (2026-10-13, `firmware/src/ui_view.c`; HOME tapped on HOME, two page dots in the header; HOME
 from elsewhere returns to the page it was on; SELECT is not a page turn on HOME: it turns the menu's HOME SELECT, a
 header message saying the value): a wheel of the twelve notes in fifths centred (160 x 158

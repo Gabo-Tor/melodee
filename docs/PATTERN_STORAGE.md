@@ -5,11 +5,11 @@ The 18 October continuation and shared-pool policy are tracked in
 now exercise 16 banks and 128 steps; the device limits remain unchanged while
 RAM, admission, project persistence and UI integration are completed.
 
-Implemented on top of `86c8130` (2026-10-17). This is the RAM-storage foundation for larger pattern capacity. Shipping limits remain eight banks per track and 64 steps, including existing odd lengths. The FBKK project format, flash map, recording event store, and note-release priority queues are unchanged.
+Implemented on top of `86c8130` (2026-10-17). This is the RAM-storage foundation for larger pattern capacity. Shipping limits remain eight banks per track and 64 steps, including existing odd lengths. The flash map and shared 1,024-note recording capacity remain unchanged. With the MIDI-track expansion, four-part songs still use FBKK; songs with tracks 5–8 use sparse FBKL and refuse saves that exceed a flash slot.
 
 ## Ownership and switching
 
-The four `track_t.step` arrays hold the editable/playing patterns. Each track also has one staging pattern. Every other bank is represented by a directory of 16-step blocks in a dedicated, statically bounded chunk pool.
+The eight `track_t.step` arrays hold the editable/playing patterns. Each track also has one staging pattern. Every other bank is represented by a directory of 16-step blocks in a dedicated, statically bounded chunk pool.
 
 Foreground `pattern_poll()` compresses outgoing staging data and prepares the next queued bank, or the next SONG row. At a prepared boundary, the sequencer frees the incoming cold copy and swaps expanded steps and timing with staging. The outgoing bank remains readable from staging immediately, including edits made after preparation; foreground service encodes it later.
 
@@ -24,15 +24,15 @@ Callers read banks using `pattern_read` / `pattern_step` / `pattern_timing`, and
 Each block describes 16 steps:
 
 - Canonical empty block: a directory entry, no payload chunks.
-- Sixteen identical steps: one nine-byte snapshot in one chunk.
-- Other blocks: a 16-bit presence mask plus nine bytes for each non-default step, streamed through 16-byte chunks.
-- Dense fallback: 144 bytes in nine chunks, with no compression-dependent capacity failure.
+- Sixteen identical steps: one eight-byte packed step in one chunk.
+- Other blocks: a 16-bit presence mask plus eight bytes for each non-default step, streamed through 16-byte chunks.
+- Dense fallback: 128 bytes in eight chunks, with no compression-dependent capacity failure.
 
-Snapshots preserve every valid step field, unused note bytes, and `n` on rests and ties. All steps up to `NSTEP` are retained regardless of current LEN. Shortening a pattern does not discard hidden material. Original recorded onsets, independent releases, pitch and length remain in the existing precise event store.
+Packed steps preserve every valid field and unused note bytes except the hidden note count `n` on rests and ties, which becomes zero on a bank switch, matching project serialization. All steps up to `NSTEP` are retained regardless of current LEN. Shortening a pattern does not discard hidden material. Original recorded onsets, independent releases, pitch and length remain in the existing precise event store.
 
-At most 28 banks are cold: four tracks times seven inactive banks. The pool reserves 1,008 chunks, enough for every cold block to be dense. Staging temporarily reduces the number of encoded banks; flushing an outgoing bank therefore always has its dense allocation available. Replacing a block frees its old chunks first. Current-capacity edits do not depend on typical compression ratios.
+At most 56 banks are cold: eight tracks times seven inactive banks. The pool reserves 1,792 chunks, enough for every cold block to be dense. Staging temporarily reduces the number of encoded banks; flushing an outgoing bank therefore always has its dense allocation available. Replacing a block frees its old chunks first. Current-capacity edits do not depend on typical compression ratios.
 
-## RAM and compiled build
+## Historical RAM and compiled build (four tracks, nine-byte snapshots)
 
 | Pattern storage component | Bytes |
 | --- | ---: |

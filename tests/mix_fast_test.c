@@ -28,7 +28,7 @@ static __attribute__((noinline)) void reference(track_t *t,int32_t *b,uint32_t n
     for(uint32_t i=0;i<n;i++){
         int32_t x=clamp(((clamp(b[i],-884000,884000)>>2)*lvl)>>10,-524287,524287),a=x<0?-x:x;
 #if MELODEE_USB_AUDIO
-        if(track_capture_on)track_capture[i*NTRK+(uint32_t)(t-trk)]=x;
+        if(track_capture_on)track_capture[i*NPART+(uint32_t)(t-trk)]=x;
 #endif
         if(a>pk)pk=a;
         mix_add((x*gl)>>12,(x*gr)>>12,i,send);
@@ -41,21 +41,21 @@ static void mix_mono_general(track_t *,int32_t *,uint32_t,const mix_cache_t *) _
 static __attribute__((noinline)) void candidate(track_t *t,int32_t *b,uint32_t n,const mix_cache_t *mc)
 { mix_mono_samples(t,b,n,mc); }
 static int32_t source[CTL];
-static struct { int32_t left[CTL],right[CTL],send_l[CTL],send_r[CTL],capture[CTL*NTRK],peak; } expected;
+static struct { int32_t left[CTL],right[CTL],send_l[CTL],send_r[CTL],capture[CTL*NPART],peak; } expected;
 static void reset(void)
 {
     for(uint32_t i=0;i<CTL;i++){
         mix_l[i]=(int32_t)i*139;mix_r[i]=-(int32_t)i*173;
         fx_send_l[i]=319;fx_send_r[i]=-497;
     }
-    for(uint32_t i=0;i<CTL*NTRK;i++)track_capture[i]=123456;
+    for(uint32_t i=0;i<CTL*NPART;i++)track_capture[i]=123456;
 }
 static void parity(void)
 {
     host_tracks_init();
     static const int32_t edge[]={INT32_MIN,-884001,-884000,-524288,-7,-4,-1,0,1,3,4,7,524287,884000,884001,INT32_MAX};
     for(uint32_t i=0;i<CTL;i++)source[i]=edge[i%NELEM(edge)];
-    for(uint32_t ti=0;ti<NTRK;ti++)for(int32_t level=0;level<128;level++)for(int32_t pan=-64;pan<64;pan++)
+    for(uint32_t ti=0;ti<NPART;ti++)for(int32_t level=0;level<128;level++)for(int32_t pan=-64;pan<64;pan++)
         for(uint32_t send=0;send<3;send++)for(uint32_t capture=0;capture<2;capture++){
             track_t *t=&trk[ti];t->p[P_LEVEL]=(int16_t)level;t->p[P_PAN]=(int16_t)pan;
             t->p[P_FXSEND]=(int16_t)(send==2?127:send);fx_send_on=send!=0;track_capture_on=(uint8_t)capture;

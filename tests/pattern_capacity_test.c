@@ -4,11 +4,12 @@
  * atomically, and switch freely even with every payload chunk occupied. */
 #define NSTEP 128u
 #define NPAT 16u
+#define NMIDI 0u                               /* (the parts only: 16 x 128 x 8 tracks outgrow the 64 take owners) */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
 #include <assert.h>
-static pattern_t model[NTRK][NPAT];
+static pattern_t model[NPART][NPAT];
 static uint32_t random_state=0x78943b21u;
 static uint32_t draw(void) { random_state=random_state*1664525u+1013904223u;return random_state; }
 static void fill(pattern_t *p,uint32_t first,uint32_t end)
@@ -22,7 +23,7 @@ static void fill(pattern_t *p,uint32_t first,uint32_t end)
 static void verify(void)
 {
     uint8_t seen[PAT_CHUNKS]={0};uint32_t used=0,free=0;
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t bank=0;bank<NPAT;bank++){
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t bank=0;bank<NPAT;bank++){
         pattern_t actual;pattern_read(k,bank,&actual);assert(!memcmp(&actual,&model[k][bank],sizeof actual));
         for(uint32_t i=0;i<NSTEP;i++){
             step_t s=pattern_step(k,bank,i);assert(!memcmp(&s,&actual.step[i],sizeof s));
@@ -41,24 +42,24 @@ static void verify(void)
 }
 static void fresh(void)
 {
-    for(uint32_t k=0;k<NTRK;k++)memset(trk[k].step,0,sizeof trk[k].step);
+    for(uint32_t k=0;k<NPART;k++)memset(trk[k].step,0,sizeof trk[k].step);
     host_tracks_init();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t bank=0;bank<NPAT;bank++)pattern_read(k,bank,&model[k][bank]);
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t bank=0;bank<NPAT;bank++)pattern_read(k,bank,&model[k][bank]);
 }
 static void original_capacity(void)
 {
     fresh();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<8u;b++){
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=0;b<8u;b++){
         fill(&model[k][b],0,64);assert(pattern_write(k,b,&model[k][b]));
     }
     assert(pattern_total_cost()==PAT_DENSE_BUDGET);verify();
     for(uint32_t round=0;round<32;round++){
-        for(uint32_t k=0;k<NTRK;k++){
+        for(uint32_t k=0;k<NPART;k++){
             uint32_t bank=draw()%NPAT;
             if(round&1u)pattern_prepare(k,bank);
             pattern_switch(&trk[k],bank);
         }
-        if(round%3u==0)for(uint32_t k=0;k<NTRK;k++)pattern_flush(k);
+        if(round%3u==0)for(uint32_t k=0;k<NPART;k++)pattern_flush(k);
         verify();
     }
     puts("shared pool: original 32 x 64 dense capacity survives prepared and fallback switches");
@@ -68,7 +69,7 @@ static void exhaustion(void)
     fresh();
     /* All capacity cold, all four active patterns empty. No spare chunks to
      * hide a partial-publication or replacement-order bug. */
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=1;b<=8;b++){
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=1;b<=8;b++){
         fill(&model[k][b],64,128);assert(pattern_write(k,b,&model[k][b]));
     }
     assert(pattern_pool_used==PAT_CHUNKS && pattern_free==PAT_NONE);verify();
@@ -92,29 +93,29 @@ static void exhaustion(void)
     p.timing[0]=64;assert(pattern_write(0,1,&p));model[0][1]=p;
     assert(pattern_double(&trk[0],1,0)==4 && pattern_double(&trk[0],1,1)==4);
     assert(!memcmp(&recording[0],&r,sizeof r) && recording_generation==generation);verify();
-    for(uint32_t k=0;k<NTRK;k++)pattern_prepare(k,1);
-    for(uint32_t k=0;k<NTRK;k++)pattern_switch(&trk[k],1);
+    for(uint32_t k=0;k<NPART;k++)pattern_prepare(k,1);
+    for(uint32_t k=0;k<NPART;k++)pattern_switch(&trk[k],1);
     verify();
     uint32_t empty_step=64;step_t before=trk[0].step[empty_step],new_step={{60},1,ST_NOTE,0,100};
     assert(!pattern_set_step(&trk[0],empty_step,&new_step));
     assert(!memcmp(&before,&trk[0].step[empty_step],sizeof before));verify();
     new_step=trk[0].step[0];new_step.vel=92;
     assert(pattern_set_step(&trk[0],0,&new_step));model[0][1].step[0]=new_step;verify();
-    for(uint32_t k=0;k<NTRK;k++)pattern_switch(&trk[k],15);
-    for(uint32_t k=0;k<NTRK;k++)pattern_flush(k);
+    for(uint32_t k=0;k<NPART;k++)pattern_switch(&trk[k],15);
+    for(uint32_t k=0;k<NPART;k++)pattern_flush(k);
     assert(pattern_pool_used==PAT_CHUNKS);verify();
     puts("shared pool: full-store rejection is atomic; relocation, existing edits and all four switches preserve notes");
 }
 static void sparse_banks(void)
 {
     fresh();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<NPAT;b++){
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=0;b<NPAT;b++){
         for(uint32_t i=0;i<NSTEP;i++)model[k][b].step[i]=(step_t){{60,64,67,71},4,ST_NOTE,0,100};
         assert(pattern_write(k,b,&model[k][b]));
     }
-    assert(pattern_total_cost()==NTRK*NPAT*PAT_BLOCKS);verify();
+    assert(pattern_total_cost()==NPART*NPAT*PAT_BLOCKS);verify();
     for(uint32_t op=0;op<300;op++){
-        uint32_t k=draw()%NTRK,b=(draw()>>8)%NPAT;
+        uint32_t k=draw()%NPART,b=(draw()>>8)%NPAT;
         if(op%3u==0){pattern_prepare(k,b);pattern_switch(&trk[k],b);}
         else {
             pattern_t p=model[k][b];fill(&p,0,NSTEP);

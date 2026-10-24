@@ -61,7 +61,7 @@ int main(void)
         }
         check("fractional resonant cores join smoothly at sync", smooth);
     }
-    memset(trk, 0, sizeof trk); host_tracks_init();
+    memset(trk, 0, sizeof trk);trk_voices_bind(); host_tracks_init();
     track_t *t = &trk[0]; int32_t out[CTL];
     host_preset(t, 2, 0); t->p[P_E7] = 1; t->p[P_E4] = 12;
     t->p[P_FM1_ATK] = 100; t->p[P_FM2_ATK] = 0;
@@ -86,16 +86,16 @@ int main(void)
     check("shared voice stealing still frees a native-envelope voice", !t->v[0].active);
     check("split descriptors keep stored ranges/defaults", CZ_ED[0].max == TP[P_FM1_ATK].max && CZ_ED[4].def == TP[P_FM1_LEVEL].def);
     check("PHASE remains its own engine with six presets", ENGINES[2] == &ENG_PHASE && !strcmp(ENG_PHASE.name,"PHASE") && ENG_PHASE.npresets == 6);
-    memset(trk,0,sizeof trk); host_tracks_init(); t=&trk[0]; cz_init(); eng_state_clear(0);
+    memset(trk,0,sizeof trk);trk_voices_bind(); host_tracks_init(); t=&trk[0]; cz_init(); eng_state_clear(0);
     host_preset(t, ENGI_CZ, 0);
     check("CZ-1 factory defaults to native playback", ENGINES[ENGI_CZ] == &ENG_CZ &&
-        !strcmp(ENG_CZ.name,"CZ-1") && t->p[P_E7] == CZ_NATIVE && cz_patch_valid(cz_patch[0].raw));
-    cz_patch[0].raw[128]='X';
+        !strcmp(ENG_CZ.name,"CZ-1") && t->p[P_E7] == CZ_NATIVE && cz_patch_valid(cz_patch_of(0)->raw));
+    cz_patch_of(0)->raw[128]='X';
     host_preset(&trk[1],2,0);
-    check("selecting PHASE on another track leaves native CZ tone intact",cz_patch[0].raw[128]=='X' && trk[1].eng_req==2);
+    check("selecting PHASE on another track leaves native CZ tone intact",cz_patch_of(0)->raw[128]=='X' && trk[1].eng_req==2);
     host_preset(t,ENGI_CZ,0);
-    check("factory INIT replaces previous imported tone",cz_patch[0].raw[128]=='I');
-    uint8_t *raw=cz_patch[0].raw;raw[20]=0xF7;
+    check("factory INIT replaces previous imported tone",cz_patch_of(0)->raw[128]=='I');
+    uint8_t *raw=cz_patch_of(0)->raw;raw[20]=0xF7;
     for(uint32_t k=0;k<8;k++){raw[21+2*k]=119;raw[22+2*k]=(uint8_t)(k%2?60:127);}raw[28]|=128;
     trk_note_on(t,60,100);v=&t->v[0];
     for(uint32_t k=0;k<30;k++){memset(out,0,sizeof out);track_render(t,out,CTL);}

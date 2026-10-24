@@ -12,7 +12,7 @@
 static const uint8_t ED_BK_IDS[29] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28};
 #define ED_BK_N ((uint32_t)sizeof ED_BK_IDS)
 #define ED_BK_MAX BANK_STORE_SIZE
-#define ED_BK_RAW ((uint8_t *)&proj_wire_u)  /* reuse the existing serialized main-loop scratch */
+#define ED_BK_RAW (wire_take())             /* reuse the existing serialized main-loop scratch */
 #define ed_bk_set set_rec    /* id 1: the settings record (+ the template), in the settings save's staging (project.c):
                              * a save while a backup runs rewrites it, and the archive's CRC then fails */
 static uint32_t ed_bk_set_len;
@@ -191,6 +191,7 @@ static uint32_t ed_bk_commit_inner(void)
     if (ed_bk_id == 0u || (ed_bk_id >= 2u && ed_bk_id <= 5u)) {
 #if !MELODEE_FLASH || MELODEE_AUDIO_PROFILE
         int full = bank_full(ed_bk_len);
+        bank_wide = 0;
         if (ed_bk_len && !(full ? bank_valid(raw, ed_bk_len) : proj_import(&proj_scratch, raw, (int)ed_bk_len))) return 2;
         if (ed_bk_id == 0u) {
             if (!ed_bk_len) return 2;

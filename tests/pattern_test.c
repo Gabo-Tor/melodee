@@ -49,18 +49,18 @@ static int independent_switches(void)
 static int all_banks_persist(void)
 {
     int bad = 0, ok = 1; ui_power_on();
-    for (uint32_t k = 0; k < NTRK; k++) for (uint32_t b = 0; b < NPAT; b++) {
+    for (uint32_t k = 0; k < NPART; k++) for (uint32_t b = 0; b < NPAT; b++) {
         track_t *t = &trk[k]; pattern_request(t, b);
         t->p[P_SLEN] = (int16_t)(32+b); t->p[P_SSWING] = (int16_t)b;
         t->step[0] = (step_t){{(uint8_t)(40+k*8+b),60,64,67},4,ST_NOTE,SF_SLIDE,100,(uint8_t)(1u<<b),(uint8_t)(1u<<b),(uint8_t)(20+b)};
         t->step[1] = (step_t){{0},0,ST_TIE}; motion_set_event(t, 0, P_LEVEL, (int16_t)(k*8+b));
     }
     chain_config.count = 2; chain_config.row[0] = (chain_row_t){0,3}; chain_config.row[1] = (chain_row_t){7,2};
-    for (uint32_t k = 0; k < NTRK; k++) { chain_patterns[0][k] = (uint8_t)k; chain_patterns[1][k] = (uint8_t)(7-k); }
+    for (uint32_t k = 0; k < NPART; k++) { chain_patterns[0][k] = (uint8_t)k; chain_patterns[1][k] = (uint8_t)(7-k); }
     bad += check("complete project saves all 32 banks", project_save(2) == 0);
     pattern_init(); memset(&motion,0,sizeof motion); project_load(2);
     bad += check("project restores arrangement and active bank selection", chain_config.count == 2 && chain_patterns[0][3] == 3 && chain_patterns[1][3] == 4 && trk[3].pattern == 7);
-    for (uint32_t k = 0; k < NTRK; k++) for (uint32_t b = 0; b < NPAT; b++) {
+    for (uint32_t k = 0; k < NPART; k++) for (uint32_t b = 0; b < NPAT; b++) {
         track_t *t = &trk[k]; pattern_request(t,b);
         ok &= t->step[0].n == 4 && t->step[0].note[0] == 40+k*8+b && t->step[0].note[3] == 67 &&
             t->step[1].time == ST_TIE && t->p[P_SLEN] == 32+(int16_t)b && t->p[P_SSWING] == (int16_t)b &&
@@ -96,7 +96,7 @@ static int panel_banks(void)
 static int arranged_chords(void)
 {
     int bad = 0, ok = 1; ui_power_on();
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         track_t *t = &trk[k];
         for (uint32_t b = 0; b < 2u; b++) {
             pattern_request(t, b); track_defaults_steps(t); t->p[P_SLEN] = 2;
@@ -108,7 +108,7 @@ static int arranged_chords(void)
     }
     chain_config.count = 2; chain_config.row[0] = (chain_row_t){1,2}; chain_config.row[1] = (chain_row_t){0,1};
     ok &= !chain_prepare(); events_block(32);
-    for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].pattern == chain_patterns[0][k] && trk[k].seq_n == 4 &&
+    for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].pattern == chain_patterns[0][k] && trk[k].seq_n == 4 &&
         trk[k].seq_notes[0] == 48+k+chain_patterns[0][k];
     bad += check("SONG starts four independently assigned banks with four-note chords", ok);
     bad += check("SONG protects its bank selections and contents while running", pattern_request(TSEL, 7) && pattern_copy(TSEL, 0, 7));
@@ -116,11 +116,11 @@ static int arranged_chords(void)
     events_block(period); events_block(period);
     bad += check("SONG repeats the first row without changing its bank assignments", chain.running && chain.row == 0 && chain.remaining == 1 && trk[0].pattern == 1);
     events_block(period); events_block(period); ok = chain.running && chain.row == 1;
-    for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].pattern == chain_patterns[1][k] && trk[k].seq_n == 4 &&
+    for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].pattern == chain_patterns[1][k] && trk[k].seq_n == 4 &&
         trk[k].seq_notes[0] == 48+k+chain_patterns[1][k];
     bad += check("SONG changes all four banks together at track one's loop boundary", ok);
     events_block(period); events_block(period); ok = !song.playing && !chain.running;
-    for (uint32_t k = 0; k < NTRK; k++) ok &= !trk[k].pattern && !trk[k].seq_n;
+    for (uint32_t k = 0; k < NPART; k++) ok &= !trk[k].pattern && !trk[k].seq_n;
     bad += check("SONG completion restores original banks and releases all sequence voices", ok);
     return bad;
 }

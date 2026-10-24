@@ -135,7 +135,7 @@ static void ui_power_on(void)
     kb_strum_pending = midi_strum_pending = 0;
     memset(kb_strum, 0, sizeof kb_strum);
     memset(chord_alternate, 0, sizeof chord_alternate);
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&song, 0, sizeof song);
     memset(&chain, 0, sizeof chain);
     chain_defaults(&chain_config);
@@ -168,8 +168,8 @@ static void ui_power_on(void)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         track_defaults(t);
-        set_engine_of(t, TRK_DEF[i][0]);
-        apply_preset_to(t, TRK_DEF[i][1]);
+        set_engine_of(t, trk_def_engine(i));
+        apply_preset_to(t, trk_def_preset(i));
         t->engine = t->eng_req;
         track_defaults_steps(t);
         pat_sig[i] = steps_sig(t);
@@ -325,7 +325,7 @@ static int test_sound_loads(void)
     uint32_t i, empty = 1;
     track_t *t = &trk[0], before;
     ui_power_on();
-    for (i = 0; i < NTRK; i++)
+    for (i = 0; i < NPART; i++)
         empty &= (uint32_t)seq_is_empty(&trk[i]);
     bad += check("power-on: the four sounds, every sequencer empty, no undo copy", empty && undo.trk == 0 && undo_depth == 0 &&
                  trk[3].eng_req == ENGI_DRUM && trk[3].preset == 0u && trk[0].preset == TRK_DEF[0][1]);
@@ -611,7 +611,7 @@ static int test_midi(void)
         for (i = 0; i < MQ; i++) midi_in_event(0x643C9909u);
         midi_in_event(0x003C8908u);                      /* note-off lost to a full ring */
         events_block(CTL);
-        for (i = 0; i < NTRK * NVOICE; i++) held += trk[i / NVOICE].v[i % NVOICE].gate;
+        for (i = 0; i < NPART * NVOICE; i++) held += trk[i / NVOICE].v[i % NVOICE].gate;
         bad += check("MIDI overflow releases held notes and latched ARP, keeps transport running",
                      !held && !trk[1].nheld && !trk[1].arp_phys && !mn_get(0, 60) &&
                      !mn_get(1, 64) && !midi_in_overflow && mi_r == mi_w && song.playing);
@@ -884,31 +884,31 @@ static int test_track_count(void)
     int bad = 0, ok;
     uint32_t i, n;
     char a[32], b[CF_DETAIL];
-    static const char *const DEF[NTRK] = {"It's a Prophet 5", "SOLID BASS", "SYNTH.LEAD 1", "808 KIT"};
+    static const char *const DEF[NPART] = {"It's a Prophet 5", "SOLID BASS", "SYNTH.LEAD 1", "808 KIT"};
     ui_power_on();
     stop_transport();
     memset(proj_slot, 0, sizeof proj_slot);
     memset(proj_bank_slot, 0, sizeof proj_bank_slot);
     project_new_blank();
     go_home(); frame();
-    ok = trk_n() == NTRK && song.sel == 0;
-    for (i = 0; i < NTRK; i++)
+    ok = trk_n() == NPART && song.sel == 0;
+    for (i = 0; i < NPART; i++)
         ok &= trk[i].eng_req == TRK_DEF[i][0] && trk[i].preset == find_preset(TRK_DEF[i][0], DEF[i]) &&
               seq_is_empty(&trk[i]);
     bad += check("a new song: four tracks, It's a Prophet 5, FM6 SOLID BASS, CZ-1 SYNTH.LEAD 1, 808 KIT; T1 selected",
                  ok && TRK_DEF[0][0] == ENGI_PROPHET && TRK_DEF[1][0] == ENGI_FM6 && TRK_DEF[2][0] == ENGI_CZ &&
                  TRK_DEF[3][0] == ENGI_DRUM);
-    bad += check("  NEW SONG without a template: all four", template_tracks() == NTRK);
+    bad += check("  NEW SONG without a template: all four", template_tracks() == NPART);
     song.ntrk = 1;                                      /* (a song down to one track) */
     ui.force = 1; frame();
-    bad += check("UNUSED TRACKS SHOW: four rows, the places not in use greyed (Add track)", stage_rows() == NTRK &&
+    bad += check("UNUSED TRACKS SHOW: four rows, the places not in use greyed (Add track)", stage_rows() == NPART &&
                  st_row_h() == (ST_ROWS_H - 6) / 4 && stage.col[1] && stage.col[3]);
     hold(B_HOME); ui.menu_sel = MI_TRACKS; press(B_OCTUP); hold(B_HOME);
     ui.force = 1; frame();
     bad += check("  menu UNUSED TRACKS (OCT+): HIDE, the one track the wide card",
                  (GLO_SELECT & TRACKS_HIDE) && stage_rows() == 1u && st_row_h() == ST_ROWS_H);
     hold(B_HOME); ui.menu_sel = MI_TRACKS; turn(EN_K1, -1); hold(B_HOME);
-    bad += check("  KNOB 1 left: SHOW again", !(GLO_SELECT & TRACKS_HIDE) && stage_rows() == NTRK && ui.home);
+    bad += check("  KNOB 1 left: SHOW again", !(GLO_SELECT & TRACKS_HIDE) && stage_rows() == NPART && ui.home);
     bad += check("  no pattern at all: Stage's card shows no pattern pill, no steps (a synth)", stage_seq_idle(0));
     one_note(&trk[0], 3, 60);
     ok = !stage_seq_idle(0);
@@ -942,14 +942,14 @@ static int test_track_count(void)
                  trk[1].p[P_LEVEL] == TP[P_LEVEL].def && seq_is_empty(&trk[1]) && pattern_empty(1, 3));
     press(B_OCTDN);
     bad += check("  OCT-: back to Stage, the sound kept", ui.home && trk[1].eng_req == TRK_DEF[1][0]);
-    for (n = 0; n < 4u; n++) {
+    for (n = 0; n < 2u; n++) {
         hold(B_OCTUP);
         sheet_do("Add track");
         press(B_OCTDN);
     }
-    bad += check("  four at most (TRACKS FULL)", trk_n() == NTRK && msg_is("TRACKS FULL"));
+    bad += check("  up to the four parts (tracks 5..8: midi_track_test)", trk_n() == NPART && trk[3].eng_req == TRK_DEF[3][0]);
     /* four tracks told apart: each its level, a note, a pattern in bank 3 of T2, motion, a take, a song row */
-    for (i = 0; i < NTRK; i++) {
+    for (i = 0; i < NPART; i++) {
         trk[i].p[P_LEVEL] = (int16_t)(40 + 10 * i);
         track_defaults_steps(&trk[i]);
         one_note(&trk[i], i, 60 + i);
@@ -965,7 +965,7 @@ static int test_track_count(void)
     motion_set_event(&trk[3], 8, P_PAN, 30);
     chain_config.count = 1;
     chain_config.row[0].repeat = 2;
-    for (i = 0; i < NTRK; i++)
+    for (i = 0; i < NPART; i++)
         chain_patterns[0][i] = (uint8_t)i;
     track_select(1);
     project_save(0);                                    /* (the slot it came from stays its slot) */
@@ -973,7 +973,7 @@ static int test_track_count(void)
     go_home(); frame();
     hold(B_OCTUP);
     sheet_do("Remove track");
-    bad += check("Remove track playing: refused (STOP FIRST)", trk_n() == NTRK && !ui.confirm && msg_is("STOP FIRST"));
+    bad += check("Remove track playing: refused (STOP FIRST)", trk_n() == NPART && !ui.confirm && msg_is("STOP FIRST"));
     stop_transport();
     hold(B_OCTUP);
     sheet_do("Remove track");
@@ -981,7 +981,7 @@ static int test_track_count(void)
     bad += check("Remove track: its question (Remove track 2?)", ui.confirm == CF_DEL_TRACK && ui.confirm_trk == 1u &&
                  str_eq(a, "REMOVE TRACK 2?"));
     press(B_OCTDN);
-    bad += check("  No: nothing removed", trk_n() == NTRK && !ui.confirm);
+    bad += check("  No: nothing removed", trk_n() == NPART && !ui.confirm);
     hold(B_OCTUP);
     sheet_do("Remove track");
     ui_confirm_accept();
@@ -1010,11 +1010,11 @@ static int test_track_count(void)
     bad += check("  and silent", trk_quiet(&trk[3]));
     project_save(1);
     project_new_blank();
-    bad += check("a new song: four tracks again", trk_n() == NTRK);
+    bad += check("a new song: four tracks again", trk_n() == NPART);
     project_load(1);
     bad += check("a project keeps its count (3)", trk_n() == 3u && trk[2].step[3].note[0] == 63);
     project_load(0);
-    bad += check("  the one saved with four: four", trk_n() == NTRK);
+    bad += check("  the one saved with four: four", trk_n() == NPART);
     track_select(0);
     go_home(); frame();
     hold(B_OCTUP);
@@ -1051,7 +1051,7 @@ static int test_home_view(void)
     bad += check("  HOME from EDIT: back to the page it was on", ui.home && ui.home_pg == 1u);
     song.ntrk = 3;
     apply_preset_to(&trk[1], find_preset(ENGI_FM6, "PAD"));   /* (a chord: a poly sound, not the power-on bass) */
-    for (k = 0; k < NTRK; k++) trk[k].engine = trk[k].eng_req;
+    for (k = 0; k < NPART; k++) trk[k].engine = trk[k].eng_req;
     memset(&view, 0, sizeof view);
     track_select(1);
     input_on(&trk[0], 45, 100);
@@ -1697,7 +1697,7 @@ static int test_favorites(void)
 static int test_display_preferences(void)
 {
     int bad = 0;
-    track_t sounds[NTRK];
+    track_t sounds[NPART];
     uint16_t before[240 * 240];
     ui_power_on();
     memcpy(sounds, trk, sizeof sounds);
@@ -1726,7 +1726,7 @@ static int test_display_preferences(void)
 static int test_information(void)
 {
     uint16_t header[240 * H_HEAD], battery[240 * H_HEAD];
-    track_t sounds[NTRK];
+    track_t sounds[NPART];
     int bad = 0, quiet = 1;
     uint32_t x, y;
     ui_power_on();
@@ -2177,7 +2177,7 @@ static int test_init_scales_patterns(void)
     ok = TSEL->preset == 0u;
     TSEL->p[P_E0] = 5;
     sound_init_of(TSEL, ENGI_FM6);
-    fm6_name(nm, fm6_patch[song.sel]);
+    fm6_name(nm, fm6_patch_of(song.sel));
     for (i = 0; i < 4u; i++)
         ok &= !TSEL->p[P_RESERVED33 + i];
     bad += check("INIT: FM6's: INIT VOICE (after F24), the DX7 init voice, dry", ok && TSEL->preset == FM6_NFAC &&
@@ -2589,12 +2589,12 @@ static int test_chain(void)
 {
     uint32_t i, k, period, last, n = 32u;
     int bad = 0, ok;
-    step_t before[NTRK][NSTEP];
-    int16_t timing[NTRK][4], sounds[NTRK][P_COUNT];
+    step_t before[NPART][NSTEP];
+    int16_t timing[NPART][4], sounds[NPART][P_COUNT];
     ui_power_on();
     bad += check("SONG empty: PLAY does not start", chain_prepare() == 1 && !transport_req);
     for (k = 0; k < 2u; k++) {
-        for (i = 0; i < NTRK; i++) {
+        for (i = 0; i < NPART; i++) {
             pattern_request(&trk[i], k);
             track_defaults_steps(&trk[i]);
             trk[i].p[P_SLEN] = (int16_t)(2u + k);
@@ -2602,7 +2602,7 @@ static int test_chain(void)
         }
         project_save(k);
     }
-    for (i = 0; i < NTRK; i++) {
+    for (i = 0; i < NPART; i++) {
         pattern_request(&trk[i], 2);
         my_steps(&trk[i]); trk[i].p[P_SLEN] = 9;
         memcpy(before[i], trk[i].step, sizeof before[i]);
@@ -2611,7 +2611,7 @@ static int test_chain(void)
     }
     chain_config.count = 2;
     chain_config.row[0] = (chain_row_t){0, 2}; chain_config.row[1] = (chain_row_t){1, 1};
-    memset(chain_patterns[0], 0, NTRK); memset(chain_patterns[1], 1, NTRK);
+    memset(chain_patterns[0], 0, NPART); memset(chain_patterns[1], 1, NPART);
     chain_patterns[1][3] = NPAT;
     bad += check("SONG invalid bank refuses before changing any track", chain_prepare() == 1 && !chain.armed &&
         !memcmp(trk[0].step, before[0], sizeof before[0]));
@@ -2631,7 +2631,7 @@ static int test_chain(void)
     events_block(period);
     events_block(period);
     ok = chain.row == 1 && chain.remaining == 1;
-    for (i = 0; i < NTRK; i++) {
+    for (i = 0; i < NPART; i++) {
         ok &= trk[i].seq_idx == 0 && trk[i].p[P_SLEN] == 3 && seq_steps(&trk[i])[0].note[0] == 65;
         for (k = 0; k < P_COUNT; k++)
             if (k < P_SLEN || k > P_SGATE) ok &= trk[i].p[k] == sounds[i][k];
@@ -2645,7 +2645,7 @@ static int test_chain(void)
     events_block(period);
     events_block(period);
     ok = !song.playing && !chain.running && song.rec == 3;
-    for (i = 0; i < NTRK; i++) ok &= !trk[i].seq_n && !memcmp(trk[i].step, before[i], sizeof before[i]) &&
+    for (i = 0; i < NPART; i++) ok &= !trk[i].seq_n && !memcmp(trk[i].step, before[i], sizeof before[i]) &&
         !memcmp(&trk[i].p[P_SLEN], timing[i], sizeof timing[i]);
     bad += check("SONG end: stops and restores editable patterns, timing and record arms", ok);
     bad += check("SONG source banks stay unchanged", pattern_at(0, 0)->step[0].note[0] == 60 && pattern_at(0, 1)->step[0].n == 3);
@@ -2656,7 +2656,7 @@ static int test_chain(void)
     trk[0].seq_pos = last - n + 19u;
     events_block(n);
     ok = chain.row == 1;
-    for (i = 0; i < NTRK; i++) ok &= trk[i].seq_pos == 19u && trk[i].seq_idx == 0;
+    for (i = 0; i < NPART; i++) ok &= trk[i].seq_pos == 19u && trk[i].seq_idx == 0;
     bad += check("SONG transition preserves fractional block time on all tracks", ok);
     transport_req = 2; events_block(n);
     bad += check("SONG manual STOP restores the previous pattern", !chain.running && !song.playing && !memcmp(trk[0].step, before[0], sizeof before[0]));
@@ -2899,7 +2899,7 @@ static void frames(uint32_t ms) { uint32_t i; for (i = 0; i < ms / 16u; i++) fra
 static uint32_t gates(void)                        /* voices of every track with their key down */
 {
     uint32_t p, i, n = 0;
-    for (p = 0; p < NTRK; p++)
+    for (p = 0; p < NPART; p++)
         for (i = 0; i < NVOICE; i++)
             n += trk[p].v[i].gate != 0;
     return n;
@@ -3226,7 +3226,7 @@ static int test_cz1_pages(void)
     int bad = 0;
     ui_power_on();
     stop_transport();
-    tr = song.sel % NTRK;
+    tr = song.sel % NPART;
     set_engine_of(TSEL, ENGI_CZ);
     frame();
     bad += check("CZ-1 EDIT cycle: tone pages and VOICE, without bank/patch pages", engine_cycle(CYC, NELEM(CYC)));
@@ -3235,8 +3235,8 @@ static int test_cz1_pages(void)
         if (!CZ_PD[id].label)
             continue;
         for (v = (uint32_t)CZ_PD[id].min; v <= (uint32_t)CZ_PD[id].max; v++) {
-            cz_patch_init(cz_patch[tr].raw);
-            cz_ed_decode(p, cz_patch[tr].raw);
+            cz_patch_init(cz_patch_of(tr)->raw);
+            cz_ed_decode(p, cz_patch_of(tr)->raw);
             if (!cz_ed_put(tr, id, v, raw)) {           /* no change: already that, or END's level / SUS */
                 uint32_t k = id - LCZ_EBASE(0, 0), e = LCZ_EBASE(0, 0) + k / 18u * 18u;
                 ok &= p[id] == v || (id >= LCZ_EBASE(0, 0) && id < LCZ_OLD_NP &&
@@ -3262,9 +3262,9 @@ static int test_cz1_pages(void)
     bad += check("CZ-1 every panel value round-trips through the native bytes, alone", ok);
     bad += check("CZ-1 every edit leaves a valid native tone", sane);
     /* an imported tone: rates off Melodee's 0..99 grid stay exact unless their own value is turned */
-    cz_patch_init(cz_patch[tr].raw);
-    for (i = 0; i < 8u; i++) cz_patch[tr].raw[CZ_ENV_BASE[0][1] + 2u * i] = (uint8_t)(13u + 7u * i);
-    memcpy(before, cz_patch[tr].raw, CZ_BYTES);
+    cz_patch_init(cz_patch_of(tr)->raw);
+    for (i = 0; i < 8u; i++) cz_patch_of(tr)->raw[CZ_ENV_BASE[0][1] + 2u * i] = (uint8_t)(13u + 7u * i);
+    memcpy(before, cz_patch_of(tr)->raw, CZ_BYTES);
     if (cz_ed_put(tr, LCZ_EBASE(0, 0) + 9u, 40u, raw))     /* C1 PIT L2 */
         for (i = 0; i < 8u; i++) kept &= raw[CZ_ENV_BASE[0][1] + 2u * i] == before[CZ_ENV_BASE[0][1] + 2u * i];
     else
@@ -3273,37 +3273,37 @@ static int test_cz1_pages(void)
         if (raw[i] != before[i] && (i < CZ_ENV_BASE[0][0] - 1u || i > CZ_ENV_BASE[0][0] + 15u)) kept = 0;
     bad += check("CZ-1 an edit rewrites its own envelope only; imported rates elsewhere stay verbatim", kept);
     /* the knobs: CZ DETUNE FINE up 5 -> 5; C1 AMP POINT SUS past END -> "-", back down -> END - 1 */
-    cz_patch_init(cz_patch[tr].raw);
+    cz_patch_init(cz_patch_of(tr)->raw);
     cz_track_accept(TSEL);
     go_title("CZ DETUNE");
     turn(EN_K4, 5);
-    cz_ed_decode(p, cz_patch[tr].raw);
+    cz_ed_decode(p, cz_patch_of(tr)->raw);
     bad += check("CZ-1 CZ DETUNE KNOB 4 turns FINE in the track's tone", p[LCZ_FINE] == 5u);
     go_title("C1 AMP POINT");
-    cz_ed_decode(p, cz_patch[tr].raw);
+    cz_ed_decode(p, cz_patch_of(tr)->raw);
     id = LCZ_EBASE(0, 2) + 16u;
-    for (i = 0; i < 12u && p[id] != 8u; i++) { turn(EN_K1, 1); cz_ed_decode(p, cz_patch[tr].raw); }
+    for (i = 0; i < 12u && p[id] != 8u; i++) { turn(EN_K1, 1); cz_ed_decode(p, cz_patch_of(tr)->raw); }
     ok = p[id] == 8u;
     turn(EN_K1, -1);
-    cz_ed_decode(p, cz_patch[tr].raw);
+    cz_ed_decode(p, cz_patch_of(tr)->raw);
     bad += check("CZ-1 SUS turned past END shows -, turned back lands before END",
                  ok && p[id + 1u] && p[id] == p[id + 1u] - 1u);
     /* TOOLS: COMP swaps with the tone before the edits, 1 > 2 copies line 1 over line 2 */
     go_title("CZ TOOLS");
-    memcpy(before, cz_patch[tr].raw, CZ_BYTES);
+    memcpy(before, cz_patch_of(tr)->raw, CZ_BYTES);
     turn(EN_K4, 1);
     press(B_OCTUP);
-    cz_ed_decode(p, cz_patch[tr].raw);
+    cz_ed_decode(p, cz_patch_of(tr)->raw);
     ok = p[LCZ_FINE] == 0u;
     turn(EN_K4, 1);
     press(B_OCTUP);
     bad += check("CZ-1 TOOLS COMP: the tone as loaded, then the edit again",
-                 ok && !memcmp(before, cz_patch[tr].raw, CZ_BYTES));
-    cz_patch[tr].raw[14] = 0xA0;                         /* line 1: DBL SINE */
+                 ok && !memcmp(before, cz_patch_of(tr)->raw, CZ_BYTES));
+    cz_patch_of(tr)->raw[14] = 0xA0;                         /* line 1: DBL SINE */
     turn(EN_K2, 1);
     press(B_OCTUP);
     bad += check("CZ-1 TOOLS 1 > 2: line 2 is line 1's block, MOD stays line 1's",
-                 !memcmp(cz_patch[tr].raw + 71, cz_patch[tr].raw + 14, 57) && (cz_patch[tr].raw[72] & 0x38u) == 0u);
+                 !memcmp(cz_patch_of(tr)->raw + 71, cz_patch_of(tr)->raw + 14, 57) && (cz_patch_of(tr)->raw[72] & 0x38u) == 0u);
     turn(EN_K1, 1);
     press(B_OCTUP);
     ok = name_on() && nm.kind == NK_CZ_NAME && str_eq(nm.s, "INIT");
@@ -3323,22 +3323,22 @@ static int test_cz1_factory(void)
     int bad = 0;
     ui_power_on();
     stop_transport();
-    tr = song.sel % NTRK;
+    tr = song.sel % NPART;
     bad += check("CZ-1 PRESETS: INIT TONE, then Casio's 64 CZ-1 tones", e->npresets == 65u && CZ_FACTORY_N == 64u &&
                  str_eq(eng_preset(e, 1)->name, "BRASS 1") && str_eq(eng_preset(e, 64)->name, "TYPHOON"));
     for (i = 1; i <= 64u; i++) {
         set_engine_of(TSEL, ENGI_CZ);
         apply_preset_to(TSEL, i);
         ok &= TSEL->preset == i && TSEL->p[P_E0] == (int16_t)((i - 1u) / 16u) && TSEL->p[P_E1] == (int16_t)((i - 1u) % 16u + 1u) &&
-              !memcmp(cz_patch[tr].raw, cz_fac(i - 1u), CZ_BYTES) && cz_patch_valid(cz_patch[tr].raw);
+              !memcmp(cz_patch_of(tr)->raw, cz_fac(i - 1u), CZ_BYTES) && cz_patch_valid(cz_patch_of(tr)->raw);
         frame();                                         /* (cz_bank_poll: the tone stays, BANK / PTCH already its) */
-        ok &= !memcmp(cz_patch[tr].raw, cz_fac(i - 1u), CZ_BYTES);
+        ok &= !memcmp(cz_patch_of(tr)->raw, cz_fac(i - 1u), CZ_BYTES);
     }
     bad += check("CZ-1 each factory preset loads its native tone and shows its BANK / PTCH", ok);
     bad += check("CZ-1 factory tones keep the CZ-1's own LCD names",
                  !memcmp(cz_fac(0) + 128, "    BRASS 1     ", 16) && !memcmp(cz_fac(45) + 128, "AFRO-PERCUSSION ", 16));
     apply_preset_to(TSEL, 0);
-    bad += check("CZ-1 INIT TONE is still the init voice", !memcmp(cz_patch[tr].raw + 128, "INIT", 4) && TSEL->p[P_E1] == 0);
+    bad += check("CZ-1 INIT TONE is still the init voice", !memcmp(cz_patch_of(tr)->raw + 128, "INIT", 4) && TSEL->p[P_E1] == 0);
     ok = 1;
     for (n = 0; n < 8u; n++) {
         cz_bank_import(n, 0, 0);
@@ -3352,7 +3352,7 @@ static int test_cz1_factory(void)
     set_engine_of(TSEL, ENGI_CZ);
     TSEL->p[P_E0] = 2; TSEL->p[P_E1] = 7; frame();
     bad += check("CZ-1 retired BANK / PTCH values cannot replace the current tone",
-                 !memcmp(cz_patch[tr].raw + 128,"INIT",4));
+                 !memcmp(cz_patch_of(tr)->raw + 128,"INIT",4));
     cz_bank_empty(&mine, 0);
     memcpy(mine.tone[0].raw, cz_fac(63), CZ_BYTES); mine.used = 1u;
     cz_bank_import(0, (const uint8_t *)&mine, sizeof mine);
@@ -3468,7 +3468,7 @@ static int test_boot_template(void)
     project_save(0);                                     /* (A used: the template's project goes to B) */
     sheet_do("Load template");
     ok = trk[1].p[P_LEVEL] == 77 && trk[2].eng_req == ENGI_DRUM && trk[2].p[P_E0] == 4 && fm6_fn[1][FN_PBUP] == 7u;
-    for (i = 0; i < NTRK; i++)
+    for (i = 0; i < NPART; i++)
         ok &= seq_is_empty(&trk[i]);
     bad += check("LOAD on TMPL: its sounds, every pattern empty, SLOT on a free slot (B)", ok &&
                  msg_is("TEMPLATE LOADED") && song.g[G_SLOT] == 2 && proj_cur == PROJ_NO_SLOT);
@@ -3774,21 +3774,21 @@ static int test_fm6_pages(void)
     set_engine_of(TSEL, ENGI_FM6);
     tr = song.sel;
     ui.home = 1;
-    memcpy(v, fm6_patch[tr], FP_SIZE);
+    memcpy(v, fm6_patch_of(tr), FP_SIZE);
     memcpy(v + FP_NAME, "MY VOICE  ", 10);
     fm6_set_patch(tr, v);
     TSEL->p[P_E6] = 0;
     turn(EN_K4, 20);
     bad += check("FM6 home knob 4 changes DTUN and keeps the imported voice",
-                 TSEL->p[P_E6] == 20 && !TSEL->p[P_E7] && !memcmp(v, fm6_patch[tr], FP_SIZE));
+                 TSEL->p[P_E6] == 20 && !TSEL->p[P_E7] && !memcmp(v, fm6_patch_of(tr), FP_SIZE));
     turn(EN_K4, -20);
     bad += check("FM6 home knob 4 returns DTUN to neutral without replacing the voice",
-                 !TSEL->p[P_E6] && !memcmp(v, fm6_patch[tr], FP_SIZE));
+                 !TSEL->p[P_E6] && !memcmp(v, fm6_patch_of(tr), FP_SIZE));
     go_title("FREQ");
     fm6_opsel = 0;
     turn(EN_PRESET, 1);
     bad += check("FM6 FREQ: PRESETS picks the operator (OP2)", fm6_opsel == 1u && TSEL->eng_req == ENGI_FM6);
-    op2 = &fm6_patch[tr][4u * FP_OP];                    /* (the patch keeps operator 6 first) */
+    op2 = &fm6_patch_of(tr)[4u * FP_OP];                    /* (the patch keeps operator 6 first) */
     crs = op2[FP_FC];
     turn(EN_K1, crs < 20u ? 2 : -2);
     bad += check("  KNOB 1: OP2's CRS in the patch", op2[FP_FC] == (uint8_t)(crs < 20u ? crs + 2u : crs - 2u));
@@ -3803,7 +3803,7 @@ static int test_fm6_pages(void)
     turn(EN_K2, -2); turn(EN_K1, 9);                     /* PORTA TIME: row 6 */
     bad += check("FM PORTA ENGINE, TIME: the track's own (another FM6 track keeps Dexed's)",
                  fm6_fn[tr][FN_ENGINE] == FM6_MARK1 + 1u && fm6_fn[tr][FN_PTIME] == 9u &&
-                 fm6_fn[(tr + 1u) % NTRK][FN_ENGINE] == FM6_MARK1 && !fm6_fn[(tr + 1u) % NTRK][FN_PTIME]);
+                 fm6_fn[(tr + 1u) % NPART][FN_ENGINE] == FM6_MARK1 && !fm6_fn[(tr + 1u) % NPART][FN_PTIME]);
     project_save(3);
     fm6_fn_reset();
     project_load(3);
@@ -3811,7 +3811,7 @@ static int test_fm6_pages(void)
                  fm6_fn[tr][FN_PTIME] == 9u);
     {   /* a project saved before (no function settings in its record): Dexed's */
         uint8_t *raw = proj_bank_slot[3];
-        memset(raw + BANK_FN_OFF, 0, 4u + NTRK * FM6_NFN);
+        memset(raw + BANK_FN_OFF, 0, 4u + NPART * FM6_NFN);
         bank_checksum(raw);
         project_load(3);
         bad += check("  a project of before: Dexed's", fm6_fn[tr][FN_ENGINE] == FM6_MARK1 && !fm6_fn[tr][FN_PTIME]);
@@ -3820,7 +3820,7 @@ static int test_fm6_pages(void)
     go_title("STORE");
     turn(EN_K1, 4);
     sheet_do("Save here");
-    fm6_name(a, fm6_patch[tr]);
+    fm6_name(a, fm6_patch_of(tr));
     b[0] = 0;
     if (native_used(ENGI_FM6,4)) {
         memcpy(pk,native_raw(ENGI_FM6,4),FM6_PACKED);
@@ -3837,7 +3837,7 @@ static int test_fm6_pages(void)
                  TSEL->p[P_E7] == 0);
     stop_transport();
     sheet_do("Init sound");
-    fm6_name(a, fm6_patch[tr]);
+    fm6_name(a, fm6_patch_of(tr));
     fm6_unpack(FM6_INIT, v);
     fm6_name(b, v);
     bad += check("  INIT: the init voice", msg_is("INIT VOICE") && str_eq(a, b));
@@ -4187,19 +4187,19 @@ static int test_bughunt_ui(void)
         track_select(1); frame();
         undo_depth++; set_engine_of(TSEL, ENGI_FM6); undo_depth--;   /* (no undo copy of this) */
         frame();
-        memcpy(mine, fm6_patch[1], sizeof mine);
+        memcpy(mine, fm6_patch_of(1), sizeof mine);
         mine[0] ^= 0x15; mine[5] ^= 0x22; mine[40] ^= 0x07;   /* an edited patch (the editor, a project) */
         fm6_set_patch(1, mine);
-        memcpy(mine, fm6_patch[1], FP_SIZE);
+        memcpy(mine, fm6_patch_of(1), FP_SIZE);
         turn(EN_PRESET, 1);                             /* browse one sound */
-        memcpy(next, fm6_patch[1], FP_SIZE);
+        memcpy(next, fm6_patch_of(1), FP_SIZE);
         hold(B_EDIT);                                   /* UNDO */
         frame();
-        ok = TSEL->eng_req == ENGI_FM6 && !memcmp(mine, fm6_patch[1], FP_SIZE);
+        ok = TSEL->eng_req == ENGI_FM6 && !memcmp(mine, fm6_patch_of(1), FP_SIZE);
         edit_redo();                                    /* REDO */
         frame();
         bad += check("UNDO of a sound load on FM6: the track's edited patch back; REDO: the load's",
-                     ok && memcmp(mine, next, FP_SIZE) && !memcmp(next, fm6_patch[1], FP_SIZE));
+                     ok && memcmp(mine, next, FP_SIZE) && !memcmp(next, fm6_patch_of(1), FP_SIZE));
         hold(B_EDIT); frame();                          /* (the edited patch again) */
 
     }
@@ -4210,14 +4210,14 @@ static int test_bughunt_ui(void)
         undo_depth++; set_engine_of(TSEL, ENGI_FM6); undo_depth--;
         frame();
         turn(EN_PRESET, 1); frame();                    /* load 1 */
-        memcpy(ed, fm6_patch[1], sizeof ed);
+        memcpy(ed, fm6_patch_of(1), sizeof ed);
         ed[0] ^= 0x15; ed[40] ^= 0x07;
         fm6_set_patch(1, ed);                           /* the editor's FM6_PUT */
-        memcpy(ed, fm6_patch[1], FP_SIZE);
+        memcpy(ed, fm6_patch_of(1), FP_SIZE);
         turn(EN_PRESET, 1); frame();                    /* load 2 */
         hold(B_EDIT); frame();                          /* UNDO */
         bad += check("UNDO after load, editor patch, load: the editor's patch back",
-                     !memcmp(ed, fm6_patch[1], FP_SIZE));
+                     !memcmp(ed, fm6_patch_of(1), FP_SIZE));
     }
     {   /* the ARP button flashes on the beat while an ARP plays (the bar's first beat longer); dark otherwise */
         uint32_t q, b, r[5];
@@ -4761,7 +4761,7 @@ static int test_home_notes(void)
     q = chord_of((1u << 9) | (1u << 0) | (1u << 4) | (1u << 7), 9, &root);
     bad += check("minor seventh chord name retained from next", q && !strcmp(q, "m7") && root == 9);
     for (i = 0; i < 4u; i++) midi_forget_track(i);
-    for (i = 0; i < NTRK * 4u; i++) held |= ((uint32_t *)live_held)[i];
+    for (i = 0; i < NPART * 4u; i++) held |= ((uint32_t *)live_held)[i];
     bad += check("panic clears every held bit without erasing the readout", !held && !memcmp(saved, live_last[0], sizeof saved));
     ui_power_on();
     return bad;
@@ -4801,11 +4801,11 @@ static int test_stage(void)
         const param_desc_t *d = home_param(2, &vp);
         int16_t was = vp ? *vp : -1;
         uint8_t raw[CZ_BYTES];
-        memcpy(raw, cz_patch[song.sel].raw, CZ_BYTES);
+        memcpy(raw, cz_patch_of(song.sel)->raw, CZ_BYTES);
         turn(EN_K3, was < d->max ? 1 : -1);
         d = home_param(2, &vp);
         bad += check("Stage: CZ-1's KNOB 3 detunes the native tone (DETUNE: its FINE)", stage_page()->scope == SC_CZ1 &&
-                     d && vp && *vp != was && memcmp(raw, cz_patch[song.sel].raw, CZ_BYTES) &&
+                     d && vp && *vp != was && memcmp(raw, cz_patch_of(song.sel)->raw, CZ_BYTES) &&
                      str_eq(stage_label(2, d), "DETUNE"));
     }
     ui_power_on();
@@ -4937,7 +4937,7 @@ static int test_capture(void)
     {   /* the jam log: track 1's loop with pattern 1, then 2 twice, then 1 */
         ui_power_on();
         stop_transport();
-        for (i = 0; i < NTRK; i++) trk[i].p[P_SLEN] = 4;
+        for (i = 0; i < NPART; i++) trk[i].p[P_SLEN] = 4;
         transport_req = 1;
         events_block(1);
         while (jam.n < 1u) events_block(1);
@@ -4963,9 +4963,9 @@ static int test_capture(void)
         transport_req = 1; events_block(1);
         uint32_t generation = recording_generation;
         for (uint32_t round = 0; round < 8u; round++) {
-            for (uint32_t track = 0; track < NTRK; track++)
+            for (uint32_t track = 0; track < NPART; track++)
                 for (uint32_t note = 48; note < 64; note++) input_on(&trk[track], note, 100);
-            for (uint32_t track = 0; track < NTRK; track++)
+            for (uint32_t track = 0; track < NPART; track++)
                 for (uint32_t note = 48; note < 64; note++) input_off(&trk[track], note);
         }
         uint32_t held = 0;
@@ -5052,7 +5052,7 @@ static int test_undo_levels(void)
         /* Fill past the ring depth on alternating tracks so browse coalescing
          * cannot hide a write past the smaller failure-path buffer. */
         for (uint32_t k = 0; k < 12u; k++) {
-            track_select(k % NTRK);
+            track_select(k % NPART);
             turn(EN_PRESET, 1);
         }
         levels=UNDO_LV_MAX;
@@ -5094,7 +5094,7 @@ static int test_new_song(void)
     turn(EN_K2, 1); turn(EN_K2, 1);                     /* track 2: BASS */
     turn(EN_K3, -1); turn(EN_K4, -1);                   /* tracks 3, 4: -- */
     press(B_OCTUP);
-    for (k = 0; k < NTRK; k++) empty &= seq_is_empty(&trk[k]);
+    for (k = 0; k < NPART; k++) empty &= seq_is_empty(&trk[k]);
     song.sel = 1; cur_entry(&src, &k); song.sel = 0;
     bad += check("  OCT+ creates it: HOME, every pattern empty, D on every track, the tempo, track 2 a BASS sound, no slot",
                  !new_on() && ui.home && empty && trk[0].p[P_ROOT] == 2 && trk[3].p[P_ROOT] == 2 && song.g[G_BPM] == nw.bpm &&

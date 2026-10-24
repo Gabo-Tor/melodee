@@ -75,7 +75,7 @@ static void reset(void)
 {
     memset(nor, 0xFF, sizeof nor);
     memset(&song, 0, sizeof song);
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&chain, 0, sizeof chain);
     chain_defaults(&chain_config);
     memset(proj_slot, 0, sizeof proj_slot);

@@ -14,25 +14,27 @@ typedef struct {
     uint8_t rpn_msb, rpn_lsb;
 } midi_channel_t;
 static midi_channel_t midi_ch[16];
-/* A note's owner, a nibble per note (two notes a byte): bits 0..2 track + 1, bit 3 key released, held by its
- * channel's pedal. mn_get / mn_set speak the byte form: track + 1, MIDI_PEDAL_NOTE */
-static uint8_t midi_sel_on[16][64];
+/* A note's owner, a nibble per note (two notes a byte, bytes 0..63): track + 1, 0 none; then a bit per note (bytes
+ * 64..79): key released, held by its channel's pedal. mn_get / mn_set speak the byte form: track + 1, MIDI_PEDAL_NOTE */
+#define MIDI_PEDAL_BITS 64u
+static uint8_t midi_sel_on[16][MIDI_PEDAL_BITS + 16u];
 static uint16_t midi_owners[NTRK];           /* avoids rescanning all 2048 entries for CC123 */
 /* MIDI Track accepts a selectable input plus optional TRS. Releases follow
  * the stream that started the note, even after its input setting changes. */
 static uint32_t midi_owner_trs[16][4];
 #define MIDI_PEDAL_NOTE 0x80u
-_Static_assert(NTRK < 8u, "a note's owner fits three bits");
+_Static_assert(NTRK < 16u, "a note's owner fits a nibble");
 static uint32_t mn_get(uint32_t ch, uint32_t note)
 {
     uint32_t v = (uint32_t)(midi_sel_on[ch][note >> 1] >> ((note & 1u) * 4u)) & 15u;
-    return (v & 7u) | (v & 8u ? MIDI_PEDAL_NOTE : 0u);
+    return v | ((midi_sel_on[ch][MIDI_PEDAL_BITS + (note >> 3)] >> (note & 7u)) & 1u ? MIDI_PEDAL_NOTE : 0u);
 }
 static void mn_set(uint32_t ch, uint32_t note, uint32_t v)
 {
-    uint8_t *b = &midi_sel_on[ch][note >> 1];
-    uint32_t s = (note & 1u) * 4u, n = (v & 7u) | (v & MIDI_PEDAL_NOTE ? 8u : 0u);
-    *b = (uint8_t)((*b & ~(15u << s)) | n << s);
+    uint8_t *b = &midi_sel_on[ch][note >> 1], *p = &midi_sel_on[ch][MIDI_PEDAL_BITS + (note >> 3)];
+    uint32_t s = (note & 1u) * 4u, m = 1u << (note & 7u);
+    *b = (uint8_t)((*b & ~(15u << s)) | (v & 15u) << s);
+    *p = (uint8_t)(v & MIDI_PEDAL_NOTE ? *p | m : *p & ~m);
 }
 
 static midi_channel_t *midi_channel(uint32_t ch)
@@ -269,14 +271,14 @@ static __attribute__((noinline)) void midi_parameter(track_t *t,uint32_t cc,uint
         if(t->eng_req==ENGI_PROPHET){
             p5_edit_value(t,cc==72?P5_RELEASE_AMP:cc==73?P5_ATTACK_AMP:P5_DECAY_AMP,value);
         }else if(t->eng_req==ENGI_FM6){
-            uint8_t raw[FP_SIZE+1u];memcpy(raw,fm6_patch[trk_index(t)],sizeof raw);
+            uint8_t raw[FP_SIZE+1u];memcpy(raw,fm6_patch_of(trk_index(t)),sizeof raw);
             for(uint32_t op=0;op<6;op++)raw[op*FP_OP+(cc==72?3:cc==73?0:1)]=(uint8_t)(99u-value*99u/127u);
             fm6_put_patch(trk_index(t),raw,0);
         }else{
             uint32_t tr=trk_index(t);uint8_t raw[CZ_BYTES];
             for(uint32_t line=0;line<2;line++) {
-                uint32_t stage=cc==72?(cz_patch[tr].raw[CZ_ENV_END[line][2]]&7u):cc==73?0:1;
-                if(cz_ed_put(tr,LCZ_EBASE(line,2)+stage,99u-value*99u/127u,raw))memcpy(cz_patch[tr].raw,raw,128u);
+                uint32_t stage=cc==72?(cz_patch_of(tr)->raw[CZ_ENV_END[line][2]]&7u):cc==73?0:1;
+                if(cz_ed_put(tr,LCZ_EBASE(line,2)+stage,99u-value*99u/127u,raw))memcpy(cz_patch_of(tr)->raw,raw,128u);
             }
         }
         motion_native_edited(t,old);motion_unguard(f);return;

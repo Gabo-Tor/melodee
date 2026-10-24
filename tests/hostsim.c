@@ -105,6 +105,7 @@ static uint64_t now_ns(void)
 
 static void host_tracks_init(void)                /* as melodee_init: defaults, empty patterns */
 {
+    trk_voices_bind();
     midi_insert_init();
     cz_init();
     pattern_init();
@@ -137,7 +138,7 @@ static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset
     t->p[P_ED_FLT] = p->fenv;
     t->p[P_VOICE] = p->mono ? V_LEGATO : V_POLY;
     cz_factory_loaded(t);
-    if(e==ENGI_PROPHET){uint32_t k=(uint32_t)(t-trk)%NTRK;p5_ready[k]=1;p5_preset_loaded(t,pi);}   /* (its program, as ui.c) */
+    if(e==ENGI_PROPHET){uint32_t k=(uint32_t)(t-trk)%NPART;p5_ready[k]=1;p5_preset_loaded(t,pi);}   /* (its program, as ui.c) */
     fm6_track_loaded(t);                          /* FM6: the preset's patch (ui.c apply_preset_to) */
 }
 static void host_preset_req(track_t *t, uint32_t e, uint32_t pi)
@@ -861,6 +862,7 @@ int main(int argc, char **argv)
     const char *out = argc > 4 ? argv[4] : "out.wav";
     uint32_t i, frames = FS * (getenv("SWEEP") ? 4 : 2), f, nk = 0;
     clock_t c0;
+    trk_voices_bind();
     FILE *w = fopen(out, "wb");
     if (getenv("SECS"))
         frames = FS * (uint32_t)atoi(getenv("SECS"));

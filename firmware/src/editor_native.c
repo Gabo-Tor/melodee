@@ -20,7 +20,7 @@ static int ed_native_handle(uint32_t cmd,const uint8_t *a,uint32_t n)
             if(!rc){if(e==ENGI_FM6)memcpy(raw,a+3,FM6_PACKED);else for(uint32_t j=0;j<native_size(e);j++){if(a[3u+2u*j]>15u || a[4u+2u*j]>15u){rc=1;break;}raw[j]=a[3u+2u*j]|a[4u+2u*j]<<4;}}
             if(!rc)rc=ed_flash_stop()?3u:(uint32_t)native_put(e,k,raw);
         }else if(op==3u || op==4u){
-            if(n!=4u || a[3]>=NTRK)rc=1;
+            if(n!=4u || a[3]>=NPART)rc=1;
             else if(op==4u)rc=(uint32_t)native_load(e,k,a[3]);
             else rc=ed_flash_stop()?3u:(uint32_t)native_store(e,k,a[3],0);
         }else if(op==5u){if(n!=3u)rc=1;else rc=ed_flash_stop()?3u:(uint32_t)native_put(e,k,0);}

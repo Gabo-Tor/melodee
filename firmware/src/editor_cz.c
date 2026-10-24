@@ -14,11 +14,11 @@ static int ed_cz_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     if (cmd != ED_CZ_GET && cmd != ED_CZ_PUT) return 0;
     uint32_t target = n ? a[0] : 127u, index = n > 1u ? a[1] : 127u, rc = 0;
     uint8_t raw[CZ_BYTES];
-    if (target > 2u || index >= (target == 2u ? 128u : target ? UP_SLOTS : NTRK) || (target==2u && cmd==ED_CZ_PUT)) rc = 1;
+    if (target > 2u || index >= (target == 2u ? 128u : target ? UP_SLOTS : NPART) || (target==2u && cmd==ED_CZ_PUT)) rc = 1;
     if (!rc && cmd == ED_CZ_GET) {
         if (n != 2u) rc = 1;
         else if (target == 2u) rc = cz_bank_get(index/16u,index%16u,raw) ? 2u : 0u;
-        else if (!target) memcpy(raw, cz_patch[index].raw, CZ_BYTES);
+        else if (!target) memcpy(raw, cz_patch_of(index)->raw, CZ_BYTES);
         else if (up_used(index) && up_cz_raw(up_rec(index),raw)) { /* complete native tone */ }
         else rc = 2;
     }
@@ -47,7 +47,7 @@ static int ed_cz_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             load_begin(t,UNDO_SOUND);
             panic_req |= (uint8_t)(1u<<index);
             fm1_irq_off();
-            memcpy(cz_patch[index].raw,raw,CZ_BYTES); t->eng_req=ENGI_CZ;
+            memcpy(cz_patch_of(index)->raw,raw,CZ_BYTES); t->eng_req=ENGI_CZ;
             for (uint32_t i=P_E0;i<P_COUNT;i++) t->p[i]=param_desc_of(ENGI_CZ,i)->def;
             t->p[P_E7]=CZ_NATIVE; t->preset=0; t->user=0; t->user_native=0; cz_track_accept(t);
             fm1_irq_on();

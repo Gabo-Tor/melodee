@@ -5,11 +5,66 @@
 #include "backup_test.c"
 #include <assert.h>
 static uint8_t oracle[BANK_STORE_SIZE],actual[BANK_STORE_SIZE],old_flash[sizeof nor];
+static void midi_tracks_stream(void)
+{
+    reset(); song.ntrk=NTRK; song.sel=NTRK-1u;
+    for(uint32_t k=0;k<NTRK;k++){
+        trk[k].p[P_ROOT]=9; trk[k].p[P_SCALE]=2;
+        if(k>=NPART)trk[k].p[P_E0]=(int16_t)(16u-k);
+        for(uint32_t b=0;b<NPAT;b++){
+            pattern_t p; pattern_read(k,b,&p);
+            p.step[63]=(step_t){{(uint8_t)(40u+k+b)},1,ST_NOTE,0,99};
+            p.timing[0]=64;
+            assert(pattern_write(k,b,&p));
+        }
+        pattern_switch(&trk[k],k%NPAT);
+    }
+    for(uint32_t i=0;i<RECORD_MAX;i++){
+        recorded_note_t r={.on=(uint16_t)(i*61u),.duration=123,.note=60,.vel=100};
+        recorded_set_owner(&r,i%(NTRK*NPAT)); recorded_set_step(&r,63,0,0);
+        recording[i]=r;
+    }
+    recording_reindex(); chain_config.count=2; chain_patterns[1][NTRK-1u]=7;
+    project_capture(&proj_scratch); assert(bank_pack(oracle,&proj_scratch,1));
+    assert(bank_wide);
+    uint32_t hash; project_capture(&proj_scratch);
+    assert(proj_image_hash(1,&hash)&&hash==proj_hash(oracle,sizeof oracle));
+    assert(!project_save_as(0,0)); assert(!project_dirty());
+    assert(st_load(OBJ_BANK0,actual,sizeof actual)==sizeof actual&&!memcmp(actual,oracle,sizeof actual));
+    project_new_blank(); project_load(0);
+    assert(trk_n()==NTRK&&song.sel==NTRK-1u&&chain_patterns[1][NTRK-1u]==7);
+    uint32_t counts[NTRK*NPAT]={0};
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)counts[recorded_owner(&recording[i])]++;
+    for(uint32_t o=0;o<NTRK*NPAT;o++)assert(counts[o]==RECORD_MAX/(NTRK*NPAT));
+    for(uint32_t k=0;k<NTRK;k++){
+        assert(trk[k].p[P_ROOT]==9&&trk[k].p[P_SCALE]==2);
+        if(k>=NPART)assert(trk[k].eng_req==ENGI_MIDI&&trk[k].p[P_E0]==(int32_t)(16u-k));
+        for(uint32_t b=0;b<NPAT;b++){
+            pattern_t p; pattern_read(k,b,&p);
+            assert(p.step[63].note[0]==40u+k+b&&p.step[63].n==1&&p.timing[0]==64);
+        }
+    }
+    assert(!project_dirty());
+    template_save(); project_new_blank(); template_load();
+    assert(trk_n()==NTRK&&song.sel==NTRK-1u);
+    for(uint32_t k=0;k<NTRK;k++)assert(trk[k].p[P_ROOT]==9&&trk[k].p[P_SCALE]==2);
+    project_load(0);
+    uint32_t before=erases; assert(!track_remove(NPART)); assert(erases==before&&trk_n()==NTRK-1u);
+    assert(trk[NPART].p[P_E0]==(int32_t)(16u-NPART-1u));
+    assert(chain_patterns[1][NTRK-2u]==7);
+    assert(!project_save_as(1,"MIDI SEVEN")); project_new_blank(); project_load(1);
+    assert(trk_n()==NTRK-1u&&trk[NPART].p[P_E0]==(int32_t)(16u-NPART-1u));
+    /* A malformed extra recording directory must never publish a replacement. */
+    uint32_t dir=0; wire_bits_put(oracle+BANKL_REC_OFF,&dir,RECORD_MAX+1u,11);
+    bank_checksum(oracle);
+    assert(!bank_valid(oracle,sizeof oracle));
+    puts("Project stream: eight-track FBKL oracle, all 64 recording owners, save/load and MIDI removal passed");
+}
 static void workload(uint32_t count,uint32_t spread,uint32_t tail,uint32_t quant,uint32_t engine)
 {
-    reset();song.ntrk=NTRK;
+    reset();song.ntrk=NPART;
     const uint8_t eng[]={19,12,15,3,10,10,0};
-    for(uint32_t k=0;k<NTRK;k++){
+    for(uint32_t k=0;k<NPART;k++){
         track_t *t=&trk[k];set_engine_of(t,eng[(engine+k)%NELEM(eng)]);apply_preset_to(t,0);
         t->p[P_VOICE]=V_POLY;t->p[P_RECQ]=quant?3:0;
         for(uint32_t b=0;b<NPAT;b++){
@@ -22,7 +77,7 @@ static void workload(uint32_t count,uint32_t spread,uint32_t tail,uint32_t quant
         r.owner=(spread?i%32u:7u)|(tail?3u<<5:0u);recording[i]=r;assert(recording_valid(&r));
     }
     recording_reindex();chain_config.count=1;chain_config.row[0]=(chain_row_t){0,2};
-    for(uint32_t k=0;k<NTRK;k++)chain_patterns[0][k]=k+1;
+    for(uint32_t k=0;k<NPART;k++)chain_patterns[0][k]=k+1;
 }
 int main(void)
 {
@@ -56,9 +111,9 @@ int main(void)
     assert(st_load(OBJ_BANK0,actual,sizeof actual)==sizeof actual&&!memcmp(actual,oracle,sizeof actual));
     /* Track removal takes the same snapshot/restore route without using flash. */
     uint32_t erases_before=erases;assert(!track_remove(1));assert(erases==erases_before&&trk_n()==3);
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<NPAT;b++){
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=0;b<NPAT;b++){
         pattern_t pat;pattern_read(k,b,&pat);
-        assert(k==NTRK-1u?pat.step[3].time==ST_REST:pat.step[3].note[0]==40u+(k>=1u?k+1u:k)*8u+b);
+        assert(k==NPART-1u?pat.step[3].time==ST_REST:pat.step[3].note[0]==40u+(k>=1u?k+1u:k)*8u+b);
     }
     for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)assert(recorded_owner(&recording[i])<3u*NPAT);
     assert(proj_image_capture(1));assert(proj_ok(&proj_scratch));
@@ -79,6 +134,7 @@ int main(void)
     assert(!memcmp(&expected,&proj_scratch,sizeof expected));
     legacy[at+8u]=25;sum=proj_hash(legacy,len-4u);memcpy(legacy+len-4u,&sum,4);
     assert(!st_save(OBJ_BANK0+3u,legacy,len));assert(!proj_read_slot(3)&&proj_meta[3].old);
+    midi_tracks_stream();
     printf("Project stream: %u complete RAM-codec comparisons, hash/dirty/save/load/rename, failed save and track removal passed\n",cases);
     return 0;
 }

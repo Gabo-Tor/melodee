@@ -680,7 +680,7 @@ static void draw_columns(void)
                                                          * the page left (DRUM SOUND ..) draws none under them */
         return;
     if(cur_page()->scope==SC_DRUM){
-        char v[12];uint32_t sound=ui.drum_sound%drum_sound_count(TSEL);const int8_t *c=drum_patch[song.sel].c[sound];
+        char v[12];uint32_t sound=ui.drum_sound%drum_sound_count(TSEL);const int8_t *c=drum_patch_of(song.sel)->c[sound];
         draw_column(0,"DRUM",drum_sound_name(TSEL,sound),"",VAL(0u),-1,ICON_AUTO);
         if(cur_page()->id[1]==4){fmt_int(v,127-c[3]);draw_column(1,"LEVEL",v,"",VAL(1u),-1,ICON_AUTO);draw_column(2,"","","",T_THEME,-1,ICON_NONE);draw_column(3,"","","",T_THEME,-1,ICON_NONE);return;}
         fmt_int(v,c[0]);draw_column(1,"TUNE",v,"ST",VAL(1u),-1,ICON_PITCH);
@@ -884,7 +884,7 @@ static void draw_columns(void)
         }
         draw_column(c, d->label, val, unit, fx_names(d) && col_style != CS_CAPTURE ? fx_fam_col(fx_family(*vp)) :
                     (cur_page()->scope == SC_CZ1 &&   /* CZ-1: no effect on the tone as it is */
-                    !cz_ed_active(cz_patch[song.sel % NTRK].raw, cur_page()->id[c])) ||
+                    !cz_ed_active(cz_patch_of(song.sel % NTRK)->raw, cur_page()->id[c])) ||
                     (cur_page()->scope == SC_P5 && !p5_ed_active(TSEL, cur_page()->id[c])) ||
                     (vp == &TSEL->p[P_LRATE] && TSEL->p[P_LSYNC]) ? T_DIM : VAL(c),   /* LFO 2 SYNC on: RATE does nothing */
                     d->fmt == F_ENUM && d->max < 2 ? -1 : RATIO(d, *vp), param_icon(d, *vp));

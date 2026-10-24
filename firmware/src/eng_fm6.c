@@ -44,7 +44,9 @@ typedef struct {
 #define FM6_PACKED 128u
 #define FM6_ON_ALL 0x3Fu
 
-static uint8_t fm6_patch[NTRK][FP_SIZE + 1u];   /* the tracks' patches (main loop writes, then fm6_pgen) */
+static uint8_t fm6_patch[NPART][FP_SIZE + 1u];  /* the parts' patches (main loop writes, then fm6_pgen) */
+static uint8_t fm6_patch_none[FP_SIZE + 1u];     /* a MIDI-only track's: read, written, never heard */
+static uint8_t *fm6_patch_of(uint32_t k) { return k < NPART ? fm6_patch[k] : fm6_patch_none; }
 static volatile uint8_t fm6_pgen[NTRK];          /* +1 after each write of fm6_patch[t] */
 static volatile uint8_t fm6_lgen[NTRK];          /* +1 when the write was a new voice (a load): the notes stop */
 static uint8_t fm6_on[NTRK];                     /* the operator switches (bit k: the sixth first), all on at a load */
@@ -53,7 +55,7 @@ static struct {                                  /* the patch through the macros
     uint8_t gen, ok;
     int16_t e[7];                                /* P_E0..P_E6 it was made with */
     int32_t dt[6];                               /* DTUN: per operator, Q24 log2 */
-} fm6_eff[NTRK];
+} fm6_eff[NPART];
 
 /* ------------------------------------------------------- patch formats --- */
 /* the highest value of each byte of the 155-byte voice */
@@ -204,7 +206,7 @@ static void fm6_put_patch(uint32_t tr, const uint8_t *v, int load)
     tr %= NTRK;
     memcpy(s, v, FP_SIZE);
     fm6_sanitize(s);                                /* not in place: the ISR must never copy an unsanitized byte */
-    memcpy(fm6_patch[tr], s, FP_SIZE + 1u);
+    memcpy(fm6_patch_of(tr), s, FP_SIZE + 1u);
     if (load) {
         fm6_on[tr] = FM6_ON_ALL;
         fm6_lgen[tr]++;
@@ -216,7 +218,7 @@ static void fm6_put_patch(uint32_t tr, const uint8_t *v, int load)
 /* .. a load when its name or TRANSPOSE is another (a patch sent whole, an undo, a project), else an edit */
 static void fm6_set_patch(uint32_t tr, const uint8_t *v)
 {
-    const uint8_t *o = fm6_patch[tr % NTRK];
+    const uint8_t *o = fm6_patch_of(tr % NTRK);
     fm6_put_patch(tr, v, memcmp(o + FP_NAME, v + FP_NAME, 10) || o[FP_TRNSP] != v[FP_TRNSP]);
 }
 
@@ -263,7 +265,7 @@ static int fm6_eff_build(const track_t *t)
             return 0;
     }
     fm6_eff[tr].gen = fm6_pgen[tr];
-    memcpy(fm6_eff[tr].p, fm6_patch[tr], FP_SIZE);
+    memcpy(fm6_eff[tr].p, fm6_patch_of(tr), FP_SIZE);
     for (k = 0; k < 7u; k++)
         fm6_eff[tr].e[k] = e[k];
     {
@@ -1119,16 +1121,22 @@ static void fm6_post(track_t *t, int32_t *out, uint32_t n, uint32_t nr)
 /* ------------------------------------------------------ DX7 SysEx in --- */
 /* Frames that start F0 43 (Yamaha), collected by the USB ISR (usb.c sysex_byte) for the main loop
  * (fm6_store.c fm6_service): a 32-voice dump is the longest. One frame at a time; a frame arriving while one
- * is waiting is dropped */
+ * is waiting is dropped.
+ * The frame lives in the main loop's serialized scratch (project.c's jobs: settings, DX7 dumps out, archives, project
+ * streams, the update entry), never both at once: a job takes it (wire_take) until the main loop's next turn
+ * (wire_release), dropping a frame being collected or waiting and an import staged there; the ISR collects only while
+ * no job holds it, and writes nothing before the 43 (another maker's SysEx leaves the scratch alone) */
 #define FM6_RX 4104u
-#if MELODEE_RECORD_QUEUE
-/* Compact recorder counters free data SRAM. Put this asynchronous receive
- * buffer there so the saving enlarges the contiguous engine arena, rather
- * than remaining only in a small separate data-region allocation bank. */
-static uint8_t fm6_rx[FM6_RX];
+#if MELODEE_FLASH && !MELODEE_AUDIO_PROFILE
+#define WIRE_SCRATCH_BYTES FM6_RX
 #else
-static uint8_t fm6_rx[FM6_RX] __attribute__((section(".pool")));
+#define WIRE_SCRATCH_BYTES 27904u                       /* a whole bank record (project.c asserts it fits) */
 #endif
+/* In data SRAM, not the pool: the saving enlarges the contiguous engine arena */
+static union { uint32_t align; uint8_t raw[WIRE_SCRATCH_BYTES]; } proj_wire_u;
+#define fm6_rx proj_wire_u.raw
+static uint8_t proj_wire_gen;                /* +1 when a scratch client invalidates an archive snapshot/upload */
+static volatile uint8_t wire_job;            /* a main-loop job holds the scratch this turn */
 static uint32_t fm6_rx_n;
 static volatile uint8_t fm6_rx_ready;
 static uint8_t fm6_rx_on;
@@ -1136,9 +1144,9 @@ static uint8_t fm6_rx_on;
 static void fm6_sx_byte(uint8_t b)
 {
     if (b == 0xF0) {
-        fm6_rx_on = !fm6_rx_ready;
+        fm6_rx_on = !fm6_rx_ready && !wire_job;
         if (fm6_rx_on)
-            fm6_rx_n = 0;                               /* a pending frame belongs to the main loop */
+            fm6_rx_n = 0;                               /* a pending frame belongs to the main loop, the scratch to a job */
     }
     if (!fm6_rx_on || b >= 0xF8u)
         return;                                          /* (realtime may occur anywhere in SysEx) */
@@ -1146,11 +1154,17 @@ static void fm6_sx_byte(uint8_t b)
         fm6_rx_on = 0;                                  /* a channel/system status cancels the frame */
         return;
     }
-    if (fm6_rx_n >= FM6_RX || (fm6_rx_n == 1u && b != 0x43)) {
-        fm6_rx_on = 0;                                   /* too long, or not Yamaha */
+    if (wire_job || fm6_rx_n >= FM6_RX || (fm6_rx_n == 1u && b != 0x43)) {
+        fm6_rx_on = 0;                                   /* a job took the scratch, too long, or not Yamaha */
         return;
     }
-    fm6_rx[fm6_rx_n++] = b;
+    if (fm6_rx_n == 1u) {                                /* Yamaha's: the scratch holds this frame now */
+        proj_wire_gen++;
+        fm6_rx[0] = 0xF0;
+    }
+    if (fm6_rx_n)
+        fm6_rx[fm6_rx_n] = b;
+    fm6_rx_n++;
     if (b == 0xF7) {
         fm6_rx_on = 0;
         RING_PUBLISH();

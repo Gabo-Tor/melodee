@@ -33,17 +33,17 @@ static void buffers(void)
 static void storage(void)
 {
     ui_power_on();
-    for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) {
+    for (uint32_t tr = 0; tr < NPART; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) {
         trk[tr].p[P_FXTYPE+s*FX_PARAMS] = FX_ECHO;
         trk[tr].p[P_FXMIX+s*FX_PARAMS] = 127;
     }
     for (uint32_t s = 0; s < FX_SLOTS; s++) song.g[G_MFXTYPE+s*FX_PARAMS] = FX_ECHO;
     project_t q; project_store_t p; project_capture(&q);
     assert(proj_pack(&p,&q) && proj_import(&proj_scratch,&p,sizeof p));
-    for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!proj_scratch.t[tr].p[P_FXTYPE+s*FX_PARAMS]);
+    for (uint32_t tr = 0; tr < NPART; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!proj_scratch.t[tr].p[P_FXTYPE+s*FX_PARAMS]);
     for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!proj_scratch.g[G_MFXTYPE+s*FX_PARAMS]);
     template_save(); template_load();
-    for (uint32_t tr = 0; tr < NTRK; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!trk[tr].p[P_FXTYPE+s*FX_PARAMS]);
+    for (uint32_t tr = 0; tr < NPART; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!trk[tr].p[P_FXTYPE+s*FX_PARAMS]);
     for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!song.g[G_MFXTYPE+s*FX_PARAMS]);
     const uint32_t kept[] = {FX_ROOM,FX_REVERB,FX_CHORUS,FX_MIDIVERB,FX_MIDIDELAY};
     for (uint32_t k = 0; k < NELEM(kept); k++) {

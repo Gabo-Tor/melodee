@@ -30,7 +30,7 @@ static int32_t blocks_peak(uint32_t nb)          /* nb blocks of the mix, its pe
 static void kit_fresh(void)
 {
     host_tracks_init();
-    memset(trk[0].v, 0, sizeof trk[0].v);
+    memset(trk[0].v, 0, NVOICE * sizeof *trk[0].v);
     eng_state_reset();
     host_preset(&trk[0], ENGI_DRUM, 0);
 }
@@ -52,7 +52,7 @@ static void lane_budget(void)
     host_tracks_init();
     eng_state_reset();
     for (p = 0; p < NPART; p++)
-        memset(trk[p].v, 0, sizeof trk[p].v);
+        memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
     host_preset(&trk[0], ENGI_DRUM, 0);
     host_preset(&trk[1], HOST_SYNTH, 0);
     trk[1].p[P_VOICE] = V_POLY;
@@ -89,7 +89,7 @@ static void lane_budget(void)
            bad ? "FAIL" : "ok");
     fails += bad != 0;
     for (p = 0; p < NPART; p++)
-        memset(trk[p].v, 0, sizeof trk[p].v);
+        memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
 }
 
 static void engine(void)

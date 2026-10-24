@@ -41,8 +41,8 @@ static struct result render(uint32_t channel, int sliced, int variant)
             ua.cw = ua.cr = 0;
             ua_audio(out, track_capture, CTL, song.master_q12);
             for (uint32_t i = 0; i < CTL; i++) {
-                for (uint32_t ch = 0; ch < NTRK; ch++) {
-                    int32_t x = track_capture[i * NTRK + ch];
+                for (uint32_t ch = 0; ch < NPART; ch++) {
+                    int32_t x = track_capture[i * NPART + ch];
                     assert((ch<2u?ua.cap[i*2u+ch]:ua_track_extra[i*2u+ch-2u]) == ua_clip(x));
                     if (ch != channel) assert(x == 0);
                     else {
@@ -54,9 +54,9 @@ static struct result render(uint32_t channel, int sliced, int variant)
                 result.monitor += (int64_t)out[i * 2 + 1] * out[i * 2 + 1];
             }
         }
-        memset(trk, 0, sizeof trk);
+        memset(trk, 0, sizeof trk);trk_voices_bind();
         mix_block(out, CTL);
-        for (uint32_t i = 0; i < CTL * NTRK; i++) assert(track_capture[i] == 0);
+        for (uint32_t i = 0; i < CTL * NPART; i++) assert(track_capture[i] == 0);
         assert(write(fd[1], &result, sizeof result) == sizeof result);
         _exit(0);
     }
@@ -93,12 +93,12 @@ static struct result stereo_render(int insert, int send, uint32_t master)
         song.master_q12 = master;
         usb.up = usb.config = 1; usb.suspended = 0;
         ua.cap_alt = 1; ua_tracks = ua_tracks_want = 0; ua_off = 0; ua_cfg_build();assert(ua_tracks_memory_prepare(ua_tracks&&!(ua_off&UA_OFF_IN)));
-        for (uint32_t i = 0; i < CTL * NTRK; i++) track_capture[i] = 123456;
+        for (uint32_t i = 0; i < CTL * NPART; i++) track_capture[i] = 123456;
         trk_note_on(&trk[0], 60, 100);
         for (uint32_t block = 0; block < 2048; block++) {
             mix_block(out, CTL);
             assert(!track_capture_on);
-            for (uint32_t i = 0; i < CTL * NTRK; i++) assert(track_capture[i] == 123456);
+            for (uint32_t i = 0; i < CTL * NPART; i++) assert(track_capture[i] == 123456);
             ua.cw = ua.cr = 0;
             ua_audio(out, 0, CTL, master);
             assert(ua.cw == CTL);
@@ -130,10 +130,10 @@ static void mode_packets(uint8_t alt)
     assert(child >= 0);
     if (!child) {
         int32_t out[CTL * 2];
-        int16_t expected[(UA_TARGET + CTL) * NTRK];
+        int16_t expected[(UA_TARGET + CTL) * NPART];
         uint8_t packet[UA_PACKET];
         host_tracks_init();
-        for (uint32_t ch = 0; ch < NTRK; ch++) {
+        for (uint32_t ch = 0; ch < NPART; ch++) {
             host_preset(&trk[ch], HOST_SYNTH, 0);
             trk[ch].p[P_PAN] = ch & 1u ? 63 : -64;
             trk_note_on(&trk[ch], 48 + ch * 7u, 100);
@@ -146,21 +146,21 @@ static void mode_packets(uint8_t alt)
             ua_tracks = ua_tracks_want = (uint8_t)tracks;
             ua_cfg_build();assert(ua_tracks_memory_prepare(ua_tracks&&!(ua_off&UA_OFF_IN)));
             ua.cap_alt = alt;
-            uint32_t channels = tracks ? NTRK : 2u;
+            uint32_t channels = tracks ? NPART : 2u;
             assert(ua_cap_channels == channels);
             for (uint32_t at = 0; at < UA_TARGET + CTL; at += CTL) {
-                for (uint32_t i = 0; i < CTL * NTRK; i++) track_capture[i] = 123456;
+                for (uint32_t i = 0; i < CTL * NPART; i++) track_capture[i] = 123456;
                 mix_block(out, CTL);
                 assert(track_capture_on == tracks);
                 for (uint32_t i = 0; i < CTL * 2u; i++) assert(out[i] == 0);
                 if (!tracks)
-                    for (uint32_t i = 0; i < CTL * NTRK; i++) assert(track_capture[i] == 123456);
+                    for (uint32_t i = 0; i < CTL * NPART; i++) assert(track_capture[i] == 123456);
                 for (uint32_t i = 0; i < CTL * channels; i++)
                     expected[at * channels + i] = (int16_t)(tracks ? ua_clip(track_capture[i]) : out[i]);
                 ua_audio(out, track_capture_on ? track_capture : 0, CTL, song.master_q12);
             }
             uint32_t read = 0, width = ua_sample_bytes(alt);
-            uint64_t energy[NTRK] = {0};
+            uint64_t energy[NPART] = {0};
             for (uint32_t p = 0; p < 12; p++) {
                 uint32_t bytes = ua_transmit(packet);
                 assert(bytes && bytes % (channels * width) == 0);
@@ -211,7 +211,7 @@ int main(void)
     assert(stereo_render(1, 1, 0).energy == 0);
     assert(stereo_render(1, 1, 2048).energy < wet.energy);
     puts("USB stereo: exact post-insert/send/pan/master/limiter copy, no stem collection: OK");
-    for (uint32_t ch = 0; ch < NTRK; ch++) {
+    for (uint32_t ch = 0; ch < NPART; ch++) {
         struct result dry = render(ch, 0, 0);
         assert(dry.energy && dry.monitor);
         for (int sliced = 0; sliced <= 1; sliced++) {

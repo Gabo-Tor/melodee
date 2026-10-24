@@ -8,20 +8,41 @@
  * steps use exactly 64 bits: four 7-bit notes, n/time + recorded marker (4 bits), flags (2), velocity (7),
  * hits/accents (8 each), probability (7). Only FBKK (written since Melodee 1.0.0) is read; older banks were
  * rewritten by 1.2's boot pass. */
+/* FBKL: the same extent and FUN record, then all NTRK tracks: written when more than PROJ_TRK tracks are in use (FBKK
+ * otherwise, which firmware before the MIDI-only tracks reads too). Its tail: each track's active bank, every bank's
+ * timing, the song's columns, the motion tags, the FM6 function settings, the timed notes' directory past the FUN
+ * record's (owners PROJ_TRK * NPAT ..), each MIDI-only track's parameters and MPC octave; then the banks the FUN record
+ * does not hold, sparse: per track a byte (bit b: bank b follows), per bank its 64-bit step mask and the steps set in
+ * it (step_packed_put); the rest zero. Music that does not fit is not written (PROJECT FULL). */
 #define BANK_MAGIC 0x4B4B4246u                  /* FBKK: sound controls and full-precision per-hit pitch/length */
+#define BANKL_MAGIC 0x4C4B4246u                 /* FBKL: every track, the banks sparse */
 #define BANK_STORE_SIZE PROJ_BANK_BYTES
 #define BANK_PROJ_SIZE PROJ_STORE_SIZE
 #define BANK_STEP_SIZE 8u
 #define BANK_ACTIVE_OFF (8u + BANK_PROJ_SIZE)
-#define BANK_EXTRA_OFF (BANK_ACTIVE_OFF + NTRK)
-#define BANK_TIMING_OFF (BANK_EXTRA_OFF + NTRK * (NPAT - 1u) * NSTEP * BANK_STEP_SIZE)
+#define BANK_EXTRA_OFF (BANK_ACTIVE_OFF + PROJ_TRK)
+#define BANK_TIMING_OFF (BANK_EXTRA_OFF + PROJ_TRK * (NPAT - 1u) * NSTEP * BANK_STEP_SIZE)
 #define BANK_TIME_SIZE 4u
-#define BANK_CHAIN_OFF (BANK_TIMING_OFF + NTRK * NPAT * BANK_TIME_SIZE)
-#define BANK_MOTION_OFF (BANK_CHAIN_OFF + CHAIN_ROWS * NTRK)
+#define BANK_CHAIN_OFF (BANK_TIMING_OFF + PROJ_TRK * NPAT * BANK_TIME_SIZE)
+#define BANK_MOTION_OFF (BANK_CHAIN_OFF + CHAIN_ROWS * PROJ_TRK)
 #define BANK_FN_OFF (BANK_MOTION_OFF + MOTION_MAX)
 #define BANK_FN_MAGIC 0x31364E46u
-_Static_assert(BANK_FN_OFF + 4u + NTRK * FM6_NFN <= BANK_STORE_SIZE - 4u, "bank project extent");
+_Static_assert(BANK_FN_OFF + 4u + PROJ_TRK * FM6_NFN <= BANK_STORE_SIZE - 4u, "bank project extent");
+#define BANKL_TIMING_OFF (BANK_ACTIVE_OFF + NTRK)
+#define BANKL_CHAIN_OFF (BANKL_TIMING_OFF + NTRK * NPAT * BANK_TIME_SIZE)
+#define BANKL_MOTION_OFF (BANKL_CHAIN_OFF + CHAIN_ROWS * NTRK)
+#define BANKL_FN_OFF (BANKL_MOTION_OFF + MOTION_MAX)
+#define BANKL_REC_OFF (BANKL_FN_OFF + 4u + PROJ_TRK * FM6_NFN)
+#define BANKL_TRK_OFF (BANKL_REC_OFF + PROJ_REC_DIR_BYTES)
+#define BANKL_TRK_BYTES (P_COUNT + 1u)                  /* the parameters + 64, the MPC octave + 3 */
+#define BANKL_STEPS_OFF (BANKL_TRK_OFF + NMIDI * BANKL_TRK_BYTES)
+_Static_assert(BANKL_STEPS_OFF + NTRK <= BANK_STORE_SIZE - 4u && (NTRK - PROJ_TRK) * NPAT <= 32u && NSTEP == 64u,
+               "FBKL: its fixed fields, one more directory of owners, a 64-bit step mask");
+#define BT(off) ((off) - BANK_ACTIVE_OFF)               /* an offset into the tail */
+static uint8_t bank_too_full;                           /* the music did not fit an FBKL record */
 static int bank_full(uint32_t n) { return n == BANK_STORE_SIZE; }
+static uint32_t bank_magic(void) { return bank_wide ? BANKL_MAGIC : BANK_MAGIC; }
+static uint32_t bank_motion_off(void) { return bank_wide ? BANKL_MOTION_OFF : BANK_MOTION_OFF; }
 static void bank_checksum(uint8_t *raw)
 {
     uint32_t sum = proj_hash(raw, BANK_STORE_SIZE - 4u);
@@ -40,31 +61,114 @@ static int bank_step_pack(uint8_t *b, const step_t *s)
     return 1;
 }
 #define BANK_TAIL_SIZE (BANK_STORE_SIZE-BANK_ACTIVE_OFF)
-static int bank_pack_tail(uint8_t *raw,const project_t *q,int runtime)
+/* timed notes of an owner past the FUN record's directory: the count FBKL keeps */
+static uint32_t bank_rec_count(const project_t *q, uint32_t owner)
 {
-    uint32_t pos=BANK_EXTRA_OFF-BANK_ACTIVE_OFF,f=motion_guard();
-    memset(raw,0,BANK_TAIL_SIZE);
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < RECORD_MAX; i++) n += q->recording[i].vel && recorded_owner(&q->recording[i]) == owner;
+    return n;
+}
+/* a MIDI-only track's place no track moves to (track_remove): what a new one there starts with */
+static void bank_midi_blank(uint8_t *b, uint32_t k)
+{
+    const preset_t *pr = eng_preset(ENGINES[ENGI_MIDI], 0);
+    for (uint32_t i = 0; i < P_COUNT; i++)
+        b[i] = (uint8_t)((i >= P_E0 ? (i == P_E0 ? (int16_t)(k + 1u) : pr->e[i - P_E0]) :
+                          param_reserved(i) || param_fx_send(i) ? 0 : TP[i].def) + 64);
+    b[P_FXTYPE] = b[P_FX2TYPE] = b[P_FX3TYPE] = (uint8_t)(FX_OFF + 64);
+    b[P_COUNT] = 3u;
+}
+static int bankl_pack_tail(uint8_t *raw, const project_t *q)   /* runtime only (cap_map) */
+{
+    uint32_t pos = BT(BANKL_STEPS_OFF), f = motion_guard();
+    step_t empty = {{0}, 0, ST_REST};
+    memset(raw, 0, BANK_TAIL_SIZE);
     for (uint32_t k = 0; k < NTRK; k++) {
-        uint32_t active = runtime ? trk[k].pattern : q->pattern[k];
-        raw[0u + k] = (uint8_t)active;
-        if (runtime) pattern_commit(&trk[k]);
+        uint32_t src = cap_map(k), active = src < NTRK ? trk[src].pattern : 0u, at = pos++;
+        track_t *t = src < NTRK ? &trk[src] : 0;
+        raw[k] = (uint8_t)active;
+        if (t) pattern_commit(t);
         for (uint32_t b = 0; b < NPAT; b++) {
             pattern_t p;
-            if (runtime) pattern_read(k, b, &p);
+            if (t) pattern_read(src, b, &p);
+            else for (uint32_t i = 0; i < NSTEP; i++) p.step[i] = empty;
+            for (uint32_t i = 0; i < 4u; i++)
+                raw[BT(BANKL_TIMING_OFF) + (k * NPAT + b) * 4u + i] = (uint8_t)(t ? p.timing[i] : TP[P_SLEN + i].def);
+            if (k < PROJ_TRK && b == active) continue;  /* (the FUN record holds a part's active bank) */
+            uint32_t lo = 0, hi = 0, n = 0;
+            for (uint32_t i = 0; i < NSTEP; i++) if (memcmp(&p.step[i], &empty, sizeof empty)) {
+                if (i < 32u) lo |= 1u << i; else hi |= 1u << (i - 32u);
+                n++;
+            }
+            if (!n) continue;
+            if (pos + 8u + n * BANK_STEP_SIZE > BANK_TAIL_SIZE - 4u) { bank_too_full = 1; motion_unguard(f); return 0; }
+            raw[at] |= (uint8_t)(1u << b);
+            for (uint32_t i = 0; i < 4u; i++) { raw[pos + i] = (uint8_t)(lo >> (8u * i)); raw[pos + 4u + i] = (uint8_t)(hi >> (8u * i)); }
+            pos += 8u;
+            for (uint32_t i = 0; i < NSTEP; i++) if (memcmp(&p.step[i], &empty, sizeof empty)) {
+                step_packed_put(raw + pos, &p.step[i]);
+                pos += BANK_STEP_SIZE;
+            }
+        }
+        if (k >= PROJ_TRK) {
+            uint8_t *b = raw + BT(BANKL_TRK_OFF) + (k - PROJ_TRK) * BANKL_TRK_BYTES;
+            if (!t) bank_midi_blank(b, k);
+            else {
+                for (uint32_t i = 0; i < P_COUNT; i++) {
+                    int16_t v = motion_base_value(t, i);
+                    if (v < -64 || v > 127) { motion_unguard(f); return 0; }
+                    b[i] = (uint8_t)(v + 64);
+                }
+                b[P_COUNT] = (uint8_t)(clamp(t->mpc_octave, -3, 3) + 3);
+            }
+        }
+        for (uint32_t r = 0; r < CHAIN_ROWS; r++)
+            raw[BT(BANKL_CHAIN_OFF) + r * NTRK + k] = t ? chain_patterns[r][src] : 0u;
+    }
+    memcpy(raw + BT(BANKL_MOTION_OFF), cap_motion_tags, sizeof cap_motion_tags);
+    if (q->fm6_fn_ok) {
+        uint32_t m = BANK_FN_MAGIC;
+        memcpy(raw + BT(BANKL_FN_OFF), &m, 4);
+        memcpy(raw + BT(BANKL_FN_OFF) + 4u, q->fm6_fn, sizeof q->fm6_fn);
+    }
+    for (uint32_t o = 0; o < (NTRK - PROJ_TRK) * NPAT; o++) {
+        uint32_t dir = o * 11u;
+        wire_bits_put(raw + BT(BANKL_REC_OFF), &dir, bank_rec_count(q, PROJ_TRK * NPAT + o), 11);
+    }
+    motion_unguard(f); return 1;
+}
+static int bank_pack_tail(uint8_t *raw,const project_t *q,int runtime)
+{
+    bank_wide = (uint8_t)(runtime && cap_tracks() > PROJ_TRK);
+    bank_too_full = 0;
+    if (bank_wide) return bankl_pack_tail(raw, q);
+    uint32_t pos=BANK_EXTRA_OFF-BANK_ACTIVE_OFF,f=motion_guard();
+    memset(raw,0,BANK_TAIL_SIZE);
+    for (uint32_t k = 0; k < PROJ_TRK; k++) {
+        uint32_t src = runtime ? cap_map(k) : k;
+        track_t *t = runtime && src < NTRK ? &trk[src] : 0;
+        uint32_t active = runtime ? (t ? t->pattern : 0u) : q->pattern[k];
+        raw[0u + k] = (uint8_t)active;
+        if (t) pattern_commit(t);
+        for (uint32_t b = 0; b < NPAT; b++) {
+            pattern_t p;
+            if (t) pattern_read(src, b, &p);
             for (uint32_t i = 0; i < 4u; i++) {
-                int16_t v = runtime ? p.timing[i] : (b != active ? TP[P_SLEN + i].def : q->t[k].p[P_SLEN + i]);
+                int16_t v = t ? p.timing[i] : (b != active || runtime ? TP[P_SLEN + i].def : q->t[k].p[P_SLEN + i]);
                 raw[(BANK_TIMING_OFF - BANK_ACTIVE_OFF)+(k*NPAT+b)*4u+i]=(uint8_t)v;
             }
             if (b == active) continue;
             for (uint32_t i = 0; i < NSTEP; i++, pos += BANK_STEP_SIZE) {
                 step_t empty = {{0},0,ST_REST};
-                if (!bank_step_pack(raw + pos, runtime ? &p.step[i] : &empty)) { motion_unguard(f); return 0; }
+                if (!bank_step_pack(raw + pos, t ? &p.step[i] : &empty)) { motion_unguard(f); return 0; }
             }
         }
     }
     if (runtime) {
-        memcpy(raw + (BANK_CHAIN_OFF - BANK_ACTIVE_OFF), chain_patterns, sizeof chain_patterns);
-        memcpy(raw + (BANK_MOTION_OFF - BANK_ACTIVE_OFF), motion_pattern, sizeof motion_pattern);
+        for (uint32_t r = 0; r < CHAIN_ROWS; r++)
+            for (uint32_t k = 0; k < PROJ_TRK; k++)
+                raw[(BANK_CHAIN_OFF - BANK_ACTIVE_OFF) + r * PROJ_TRK + k] = cap_map(k) < NTRK ? chain_patterns[r][cap_map(k)] : 0u;
+        memcpy(raw + (BANK_MOTION_OFF - BANK_ACTIVE_OFF), cap_motion_tags, sizeof cap_motion_tags);
     }
     if (q->fm6_fn_ok) {
         uint32_t m = BANK_FN_MAGIC;
@@ -75,16 +179,85 @@ static int bank_pack_tail(uint8_t *raw,const project_t *q,int runtime)
 }
 static int bank_pack(uint8_t *raw,const project_t *q,int runtime)
 {
-    uint32_t magic=BANK_MAGIC,size=BANK_STORE_SIZE;
-    memcpy(raw,&magic,4);memcpy(raw+4,&size,4);
-    if(!proj_pack((project_store_t *)(raw+8u),q)||!bank_pack_tail(raw+BANK_ACTIVE_OFF,q,runtime))return 0;
+    uint32_t magic,size=BANK_STORE_SIZE;
+    if(!bank_pack_tail(raw+BANK_ACTIVE_OFF,q,runtime))return 0;
+    magic=bank_magic();memcpy(raw,&magic,4);memcpy(raw+4,&size,4);
+    if(!proj_pack((project_store_t *)(raw+8u),q))return 0;
     bank_checksum(raw);return 1;
 }
 static uint8_t bank_import_tags[MOTION_MAX];
+/* the motion tags, the FM6 function settings: FBKK's and FBKL's */
+static int bank_tail_common(const uint8_t *raw, uint32_t motion_off, uint32_t fn_off)
+{
+    for (uint32_t i = 0; i < proj_scratch.motion.count; i++) {
+        if (raw[BT(motion_off) + i] >= NPAT) return 0;
+        for (uint32_t j = 0; j < i; j++) if (raw[BT(motion_off) + i] == raw[BT(motion_off) + j] &&
+            proj_scratch.motion.event[i].place == proj_scratch.motion.event[j].place &&
+            proj_scratch.motion.event[i].param == proj_scratch.motion.event[j].param) return 0;
+    }
+    memset(bank_import_tags, 0, sizeof bank_import_tags);
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < proj_scratch.motion.count; i++) {
+        bank_import_tags[n++] = raw[BT(motion_off) + i];
+    }
+    {   /* the FM6 function settings (none written: Dexed's) */
+        uint32_t m, k;
+        memcpy(&m, raw + BT(fn_off), 4);
+        if (m == BANK_FN_MAGIC) {
+            const uint8_t *f = raw + BT(fn_off) + 4u;
+            for (k = 0; k < PROJ_TRK; k++)
+                if (!fm6_fn_ok(f + k * FM6_NFN))
+                    return 0;
+            memcpy(proj_scratch.fm6_fn, f, sizeof proj_scratch.fm6_fn);
+            proj_scratch.fm6_fn_ok = 1;
+            proj_scratch.sum = proj_sum(&proj_scratch);
+        }
+    }
+    return 1;
+}
+/* a step as FBKL keeps it: one a bank record could hold */
+static int bankl_step_ok(const uint8_t *b)
+{
+    step_t s = step_packed_get(b);
+    return (b[3] >> 4 & 7u) != 7u && s.probability <= 101u && step_acc_valid(&s);
+}
+static int bankl_tail_valid(const uint8_t *raw)
+{
+    uint32_t pos = BT(BANKL_STEPS_OFF);
+    if (proj_scratch.parts <= PROJ_TRK) return 0;       /* (FBKK holds those) */
+    for (uint32_t k = 0; k < NTRK; k++) {
+        uint32_t active = raw[k], present = raw[pos++];
+        if (active >= NPAT || (k < PROJ_TRK && (active != proj_scratch.pattern[k] || (present >> active & 1u)))) return 0;
+        for (uint32_t b = 0; b < NPAT; b++) {
+            for (uint32_t i = 0; i < 4u; i++) {
+                int16_t v = raw[BT(BANKL_TIMING_OFF) + (k * NPAT + b) * 4u + i];
+                if (v < TP[P_SLEN + i].min || v > TP[P_SLEN + i].max) return 0;
+                if (k < PROJ_TRK && b == active && v != proj_scratch.t[k].p[P_SLEN + i]) return 0;
+            }
+            if (!(present >> b & 1u)) continue;
+            if (pos + 8u > BANK_TAIL_SIZE - 4u) return 0;
+            uint32_t n = 0;
+            for (uint32_t i = 0; i < 8u; i++) n += (uint32_t)__builtin_popcount(raw[pos + i]);
+            pos += 8u;
+            if (!n || pos + n * BANK_STEP_SIZE > BANK_TAIL_SIZE - 4u) return 0;
+            for (uint32_t i = 0; i < n; i++, pos += BANK_STEP_SIZE) if (!bankl_step_ok(raw + pos)) return 0;
+        }
+        if (k >= PROJ_TRK) {
+            const uint8_t *b = raw + BT(BANKL_TRK_OFF) + (k - PROJ_TRK) * BANKL_TRK_BYTES;
+            for (uint32_t i = 0; i < P_COUNT; i++) if (b[i] > 191u) return 0;
+            if (b[P_COUNT] > 6u) return 0;
+        }
+    }
+    for (; pos < BANK_TAIL_SIZE - 4u; pos++) if (raw[pos]) return 0;
+    for (uint32_t i = 0; i < CHAIN_ROWS * NTRK; i++) if (raw[BT(BANKL_CHAIN_OFF) + i] >= NPAT) return 0;
+    return bank_tail_common(raw, BANKL_MOTION_OFF, BANKL_FN_OFF);
+}
 static int bank_tail_valid(const uint8_t *raw)
 {
+    if (bank_wide) return bankl_tail_valid(raw);
     uint32_t pos=BANK_EXTRA_OFF-BANK_ACTIVE_OFF;
-    for (uint32_t k = 0; k < NTRK; k++) {
+    if (proj_scratch.parts > PROJ_TRK) return 0;
+    for (uint32_t k = 0; k < PROJ_TRK; k++) {
         if (raw[0u + k] >= NPAT) return 0;
         if (raw[0u + k] != proj_scratch.pattern[k]) return 0;
         for (uint32_t b = 0; b < NPAT; b++) {
@@ -97,49 +270,73 @@ static int bank_tail_valid(const uint8_t *raw)
             for (uint32_t i = 0; i < NSTEP; i++, pos += BANK_STEP_SIZE) { step_t s; if (!step_wire_unpack(&s, raw + pos)) return 0; }
         }
     }
-    for (uint32_t i = 0; i < CHAIN_ROWS * NTRK; i++) if (raw[(BANK_CHAIN_OFF - BANK_ACTIVE_OFF) + i] >= NPAT) return 0;
-    for (uint32_t i = 0; i < proj_scratch.motion.count; i++) {
-        if (raw[(BANK_MOTION_OFF - BANK_ACTIVE_OFF) + i] >= NPAT) return 0;
-        for (uint32_t j = 0; j < i; j++) if (raw[(BANK_MOTION_OFF - BANK_ACTIVE_OFF) + i] == raw[(BANK_MOTION_OFF - BANK_ACTIVE_OFF) + j] &&
-            proj_scratch.motion.event[i].place == proj_scratch.motion.event[j].place &&
-            proj_scratch.motion.event[i].param == proj_scratch.motion.event[j].param) return 0;
-    }
-    memset(bank_import_tags, 0, sizeof bank_import_tags);
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < proj_scratch.motion.count; i++) {
-        bank_import_tags[n++] = raw[(BANK_MOTION_OFF - BANK_ACTIVE_OFF) + i];
-    }
-    {   /* the FM6 function settings (none written: Dexed's) */
-        uint32_t m, k;
-        memcpy(&m, raw + (BANK_FN_OFF - BANK_ACTIVE_OFF), 4);
-        if (m == BANK_FN_MAGIC) {
-            const uint8_t *f = raw + (BANK_FN_OFF - BANK_ACTIVE_OFF) + 4u;
-            for (k = 0; k < NTRK; k++)
-                if (!fm6_fn_ok(f + k * FM6_NFN))
-                    return 0;
-            memcpy(proj_scratch.fm6_fn, f, sizeof proj_scratch.fm6_fn);
-            proj_scratch.fm6_fn_ok = 1;
-            proj_scratch.sum = proj_sum(&proj_scratch);
-        }
-    }
-    return 1;
+    for (uint32_t i = 0; i < CHAIN_ROWS * PROJ_TRK; i++) if (raw[(BANK_CHAIN_OFF - BANK_ACTIVE_OFF) + i] >= NPAT) return 0;
+    return bank_tail_common(raw, BANK_MOTION_OFF, BANK_FN_OFF);
+}
+/* the FUN record's timed notes past its own directory (FBKL), before it is read */
+static void bank_rec_ext(const uint8_t *tail)
+{
+    if (bank_wide) memcpy(proj_rec_ext, tail + BT(BANKL_REC_OFF), sizeof proj_rec_ext);
 }
 static int bank_valid(const uint8_t *raw,uint32_t len)
 {
     uint32_t magic,size,sum;
     if(!bank_full(len))return 0;
     memcpy(&magic,raw,4);memcpy(&size,raw+4,4);memcpy(&sum,raw+len-4u,4);
-    if(magic!=BANK_MAGIC||size!=len||sum!=proj_hash(raw,len-4u)||!proj_import(&proj_scratch,raw+8u,BANK_PROJ_SIZE))return 0;
+    if((magic!=BANK_MAGIC && magic!=BANKL_MAGIC)||size!=len||sum!=proj_hash(raw,len-4u))return 0;
+    bank_wide=(uint8_t)(magic==BANKL_MAGIC);bank_rec_ext(raw+BANK_ACTIVE_OFF);
+    if(!proj_import(&proj_scratch,raw+8u,BANK_PROJ_SIZE))return 0;
     return bank_tail_valid(raw+BANK_ACTIVE_OFF);
+}
+static void bankl_restore_tail(const uint8_t *raw)
+{
+    uint32_t pos = BT(BANKL_STEPS_OFF), f = motion_guard();
+    step_t empty = {{0}, 0, ST_REST};
+    chain_config = proj_scratch.chain;
+    for (uint32_t r = 0; r < CHAIN_ROWS; r++)
+        for (uint32_t k = 0; k < NTRK; k++) chain_patterns[r][k] = raw[BT(BANKL_CHAIN_OFF) + r * NTRK + k];
+    memcpy(motion_pattern, bank_import_tags, sizeof motion_pattern);
+    for (uint32_t k = 0; k < NTRK; k++) {
+        track_t *t = &trk[k];
+        uint32_t present = raw[pos++];
+        if (k >= PROJ_TRK) {                            /* (project_restore_runtime made it a blank MIDI Track) */
+            const uint8_t *b = raw + BT(BANKL_TRK_OFF) + (k - PROJ_TRK) * BANKL_TRK_BYTES;
+            for (uint32_t i = 0; i < P_COUNT; i++) {
+                const param_desc_t *d = param_desc_of(ENGI_MIDI, i);
+                t->p[i] = param_reserved(i) ? 0 : (int16_t)clamp((int32_t)b[i] - 64, d->min, d->max);
+            }
+            t->mpc_octave = (int8_t)((int32_t)b[P_COUNT] - 3);
+        }
+        t->pattern = raw[k]; t->pattern_next = 0xff; t->pattern_gen++;
+        for (uint32_t b = 0; b < NPAT; b++) {
+            pattern_t p;
+            for (uint32_t i = 0; i < 4u; i++) p.timing[i] = raw[BT(BANKL_TIMING_OFF) + (k * NPAT + b) * 4u + i];
+            if (k < PROJ_TRK && b == t->pattern) memcpy(p.step, t->step, sizeof p.step);
+            else if (present >> b & 1u) {
+                uint32_t lo = 0, hi = 0;
+                for (uint32_t i = 0; i < 4u; i++) { lo |= (uint32_t)raw[pos + i] << (8u * i); hi |= (uint32_t)raw[pos + 4u + i] << (8u * i); }
+                pos += 8u;
+                for (uint32_t i = 0; i < NSTEP; i++)
+                    if ((i < 32u ? lo >> i : hi >> (i - 32u)) & 1u) { p.step[i] = step_packed_get(raw + pos); pos += BANK_STEP_SIZE; }
+                    else p.step[i] = empty;
+            } else for (uint32_t i = 0; i < NSTEP; i++) p.step[i] = empty;
+            pattern_write(k, b, &p);
+        }
+    }
+    scale_share(TSEL);                                  /* the selected MIDI track's key is available only now */
+    motion_unguard(f);
 }
 /* Only after bank_valid and project_restore_runtime. */
 static void bank_restore_tail(const uint8_t *raw)
 {
+    if (bank_wide) { bankl_restore_tail(raw); return; }
     uint32_t pos = (BANK_EXTRA_OFF - BANK_ACTIVE_OFF), f = motion_guard();
     chain_config = proj_scratch.chain;
-    memcpy(chain_patterns, raw + (BANK_CHAIN_OFF - BANK_ACTIVE_OFF), sizeof chain_patterns);
+    memset(chain_patterns, 0, sizeof chain_patterns);
+    for (uint32_t r = 0; r < CHAIN_ROWS; r++)
+        for (uint32_t k = 0; k < PROJ_TRK; k++) chain_patterns[r][k] = raw[(BANK_CHAIN_OFF - BANK_ACTIVE_OFF) + r * PROJ_TRK + k];
     memcpy(motion_pattern, bank_import_tags, sizeof motion_pattern);
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < PROJ_TRK; k++) {
         trk[k].pattern = raw[0u + k]; trk[k].pattern_next = 0xff; trk[k].pattern_gen++;
         for (uint32_t b = 0; b < NPAT; b++) {
             pattern_t p;

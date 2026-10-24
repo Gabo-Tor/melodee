@@ -278,7 +278,7 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
         if(t->p[P_M1SRC+3u*first] && (((0x1FFFFFu & ~0x3C1u)>>((uint32_t)t->p[P_M1DST+3u*first]&31u))&1u) && t->p[P_M1AMT+3u*first])break;
     if(first==NMSLOT){mod.on=0;return 0;}
     uintptr_t address=(uintptr_t)t,base=(uintptr_t)trk;
-    if(address<base || address>=base+sizeof trk || (address-base)%sizeof(track_t))return mod_begin_reference(t);
+    if(address<base || address>=base+NPART*sizeof(track_t) || (address-base)%sizeof(track_t))return mod_begin_reference(t);
     mod_route_t *r=&mod_routes[(address-base)/sizeof(track_t)];
     uint32_t changed=!r->valid || r->engine!=t->engine;
     for(uint32_t k=0;!changed && k<NMSLOT;k++)

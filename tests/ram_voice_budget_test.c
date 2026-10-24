@@ -13,7 +13,7 @@ static int audio_worker_join(void){return 1;}
 
 static void fresh(void)
 {
-    memset(trk,0,sizeof trk);memset(&song,0,sizeof song);
+    memset(trk,0,sizeof trk);trk_voices_bind();memset(&song,0,sizeof song);
     memset(resource,0,sizeof resource);
     host_tracks_init();
     memset(voice_kills_part,0,sizeof voice_kills_part);voice_kills=0;

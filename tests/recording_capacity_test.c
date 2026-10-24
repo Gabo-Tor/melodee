@@ -4,6 +4,7 @@
  * excludes project persistence and the UI: neither is enabled at 16 x 128 yet. */
 #define NSTEP 128u
 #define NPAT 16u
+#define NMIDI 0u                               /* (the parts only: 16 x 128 x 8 tracks outgrow the 64 take owners) */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -11,8 +12,8 @@
 
 static void fixture(void)
 {
-    host_tracks_init();song.ntrk=NTRK;song.sel=0;song.rec=0;
-    for(uint32_t k=0;k<NTRK;k++){
+    host_tracks_init();song.ntrk=NPART;song.sel=0;song.rec=0;
+    for(uint32_t k=0;k<NPART;k++){
         host_preset(&trk[k],ENGI_FM6,0);
         pattern_switch(&trk[k],15);
         trk[k].p[P_SLEN]=NSTEP;
@@ -26,7 +27,7 @@ static void queues_and_positions(void)
 {
     fixture();
     for(uint32_t i=0;i<RECORD_MAX;i++){
-        uint32_t k=i%NTRK,step=i/NTRK%NSTEP;
+        uint32_t k=i%NPART,step=i/NPART%NSTEP;
         recorded_note_t r={.on=60000,.duration=(uint16_t)(1000+i),.note=(uint8_t)(i%128u),.vel=100};
         recorded_set_owner(&r,k*NPAT+15u);recorded_set_step(&r,step,1,step==127u);
         recording_restore_note(&trk[k],i,r);
@@ -35,28 +36,28 @@ static void queues_and_positions(void)
         assert(recording_active(&trk[k],i));
     }
     recording_reindex();
-    for(uint32_t k=0;k<NTRK;k++){
+    for(uint32_t k=0;k<NPART;k++){
         uint32_t count=0;
         for(uint32_t i=recording_head[k*NPAT+15u];i<RECORD_MAX;i=recording_next[i])count++;
-        assert(count==RECORD_MAX/NTRK);
+        assert(count==RECORD_MAX/NPART);
     }
-    for(uint32_t i=0;i<RECORD_MAX;i++)recording_fire(&trk[i%NTRK],i,RECORD_UNIT,0);
+    for(uint32_t i=0;i<RECORD_MAX;i++)recording_fire(&trk[i%NPART],i,RECORD_UNIT,0);
     for(uint32_t i=0;i<RECORD_MAX;i++){
         assert(recording_sounding(i));
-        assert(recording_queue_view(i)==(i/NTRK+1u)%128u);
+        assert(recording_queue_view(i)==(i/NPART+1u)%128u);
     }
     /* Reindex sounding notes, then remove upper-half overview ownership.
      * A lost seventh bit would cancel/watch a different cell here. */
     recording_reindex();
-    for(uint32_t k=0;k<NTRK;k++){
-        assert(recording_heap_count[k]==RECORD_MAX/NTRK);
+    for(uint32_t k=0;k<NPART;k++){
+        assert(recording_heap_count[k]==RECORD_MAX/NPART);
         assert(recording_watch[k][0]==2 && recording_watch[k][64]==2 && recording_watch[k][127]==2);
         trk[k].step[127].flags=0;recording_queue_tick(&trk[k],1);
-        assert(recording_heap_count[k]==RECORD_MAX/NTRK-2u);
+        assert(recording_heap_count[k]==RECORD_MAX/NPART-2u);
     }
-    for(uint32_t i=0;i<RECORD_MAX;i++)assert(recording_sounding(i)==((i/NTRK+1u)%128u!=127u));
+    for(uint32_t i=0;i<RECORD_MAX;i++)assert(recording_sounding(i)==((i/NPART+1u)%128u!=127u));
     /* Dense heap cancellation clears ownership in every upper cell. */
-    for(uint32_t k=0;k<NTRK;k++){
+    for(uint32_t k=0;k<NPART;k++){
         recording_queue_tick(&trk[k],3000);
         assert(!recording_heap_count[k]);
         for(uint32_t s=0;s<NSTEP;s++)assert(!recording_watch[k][s]);

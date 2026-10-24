@@ -57,7 +57,7 @@ static const int16_t *pe(uint32_t pi)
 static void setup(const int16_t *e)
 {
     uint32_t i;
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     host_tracks_init();
     host_preset(&trk[0], eng_noise(), 0);
     for (i = 0; i < 8u; i++)
@@ -406,7 +406,7 @@ static void demo(const char *dir, uint32_t pi)
         return;
     wav_hdr(w, 0);
     host_tracks_init();
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     host_tracks_init();
     host_preset(&trk[0], eng_noise(), pi);
     for (s = 0; s < 48u; s++) {                       /* three times through the pattern's 16 steps, 120 BPM 1/16 */

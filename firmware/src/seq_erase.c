@@ -7,7 +7,7 @@ static int seq_erase_active(const track_t *t)
 {
     uint32_t request = seq_erase_request, buttons = fm1_in.buttons;
     return (request >> 31) && rec_on(t) && song.seq_mode && song.sel == trk_index(t) &&
-           (request & 31u) == recording_owner(t) && seq_erase_generation == t->pattern_gen &&
+           (request & 0xFFFFu) == recording_owner(t) && seq_erase_generation == t->pattern_gen &&
            (buttons & seq_erase_button) && !(buttons & ~((request >> 16) & 0x3FFFu));
 }
 static void seq_erase_clear(step_t *st)

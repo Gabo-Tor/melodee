@@ -83,7 +83,7 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
 {
     uint32_t k;
     lim_env = LIM_T;
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&mod, 0, sizeof mod);
     host_tracks_init();
     for (k = 0; k < NPART; k++)

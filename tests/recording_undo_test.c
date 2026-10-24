@@ -94,16 +94,16 @@ static int motion_only(void)
         if(native){set_engine_of(t,ENGI_FM6);apply_preset_to(t,0);motion_set_event(t,0,MO_NATIVE,(int16_t)(MO_TAG_FM6<<8|50u));}
         motion_store_t before;motion_snapshot_track(t,&before);
         recorded_note_t notes[RECORD_MAX];memcpy(notes,recording,sizeof notes);
-        uint8_t patch[FP_SIZE];memcpy(patch,fm6_patch[0],sizeof patch);
+        uint8_t patch[FP_SIZE];memcpy(patch,fm6_patch_of(0),sizeof patch);
         undo_take_start();
-        if(native){uint8_t old[MO_NATIVE_N];motion_native_peek(t,old);fm6_patch[0][0]=80;fm6_patch[0][1]=81;motion_native_edited(t,old);}
+        if(native){uint8_t old[MO_NATIVE_N];motion_native_peek(t,old);fm6_patch_of(0)[0]=80;fm6_patch_of(0)[1]=81;motion_native_edited(t,old);}
         else motion_capture(t,P_LEVEL,77);
         seq_advance(500);motion_capture(t,P_PAN,17);rec_set(t,0);
         motion_store_t after;motion_snapshot_track(t,&after);
         bad+=check("motion-only take is undoable without changing notes",recording_history(0)&&!memcmp(notes,recording,sizeof notes));
         motion_store_t actual;motion_snapshot_track(t,&actual);
         bad+=check("motion undo restores overwritten points and removes all new lanes",!memcmp(&before,&actual,sizeof actual));
-        if(native)bad+=check("native motion undo restores the synth's base patch",!memcmp(patch,fm6_patch[0],sizeof patch));
+        if(native)bad+=check("native motion undo restores the synth's base patch",!memcmp(patch,fm6_patch_of(0),sizeof patch));
         bad+=check("motion-only redo restores every recorded lane",recording_history(1));motion_snapshot_track(t,&actual);
         bad+=check("motion redo reproduces the finished automation",!memcmp(&after,&actual,sizeof actual));
         seq_stop();

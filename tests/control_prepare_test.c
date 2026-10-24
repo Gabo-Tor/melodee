@@ -29,7 +29,7 @@ static __attribute__((noinline)) void candidate(track_t *t) { p5_update_bend(t);
 static void parity(void)
 {
     host_tracks_init();
-    for(uint32_t ti=0;ti<NTRK;ti++){
+    for(uint32_t ti=0;ti<NPART;ti++){
         track_t *t=&trk[ti];host_preset(t,ENGI_PROPHET,0);
         for(uint32_t range=0;range<128;range++)for(int32_t raw=-8192;raw<=8191;raw++){
             p5_patch_of(t)->raw[P5_BEND]=(uint8_t)range;t->bend_raw=(int16_t)raw;

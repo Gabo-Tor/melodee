@@ -85,8 +85,8 @@ static __attribute__((noinline)) float wave_probe(const cz_hw_pd_t *b,uint32_t p
 static __attribute__((noinline)) void cz_render_reference(track_t *t,voice_t *v,int32_t *out,uint32_t n,const vmod_t *m)
 {
     if(!n)return;
-    const uint8_t *b=cz_patch[(uint32_t)(t-trk)%NTRK].raw;
-    cz_voice_t *c=cz_voice(t,v);const cz_native_def_t (*defs)[3]=cz_part((uint32_t)(t-trk)%NTRK)->native_def;cz_hw_pd_t pd[2];
+    const uint8_t *b=cz_patch_of((uint32_t)(t-trk)%NPART)->raw;
+    cz_voice_t *c=cz_voice(t,v);const cz_native_def_t (*defs)[3]=cz_part((uint32_t)(t-trk)%NPART)->native_def;cz_hw_pd_t pd[2];
     uint32_t inc[2],ph[2]={v->ph[0],v->ph[1]},tg[2]={(uint32_t)v->s[0],(uint32_t)v->s[1]};
     float amp[2][2],step[2];
     uint32_t ls=b[0]&3u,first=ls==1u?1u:0u,last=ls>=2u?1u:first;
@@ -195,12 +195,12 @@ static void benchmark(void) {
 }
 
 static track_t *setup(void) {
- memset(trk,0,sizeof trk);eng_state_reset();host_tracks_init();cz_init();
+ memset(trk,0,sizeof trk);trk_voices_bind();eng_state_reset();host_tracks_init();cz_init();
  track_t *t=&trk[0];host_preset(t,ENGI_CZ,0);trk_note_on(t,60,100);cz_native_block(t);return t;
 }
 static void renderer_parity(void) {
  track_t *t=setup();voice_t *v=&t->v[0];cz_voice_t *c=cz_voice(t,v);vmod_t m={0};
- uint8_t *b=cz_patch[0].raw;int32_t a[CTL],z[CTL];
+ uint8_t *b=cz_patch_of(0)->raw;int32_t a[CTL],z[CTL];
  for(uint32_t i=0;i<20000;i++) {
    b[0]=(uint8_t)((i%4)|((i%3)<<2));
    for(uint32_t l=0;l<2;l++) {
@@ -233,7 +233,7 @@ static void renderer_benchmark(void) {
  for(uint32_t mode=0;mode<7;mode++) {
    double cost[2];
    for(uint32_t fast=0;fast<2;fast++) {
-     track_t *t=setup();voice_t *v=&t->v[0];uint8_t *b=cz_patch[0].raw;
+     track_t *t=setup();voice_t *v=&t->v[0];uint8_t *b=cz_patch_of(0)->raw;
      b[0]=(uint8_t)(mode<2?0:3);
      uint32_t window=mode<4?(mode&1?4:0):4;
      uint32_t word=((mode==6?3:0)<<13)|(window<<6);

@@ -16,7 +16,7 @@ static void kit(uint32_t preset, int digi)       /* part 1 on a DRUM preset, not
 {
     host_tracks_init();
     for (uint32_t p = 0; p < NPART; p++)
-        memset(trk[p].v, 0, sizeof trk[p].v);
+        memset(trk[p].v, 0, NVOICE * sizeof *trk[p].v);
     eng_state_reset();
     host_preset(&trk[0], ENGI_DRUM, preset);
     if (preset == 2u)

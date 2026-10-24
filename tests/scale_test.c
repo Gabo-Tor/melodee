@@ -76,7 +76,7 @@ static void key_events_test(void)
 {
     track_t *t = &trk[0];
     uint32_t before;
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&song, 0, sizeof song);
     host_tracks_init();
     kb_prev = 0;

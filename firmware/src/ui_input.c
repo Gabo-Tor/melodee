@@ -102,7 +102,7 @@ static uint32_t grid_leds(void)
 static uint32_t arp_led(void)
 {
     uint32_t k, on = 0, b = seq_beat_samples();
-    for (k = 0; k < NPART; k++)
+    for (k = 0; k < NTRK; k++)
         on |= trk[k].p[P_AMODE] && trk[k].nheld;
     return !on ? 2u : beat_pos < (beat_n ? b / 6u : b / 2u);
 }
@@ -111,10 +111,12 @@ static uint32_t arp_led(void)
  * as GLO's mutes) the tracks. A white key tapped switches to its pattern (playing: at the bar); an empty one arms REC
  * with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
  * dialog (CF_PAT_KEY): the key again deletes it, another white key copies it there, the 4th and 5th black keys
- * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it */
+ * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it. The track keys are
+ * the selected track's four (1..4, or the MIDI-only 5..8); D# (GRP_KEY) selects the other four's */
 static const uint8_t PAT_KEY[NPAT] = {0, 2, 4, 6, 7, 9, 11, 12};
-static const uint8_t TRK_KEY[NTRK] = {1, 3, 5, 8};
+static const uint8_t TRK_KEY[NPART] = {1, 3, 5, 8};
 static const uint8_t LEN_KEY[2] = {8, 10};              /* (its dialog: half, double) */
+#define GRP_KEY 10u                                     /* D#: tracks 5..8 / 1..4 (none in use there: nothing) */
 #define PAT_HOLD_MS 1000u
 #define PAT_DTAP_MS 300u
 static int pattern_keys_on(void)
@@ -135,10 +137,12 @@ static uint32_t pattern_leds(uint32_t *dim, uint32_t *breath)
             *dim |= 1u << PAT_KEY[b];
     if (dlg && ((fm1_ms / 250u) & 1u) == 0u)
         m |= 1u << LEN_KEY[0] | 1u << LEN_KEY[1];
-    for (b = 0; !dlg && b < trk_n(); b++)
-        if ((song.rec >> b) & 1u) *breath |= 1u << TRK_KEY[b];
+    for (b = 0; !dlg && b < NPART && trk_group() + b < trk_n(); b++)
+        if ((song.rec >> (trk_group() + b)) & 1u) *breath |= 1u << TRK_KEY[b];
         else *dim |= 1u << TRK_KEY[b];
-    if (!dlg) m |= 1u << TRK_KEY[song.sel % NTRK];
+    if (!dlg) m |= 1u << TRK_KEY[song.sel % NPART];
+    if (!dlg && trk_n() > NPART)                        /* the other four: lit while 5..8 show, else dim */
+        *(trk_group() ? &m : dim) |= 1u << GRP_KEY;
     if (TSEL->pattern_next < NPAT) *breath |= 1u << PAT_KEY[TSEL->pattern_next];
     for (b = 0; b < NPAT; b++)                          /* (an edit waiting for the loop end: waiting too) */
         if ((seq_pend[song.sel % NTRK] >> b) & 1u) *breath |= 1u << PAT_KEY[b];
@@ -296,10 +300,15 @@ static void pattern_keys(uint32_t notes)
 {
     uint32_t b;
     if (pattern_keys_on())
-        for (b = 0; b < NTRK; b++) if (notes & (1u << TRK_KEY[b])) {   /* a track key: that track */
+        for (b = 0; b < NPART; b++) if (notes & (1u << TRK_KEY[b])) {   /* a track key: that track of the four */
             ui.seq_t0 |= 2u;
-            track_select(b);                            /* (one not in use: nothing) */
+            track_select(trk_group() + b);              /* (one not in use: nothing) */
         }
+    if (pattern_keys_on() && (notes & (1u << GRP_KEY))) {   /* the other four: the same place there, else their first */
+        uint32_t other = (trk_group() + NPART) % NTRK;
+        ui.seq_t0 |= 2u;
+        track_select(other + song.sel % NPART < trk_n() ? other + song.sel % NPART : other);
+    }
     if (ui.pat_key && ui.pat_track != song.sel) ui.pat_key = ui.pat_copy = 0;
     pattern_key_release();
     if (pattern_keys_on()) {
@@ -859,8 +868,8 @@ static void drum_sound_edit(uint32_t slot,int32_t delta)
     if(!field){drum_pick(drum_sound_step(TSEL,ui.drum_sound,delta));return;}
     if(field==255)return;
     fm1_irq_off();
-    if(field==4){int8_t *p=&drum_patch[song.sel].c[ui.drum_sound][3];*p=(int8_t)clamp(*p-delta,0,127);}
-    else {int8_t *p=&drum_patch[song.sel].c[ui.drum_sound][field-1];*p=(int8_t)clamp(*p+delta,field==1?-24:-64,field==1?24:63);}
+    if(field==4){int8_t *p=&drum_patch_of(song.sel)->c[ui.drum_sound][3];*p=(int8_t)clamp(*p-delta,0,127);}
+    else {int8_t *p=&drum_patch_of(song.sel)->c[ui.drum_sound][field-1];*p=(int8_t)clamp(*p+delta,field==1?-24:-64,field==1?24:63);}
     fm1_irq_on();ui.force=1;
 }
 static void drum_hit_jog(int32_t delta);
@@ -1129,7 +1138,7 @@ static void edit_param(uint32_t slot, int32_t steps)
         motion_native_peek(TSEL, old);
         if (cz_ed_put(tr, pg->id[slot], (uint32_t)v, raw)) {
             if (!momentary.active) cz_compare_take(tr);
-            memcpy(cz_patch[tr].raw, raw, 128u);
+            memcpy(cz_patch_of(tr)->raw, raw, 128u);
             native_motion(old);
         }
         motion_unguard(f);
@@ -1172,7 +1181,7 @@ static void edit_param(uint32_t slot, int32_t steps)
  * line (Casio's 57-byte line block); MOD stays line 1's. Undoable as a sound load */
 static void cz_line_copy(track_t *t, uint32_t src)
 {
-    uint8_t *b = cz_patch[trk_index(t)].raw;
+    uint8_t *b = cz_patch_of(trk_index(t))->raw;
     uint32_t s = src ? 71u : 14u, d = src ? 14u : 71u, mod = b[d + 1u] & 0x38u;
     cz_compare_take(trk_index(t));
     load_begin(t, UNDO_SOUND);
@@ -1186,11 +1195,11 @@ static void cz_line_copy(track_t *t, uint32_t src)
 /* CZ TOOLS COMP: the tone before the first edit and the edited one change places; 0 = nothing edited */
 static int cz_compare_swap(uint32_t tr)
 {
-    cz_patch_t x = cz_patch[tr % NTRK];
+    cz_patch_t x = (*cz_patch_of(tr % NTRK));
     if (cz_compare_tr != tr % NTRK + 1u)
         return 0;
     fm1_irq_off();
-    cz_patch[tr % NTRK] = cz_compare;
+    (*cz_patch_of(tr % NTRK)) = cz_compare;
     fm1_irq_on();
     cz_compare = x;
     return 1;
@@ -1567,7 +1576,7 @@ static void seq_midi_events(int accept)
         RING_PUBLISH();
         e = step_midi_q[step_midi_r % STEP_MIDI_Q];
         step_midi_r++;
-        if (!accept || ((e >> 8) & 3u) != song.sel)
+        if (!accept || ((e >> 7) & 7u) != song.sel)
             continue;
         uint32_t ch = (e >> 12) & 15u, src = (e >> 16) & 127u, bit = 1u << (src % 32u);
         uint32_t *keys = &step_midi_keys[ch][src / 32u];
@@ -2452,8 +2461,9 @@ static void ui_input(void)
     } else if (s && (ui.home || cur_page()->graph == GR_BROWSE)) {
         /* PRESETS browses the selected part's sounds (all engines, then user presets) on HOME and the
          * PRESETS page only (never the steps); elsewhere (TRACKS too, where one records) a stray turn
-         * would throw away the sound being edited */
-        browse_turn(EN_PRESET, s);                       /* past the factory ones: user presets */
+         * would throw away the sound being edited. Tracks 5..8 are MIDI Tracks: no sounds to browse */
+        if (trk_midi_slot(song.sel)) ui_message("MIDI TRACK");
+        else browse_turn(EN_PRESET, s);                  /* past the factory ones: user presets */
     } else if (s && !ui.home && cur_page()->graph == GR_ROLL && !grid_on()) {
         ui.note_zoom = (uint8_t)clamp((int32_t)ui.note_zoom + s, 0, 4);
         ui.force = 1;

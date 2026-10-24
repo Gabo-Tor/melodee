@@ -647,7 +647,7 @@ static uint32_t fm6_car_ops(uint32_t a)
 /* the algorithm FM6 plays on track t (0..31): ALG, or the patch's at PAT */
 static uint32_t fm6_alg_of(const track_t *t)
 {
-    return t->p[P_E0] >= 1 && t->p[P_E0] <= 32 ? (uint32_t)t->p[P_E0] - 1u : fm6_patch[(t - trk) % NTRK][FP_ALG] & 31u;
+    return t->p[P_E0] >= 1 && t->p[P_E0] <= 32 ? (uint32_t)t->p[P_E0] - 1u : fm6_patch_of((t - trk) % NTRK)[FP_ALG] & 31u;
 }
 /* FM6's EDIT pages: the algorithm, drawn as graph_fm draws DIGITAL's, "ALG 05" top left. Carriers THEME with INK
  * numerals, modulators RAISE with THEME ones; an operator at output level 0: a DIM numeral (a carrier on RAISE).
@@ -658,7 +658,7 @@ static void graph_fm6(const track_t *t, uint16_t c)
     uint32_t alg = fm6_alg_of(t), k, j, car = fm6_car_ops(alg), top = 0, hi = 0, fbop = fm6_fb_op(alg), hotset = 0;
     uint32_t fbsrc = fm6_fb_source(alg, fm6_fn[(t - trk) % NTRK][FN_ENGINE]);
     uint32_t hot = ui.hot_t ? (uint32_t)cur_page()->id[ui.hot_col & 3u] : 0u;
-    const uint8_t *pt = fm6_patch[(t - trk) % NTRK];
+    const uint8_t *pt = fm6_patch_of((t - trk) % NTRK);
     int32_t x[6], y[6], bus, cl = 240, cr = 0, fb = clamp(pt[FP_FB] + t->p[P_E1], 0, 7);
     uint8_t m[6], fan[6] = {0, 0, 0, 0, 0, 0};
     uint16_t rc = hot == P_E2 ? T_ACCENT : c;
@@ -1034,12 +1034,12 @@ static void draw_graph(void)
                 break;
 #endif
             case GR_FMEG: {                                  /* FM6: operator fm6_opsel's envelope */
-                const uint8_t *op = &fm6_patch[song.sel % NTRK][(5u - fm6_opsel % 6u) * FP_OP];
+                const uint8_t *op = &fm6_patch_of(song.sel % NTRK)[(5u - fm6_opsel % 6u) * FP_OP];
                 graph_dxenv(op + FP_R1, op + FP_L1, 0, c);
                 break;
             }
             case GR_FMPEG:                                   /* FM6: the pitch envelope */
-                graph_dxenv(fm6_patch[song.sel % NTRK] + FP_PR1, fm6_patch[song.sel % NTRK] + FP_PL1, 1, c);
+                graph_dxenv(fm6_patch_of(song.sel % NTRK) + FP_PR1, fm6_patch_of(song.sel % NTRK) + FP_PL1, 1, c);
                 break;
             default:
 #if MELODEE_LEGACY_EXTRAS

@@ -406,14 +406,16 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
   step sequences, recorded takes, pattern changes and SONG use the same musical paths as the instruments.
   **TRS** (THRU, KNOB 2) additionally accepts routed TRS input while SYSTEM **MIDI** shows USB; with it off,
   MIDI Track receives the input selected there. Synth tracks continue accepting both inputs. Incoming channel
-  controls are forwarded on the chosen output channel. Channel and TRS THRU are saved in projects/templates.
+  controls are forwarded on the chosen output channel. Projects save Channel and TRS THRU for every track;
+  templates retain them for tracks 1–4.
   With Menu > **USB HOST** on, the same MIDI tracks send to the first attached USB-MIDI device's output
   endpoint (cable 0), directly or behind one externally powered hub. Output-only USB synths are supported;
   the device must supply a MIDI 1.0 streaming interface. With HOST off, output goes to the computer as before.
   Track level, pan, audio modulation, insert FX, note FX and FX sends are disabled; MIDI Track allocates no
   audio voices or engine/FX working memory. Mute, solo, stop and sound/channel changes release outgoing notes.
-- **One to four tracks**, one instrument and sound per track: a new song starts with one, so the FM-1 can be a
-  single synth; add more when the song needs them. FM6 plays up to 16 voices; PROPHET plays up
+- **Up to eight tracks:** tracks 1–4 can use any instrument, including MIDI Track; tracks 5–8 are MIDI-only.
+  A blank song starts with four parts; Stage’s **Add track** adds the extra MIDI tracks when needed. Remove parts
+  to use the FM-1 as a single synth. FM6 plays up to 16 voices; PROPHET plays up
   to eight voices per track in the default dual-core build (five if CPU1 is unavailable or disabled).
   ALGORITHM selects the track on every page. Running several eight-voice Prophet tracks together
   has not yet been stress-tested on hardware
@@ -531,13 +533,15 @@ Thanks to [@aroum](https://github.com/aroum) for the detailed feedback in
   covers the step edits first
   When editing synth steps, SCL and EDIT use the editing controls below instead.
 - **FX** opens the track's three insert pages; SELECT moves between the slots.
-- **Tracks:** a new song has one track. On Stage, hold OCT+ for the sheet: **Add track** adds the next one (up to
-  four) with its own starting sound and empty patterns, selects it and opens the sound browser on it (OCT− keeps
-  the starting sound). **Remove track** removes the selected track after a question, stopped only: the tracks after
+- **Tracks:** a blank song starts with four parts. On Stage, hold OCT+ for the sheet: **Add track** adds the next
+  track, up to eight, with empty patterns and selects it. Tracks 1–4 open the sound browser (OCT− keeps the starting
+  sound); tracks 5–8 open their MIDI channel controls, initially channels 5–8. **Remove track** removes the selected track after a question, stopped only: the tracks after
   it move down a place with their sounds, patterns, song sections, motion and recordings. Stage, MIXER, PATTERNS,
-  SONG and GLO show the tracks in use; with one, Stage shows its sound across the screen in large type. Projects and
-  the template keep their number of tracks; projects from before keep all four
-- PLAY starts and stops all four tracks; REC arms or disarms the selected track without starting the
+  SONG and GLO show the group of four containing the selected track. ALGORITHM cycles through every track; with
+  SEQ held, **D#** switches between groups and the four track keys select within that group. With one track, Stage
+  shows its sound across the screen in large type. Projects keep every track’s settings and patterns. Templates
+  keep the track count and the first four parts’ settings; extra MIDI tracks start with their default settings
+- PLAY starts and stops all tracks; REC arms or disarms the selected track without starting the
   transport. While playing, REC waits for that track's next pattern start and keeps recording
   across loops until tapped again or playback stops. STOP leaves the track armed for the next start.
   SEQ + pattern-key shortcuts arm one pass and automatically disarm at its end. While stopped and armed, the first
@@ -608,20 +612,23 @@ its motion, copying over a pattern in use or the one playing (the header says **
 breathes); STOP does them at once. Live edits (a note, a hit, ERASE, a motion lane) stay immediate. While playing, each
 track changes at its own loop end. Selecting the active pattern cancels a queued change. STOP applies pending choices.
 
-**SEQ > PATTERNS** (or hold SEQ) shows the four tracks' eight patterns at once: the one playing in the track's colour
+**SEQ > PATTERNS** (or hold SEQ) shows the selected group’s eight patterns per track: the one playing in the track's colour
 (with how far it has played), the one waiting outlined, the others holding notes raised; under it, the song's rows
-around the one playing (no song yet: the jam's). **KNOB 1–4** pick tracks 1–4's patterns; SELECT goes on to SONG.
+around the one playing (no song yet: the jam's). **KNOB 1–4** pick that group’s patterns; SELECT goes on to SONG.
 **OCT+** opens the selected track's pattern's sheet: **Copy to…** frames the place it goes on the track's row (the
 first empty one), any knob moves the frame, OCT+ copies there (over a pattern in use it asks first) and OCT- cancels;
 **Delete pattern** asks, then empties the pattern, its notes and automation (hold EDIT to undo).
 
 On **SEQ > SONG**, KNOB 1 chooses the section, KNOB 2 the track, KNOB 3 that track's pattern and
-KNOB 4 the section's repeats. **Jam to song:** from PLAY on, every loop of track 1 logs the four tracks'
+KNOB 4 the section's repeats. **Jam to song:** from PLAY on, every loop of track 1 logs all tracks’
 patterns as a section (the same patterns again: a repeat), so switching patterns while you jam writes a song;
 hold **REC** on SONG to turn the logged jam into the arrangement (over a song with sections: confirm).
-PLAY runs the arrangement; sections change all four tracks
+PLAY runs the arrangement; sections change all tracks
 at track 1's loop boundary and the final section stops. STOP returns to the patterns selected before
-SONG. Project saves and complete backups include all 32 banks and the arrangement.
+SONG. Project saves and complete backups include every bank and the arrangement (up to 64 banks). Songs using only
+tracks 1–4 keep the existing FBKK format. Songs with tracks 5–8 use FBKL, storing programmed steps in the same flash
+slots. If a song is too dense to fit, **PROJECT FULL** refuses the save and preserves the previous saved copy. All
+banks can be filled in working memory; a fully dense eight-track song exceeds a saved project’s capacity.
 
 ### Note editing
 
@@ -944,7 +951,7 @@ octave stays independent. The default program map is E: MIDI 100–115,
 F: 116–127 then 0–3, G: 4–19, H: 20–35. Banks A–D and banks for absent tracks are silent.
 Use the MPC's default pad map and enable Pad MIDI Out (Always, or Empty for empty pads).
 WHITE and ALL map incoming MIDI as the keys, without the octave buttons.
-ROOT, SCL, QNT and DEG are shared by all four tracks; TRN stays per track. DRUM tracks automatically
+ROOT, SCL, QNT and DEG are shared by all tracks; TRN stays per track. DRUM tracks automatically
 use the finger-drumming layout below in their assigned bank. Drum pads ignore bank octave, ROOT, TRN
 and DEG so each pad keeps its sound; the native keys retain their chromatic drum map and octave.
 Other kits and slices keep their own pitches. Controllers retain their MIDI channel routing;

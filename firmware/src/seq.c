@@ -41,7 +41,7 @@ static void step_midi_edge(uint32_t track, uint32_t pitch, uint32_t on, uint32_t
         step_midi_overflow = 1;
         return;
     }
-    step_midi_q[w % STEP_MIDI_Q] = (track << 8) | pitch | (on << 10) | (ch << 12) | (src << 16);
+    step_midi_q[w % STEP_MIDI_Q] = (track << 7) | pitch | (on << 10) | (ch << 12) | (src << 16);
     RING_PUBLISH();
     step_midi_w = w + 1u;
 }
@@ -1020,7 +1020,7 @@ static void seq_stop(void)
     song.playing = 0;
     song.rec_wait = song.rec_pass = 0;
     if (midi_sync_active)                           /* external clock: the arp stops with the transport, */
-        for (i = 0; i < NPART; i++)                /* its sounding note too (HOLD keeps the latched chord) */
+        for (i = 0; i < NTRK; i++)                 /* its sounding note too (HOLD keeps the latched chord) */
             if (trk[i].arp_note)
                 arp_off(&trk[i]);
     for (i = 0; i < NTRK; i++) {
@@ -1247,11 +1247,12 @@ static int rec_note_start(track_t *t)
 
 static void seq_advance_part(uint32_t n)
 {
-    uint32_t i, beat = seq_beat_samples();
+    uint32_t i, beat = seq_beat_samples(), nt = trk_n();
+    if (nt < NPART) nt = NPART;                       /* unused MIDI slots have no clock state to maintain */
     chain_tick(n);
-    for (i = 0; i < NTRK; i++)
+    for (i = 0; i < nt; i++)
         seq_tick(&trk[i], n);
-    for (i = 0; i < NPART; i++)
+    for (i = 0; i < nt; i++)
         /* Held keys play at the local tempo while the selected master is
          * stopped. A released HOLD chord still waits for external transport. */
         arp_step(&trk[i], song.playing || !song.g[G_CLOCK] || trk[i].arp_phys ? n : 0u, n);
@@ -1343,6 +1344,8 @@ static void events_block(uint32_t n)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         midi_track_service(t);
+        if (i >= NPART && i >= trk_n() && !((pr >> i) & 1u))
+            continue;                                  /* releases still drain; an unused MIDI slot has no engine */
         if ((pr >> i) & 1u) {
             midi_forget_track(i);
             recording_stop(t);
@@ -1420,7 +1423,7 @@ static void events_block(uint32_t n)
         if (!song.playing) {
             uint32_t elapsed = (uint32_t)((uint64_t)n * MIDI_BEAT_UNITS / beat_samples());
             chord_strum_tick(elapsed);
-            for (i = 0; i < NPART; i++)
+            for (i = 0; i < NTRK; i++)
                 arp_step(&trk[i], trk[i].arp_phys ? elapsed : 0u, elapsed);
         }
     } else {

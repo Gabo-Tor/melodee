@@ -58,7 +58,7 @@ static recorded_note_t event(uint32_t owner)
 static void fixture(uint32_t count,uint32_t dense)
 {
     timing_reset(0,24000000u);seq_stop();song.rec=0;recording_reset();
-    for(uint32_t tr=0;tr<NTRK;tr++){
+    for(uint32_t tr=0;tr<NPART;tr++){
         trk[tr].pattern=0;trk[tr].p[P_SLEN]=64;
         for(uint32_t v=0;v<NSTEP;v++){
             step_t *s=&trk[tr].step[v];memset(s,0,sizeof *s);s->time=ST_NOTE;s->flags=SF_RECORDED;
@@ -76,14 +76,14 @@ static void fixture(uint32_t count,uint32_t dense)
 static void counts_match(void)
 {
 #if MELODEE_RECORD_INDEX
-    uint16_t count[NTRK*NPAT]={0};
+    uint16_t count[NPART*NPAT]={0};
     for(uint32_t i=0;i<RECORD_MAX;i++)if(recording[i].vel)count[recording[i].owner&31u]++;
     assert(!memcmp(count,recording_pitch_count,sizeof count));
 #endif
 }
 static void all_queries(void)
 {
-    for(uint32_t tr=0;tr<NTRK;tr++)for(uint32_t bank=0;bank<NPAT;bank++){
+    for(uint32_t tr=0;tr<NPART;tr++)for(uint32_t bank=0;bank<NPAT;bank++){
         track_t *t=&trk[tr];t->pattern=(uint8_t)bank;
         for(uint32_t len=1;len<=64;len+=7){
             t->p[P_SLEN]=(int16_t)len;

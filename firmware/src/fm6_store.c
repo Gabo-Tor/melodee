@@ -51,7 +51,7 @@ static int fm6_send_voice(uint32_t tr, uint32_t ch)       /* VCED: the track's p
     fm6_buf = proj_wire_borrow();
     memcpy(fm6_buf, H, 6);
     fm6_buf[2] = (uint8_t)(ch & 15u);
-    memcpy(fm6_buf + 6, fm6_patch[tr % NTRK], 155);
+    memcpy(fm6_buf + 6, fm6_patch_of(tr % NTRK), 155);
     fm6_buf[161] = fm6_chk(fm6_buf + 6, 155);
     fm6_buf[162] = 0xF7;
     return ota_wire_send(fm6_buf, 163);
@@ -92,7 +92,7 @@ static void fm6_sysex(const uint8_t *b, uint32_t n)
         uint32_t k = (uint32_t)(b[3] & 3u) << 7 | b[4];
         if (k < 155u) {
             uint8_t v[FP_SIZE + 1u];
-            memcpy(v, fm6_patch[tr], FP_SIZE);
+            memcpy(v, fm6_patch_of(tr), FP_SIZE);
             v[k] = b[5];
             fm6_put_patch((uint32_t)tr, v, 0);
         } else if (k == 155u) {
@@ -134,7 +134,10 @@ static void fm6_service(void)                            /* main loop: a DX7 fra
 {
     if (fm6_rx_ready==1u) {
         RING_PUBLISH();                                  /* read the frame only after the flag */
+        wire_job = 1;                                    /* (the frame is this job's: a dump out may reuse it) */
+        fm6_rx_serving = 1;
         fm6_sysex(fm6_rx, fm6_rx_n);
+        fm6_rx_serving = 0;
         RING_PUBLISH();
         if(fm6_rx_ready!=2u)fm6_rx_ready = 0;
     }
@@ -146,7 +149,7 @@ static void fm6_store(uint32_t k)
 {
     char nm[12];
     if (!fm6_is(song.sel) || k >= UP_SLOTS) return;
-    fm6_name(nm, fm6_patch[song.sel]);
+    fm6_name(nm, fm6_patch_of(song.sel));
     up_ui_named(2, k, nm);
 }
 

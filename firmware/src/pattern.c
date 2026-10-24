@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
-/* Four editable/playing patterns live in track.step. Inactive banks use a
- * bounded, lossless pool of 16-byte chunks, addressed in 16-step blocks.
- * Empty blocks allocate nothing; identical steps share one snapshot; other
- * blocks store only non-default steps. The dense fallback is nine bytes per
- * step (including unused note bytes and n on rests/ties).
+/* The editable/playing patterns live in track.step. Inactive banks use a
+ * bounded pool of 16-byte chunks, addressed in 16-step blocks.
+ * Empty blocks allocate nothing; identical steps share one copy; other
+ * blocks store only non-default steps. The dense fallback is eight bytes per
+ * step: a bank record's packing (step_snapshot.h step_packed_put), exact but
+ * for n on rests/ties, which the device keeps 0.
  *
  * One staging pattern per track prepares the next bank. At a prepared switch
  * the ISR swaps bounded step/timing arrays and retires the incoming cold copy.
@@ -21,11 +22,11 @@
 #define PAT_BLOCK_STEPS 16u
 #define PAT_BLOCKS ((NSTEP + PAT_BLOCK_STEPS - 1u) / PAT_BLOCK_STEPS)
 #define PAT_CHUNK_BYTES 16u
-#define PAT_BLOCK_CHUNKS ((PAT_BLOCK_STEPS * sizeof(step_snapshot_t) + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES)
+#define PAT_BLOCK_CHUNKS ((PAT_BLOCK_STEPS * STEP_PACKED_BYTES + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES)
 #define PAT_SHARED_LIMIT (NPAT > 8u || NSTEP > 64u)
-#define PAT_DENSE_BUDGET (4u * 8u * 4u * PAT_BLOCK_CHUNKS)
+#define PAT_DENSE_BUDGET (NTRK * 8u * 4u * PAT_BLOCK_CHUNKS)
 #define PAT_CHUNKS (PAT_SHARED_LIMIT ? PAT_DENSE_BUDGET : NTRK * (NPAT - 1u) * PAT_BLOCKS * PAT_BLOCK_CHUNKS)
-#define PAT_RETAINED_CHUNKS (PAT_CHUNKS < 672u ? PAT_CHUNKS : 672u)
+#define PAT_RETAINED_CHUNKS (PAT_CHUNKS < 960u ? PAT_CHUNKS : 960u)   /* (the retained SRAM .noinit leaves) */
 #define PAT_NONE 0x7FFFu
 #define PAT_REPEAT 0x8000u
 _Static_assert(NSTEP % PAT_BLOCK_STEPS == 0u && PAT_CHUNKS < PAT_NONE, "bounded pattern block pool");
@@ -36,10 +37,12 @@ static uint8_t pattern_chunks_retained[PAT_RETAINED_CHUNKS][PAT_CHUNK_BYTES] __a
  * active/staging steps and bank directories as the capacity grows. This
  * moves bytes between regions; it does not reduce the total reservation. */
 static uint8_t pattern_chunks_ram[PAT_CHUNKS - PAT_RETAINED_CHUNKS][PAT_CHUNK_BYTES] __attribute__((section(".pool")));
-static uint16_t pattern_link[PAT_CHUNKS], pattern_free, pattern_pool_used, pattern_pool_peak;
+/* Links and staging with the large buffers too: the MIDI-only tracks' banks outgrew data SRAM */
+static uint16_t pattern_link[PAT_CHUNKS] __attribute__((section(".pool")));
+static uint16_t pattern_free, pattern_pool_used, pattern_pool_peak;
 static pattern_block_t pattern_blocks[NTRK][NPAT][PAT_BLOCKS];
 static int16_t pattern_timings[NTRK][NPAT][4];
-static struct { pattern_t data; uint8_t bank, pending; } pattern_stage[NTRK];
+static struct { pattern_t data; uint8_t bank, pending; } pattern_stage[NTRK] __attribute__((section(".pool")));
 static uint32_t pattern_fallbacks;
 static volatile uint8_t pattern_full;
 static uint8_t chain_patterns[CHAIN_ROWS][NTRK];
@@ -103,9 +106,9 @@ static void pattern_byte_write(pattern_stream_t *s, uint8_t v)
 }
 static step_t pattern_stream_step(pattern_stream_t *s)
 {
-    step_snapshot_t v; uint8_t *p = (uint8_t *)&v;
-    for (uint32_t i = 0; i < sizeof v; i++) p[i] = pattern_byte_read(s);
-    return step_snapshot_get(&v);
+    uint8_t p[STEP_PACKED_BYTES];
+    for (uint32_t i = 0; i < sizeof p; i++) p[i] = pattern_byte_read(s);
+    return step_packed_get(p);
 }
 /* One cost definition for admission and encoding, including the repeat
  * optimization and every hidden step. Padding at each block is charged. */
@@ -124,7 +127,7 @@ static uint32_t pattern_steps_cost(const step_t *steps, uint32_t n)
     uint32_t cost = 0;
     for (uint32_t b = 0; b < n; b += PAT_BLOCK_STEPS) {
         uint32_t same, mask = pattern_block_shape(steps + b, &same);
-        if (mask) cost += same ? 1u : ((uint32_t)__builtin_popcount(mask) * sizeof(step_snapshot_t) + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES;
+        if (mask) cost += same ? 1u : ((uint32_t)__builtin_popcount(mask) * STEP_PACKED_BYTES + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES;
     }
     return cost;
 }
@@ -135,7 +138,7 @@ static uint32_t pattern_bank_cost(uint32_t k, uint32_t bank)
     uint32_t cost = 0;
     for (uint32_t b = 0; b < PAT_BLOCKS; b++) {
         const pattern_block_t *p = &pattern_blocks[k][bank][b];
-        if (p->mask) cost += p->head & PAT_REPEAT ? 1u : ((uint32_t)__builtin_popcount(p->mask) * sizeof(step_snapshot_t) + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES;
+        if (p->mask) cost += p->head & PAT_REPEAT ? 1u : ((uint32_t)__builtin_popcount(p->mask) * STEP_PACKED_BYTES + PAT_CHUNK_BYTES - 1u) / PAT_CHUNK_BYTES;
     }
     return cost;
 }
@@ -182,8 +185,8 @@ static void pattern_encode_block(pattern_block_t *b, const step_t *steps)
     if (!mask) return;
     pattern_stream_t s = {PAT_NONE, PAT_CHUNK_BYTES};
     for (uint32_t i = 0; i < (same ? 1u : PAT_BLOCK_STEPS); i++) if (same || (mask & (1u << i))) {
-        step_snapshot_t v; step_snapshot_put(&v, &steps[i]); const uint8_t *p = (const uint8_t *)&v;
-        for (uint32_t j = 0; j < sizeof v; j++) {
+        uint8_t p[STEP_PACKED_BYTES]; step_packed_put(p, &steps[i]);
+        for (uint32_t j = 0; j < sizeof p; j++) {
             pattern_byte_write(&s, p[j]);
             if (b->head == PAT_NONE) b->head = s.head;
         }
@@ -248,7 +251,7 @@ static step_t pattern_step(uint32_t k, uint32_t bank, uint32_t i)
     pattern_stream_t s = {(uint16_t)(b->head & ~PAT_REPEAT), 0};
     if (!(b->head & PAT_REPEAT)) {
         uint32_t preceding = b->mask & ((1u << bit) - 1u), bytes = 0;
-        while (preceding) { preceding &= preceding - 1u; bytes += sizeof(step_snapshot_t); }
+        while (preceding) { preceding &= preceding - 1u; bytes += STEP_PACKED_BYTES; }
         while (bytes >= PAT_CHUNK_BYTES) { s.head = pattern_link[s.head]; bytes -= PAT_CHUNK_BYTES; }
         s.pos = (uint8_t)bytes;
     }

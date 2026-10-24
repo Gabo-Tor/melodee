@@ -8,12 +8,12 @@
 #undef main
 #include <assert.h>
 static int32_t out[CTL*2u];
-static void poison_capture(void){for(uint32_t i=0;i<CTL*NTRK;i++)track_capture[i]=123456;}
-static void assert_capture_poison(void){for(uint32_t i=0;i<CTL*NTRK;i++)assert(track_capture[i]==123456);}
+static void poison_capture(void){for(uint32_t i=0;i<CTL*NPART;i++)track_capture[i]=123456;}
+static void assert_capture_poison(void){for(uint32_t i=0;i<CTL*NPART;i++)assert(track_capture[i]==123456);}
 static void setup(void)
 {
-    memset(trk,0,sizeof trk);memset(&song,0,sizeof song);host_tracks_init();
-    for(uint32_t k=0;k<NTRK;k++){host_preset(&trk[k],HOST_SYNTH,0);trk[k].p[P_RESERVED34]=trk[k].p[P_RESERVED36]=trk[k].p[P_RESERVED33]=0;}
+    memset(trk,0,sizeof trk);trk_voices_bind();memset(&song,0,sizeof song);host_tracks_init();
+    for(uint32_t k=0;k<NPART;k++){host_preset(&trk[k],HOST_SYNTH,0);trk[k].p[P_RESERVED34]=trk[k].p[P_RESERVED36]=trk[k].p[P_RESERVED33]=0;}
     usb.up=usb.config=1;usb.suspended=0;ua_reset();ua_cap_channels=4;
     assert(ua_tracks_memory_prepare(1));
 }
@@ -25,17 +25,17 @@ static void capture_transitions(void)
     usb.config=1;mix_block(out,CTL);assert(track_capture_on);
     int sounding=0;
     for(uint32_t i=0;i<CTL;i++){
-        sounding|=track_capture[i*NTRK];
-        for(uint32_t k=1;k<NTRK;k++)assert(!track_capture[i*NTRK+k]);
+        sounding|=track_capture[i*NPART];
+        for(uint32_t k=1;k<NPART;k++)assert(!track_capture[i*NPART+k]);
     }
     assert(sounding);ua_audio(out,track_capture,CTL,4096);assert(ua.cw==CTL);
-    for(uint32_t i=0;i<CTL*NTRK;i++)assert((i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u])==ua_clip(track_capture[i]));
+    for(uint32_t i=0;i<CTL*NPART;i++)assert((i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u])==ua_clip(track_capture[i]));
     ua.cap_alt=0;poison_capture();mix_block(out,CTL);assert_capture_poison();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t v=0;v<NVOICE;v++)trk[k].v[v].active=0;
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t v=0;v<NVOICE;v++)trk[k].v[v].active=0;
     ua.cap_alt=1;mix_block(out,CTL);
-    for(uint32_t i=0;i<CTL*NTRK;i++)assert(!track_capture[i]);
+    for(uint32_t i=0;i<CTL*NPART;i++)assert(!track_capture[i]);
     ua_audio(out,track_capture,CTL,4096);assert(ua.cw==2u*CTL);
-    for(uint32_t i=CTL*NTRK;i<2u*CTL*NTRK;i++)assert(!(i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u]));
+    for(uint32_t i=CTL*NPART;i<2u*CTL*NPART;i++)assert(!(i%4u<2u?ua.cap[i/4u*2u+i%4u]:ua_track_extra[i/4u*2u+i%4u-2u]));
     usb.suspended=1;poison_capture();mix_block(out,CTL);assert(!track_capture_on);assert_capture_poison();
     uint32_t written=ua.cw;ua_audio(out,0,CTL,4096);assert(ua.cw==written);
     puts("performance: capture off/configuration/suspend/resume produces no stale stems");

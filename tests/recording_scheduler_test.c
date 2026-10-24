@@ -121,7 +121,7 @@ static int cursor_slot_reuse(void)
     int bad=check("reusing a pending slot on another track cannot redirect the old cursor",!gate_note(t,67) && !recording_refs[0][67]);
     seq_stop();
 #if MELODEE_RECORD_CURSOR
-    for(uint32_t k=0;k<NTRK;k++)bad+=check("STOP empties every runtime list",recording_live_head[k]==RECORD_MAX);
+    for(uint32_t k=0;k<NPART;k++)bad+=check("STOP empties every runtime list",recording_live_head[k]==RECORD_MAX);
 #endif
     return bad;
 }

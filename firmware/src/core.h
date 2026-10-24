@@ -2,9 +2,10 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* MELODEE core types: tracks, voices, engines, parameters.
- * Up to four tracks (all four to start with: song.ntrk), each a synth part: its own engine, preset, parameters, voices and
- * 64-step pattern. The parts share one budget of VBUDGET units of sounding voices (voice.c). Drums are the DRUM
- * engine (synthesized 808 on the General MIDI map) on any part.
+ * Up to eight tracks (all four parts to start with: song.ntrk). Tracks 1..4 are synth parts: their own engine, preset,
+ * parameters, voices and 64-step patterns. The parts share one budget of VBUDGET units of sounding voices (voice.c).
+ * Drums are the DRUM engine (synthesized 808 on the General MIDI map) on any part. Tracks 5..8 are MIDI-only: always
+ * the MIDI Track engine, sequenced like the parts, never rendered or mixed (NMIDI).
  * Sections: sizes, parameters, voices and engines, tracks and the song, system. */
 #include <stdint.h>
 #include "performance_options.h"
@@ -27,7 +28,10 @@
 #ifndef MELODEE_AUDIO_BENCH
 #define MELODEE_AUDIO_BENCH 0 /* laboratory fixed-voice admission bypass; never a release default */
 #endif
-#define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
+#ifndef NMIDI
+#define NMIDI 4                  /* MIDI-only tracks: tracks 5..8, the MIDI Track engine and no audio */
+#endif
+#define NTRK (NPART + NMIDI)     /* tracks: the parts, then the MIDI-only ones (a project's first NPART on its FUN wire) */
 /* Shared with engine-buffer placement: the queued recorder needs one runtime
  * counter per event, while the reference countdown implementation needs two. */
 #ifndef MELODEE_RECORD_CURSOR
@@ -350,7 +354,8 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #include "recorded_note.h"
 /* Sound offsets: semitones, decay and voice character; zero preserves the factory kit. */
 typedef struct { int8_t c[16][4]; } drum_patch_t;
-static drum_patch_t drum_patch[NTRK];
+static drum_patch_t drum_patch[NPART], drum_patch_none;   /* the parts'; a MIDI-only track's: none (never heard) */
+static drum_patch_t *drum_patch_of(uint32_t k) { return k < NPART ? &drum_patch[k] : &drum_patch_none; }
 static int drum_patch_valid(const drum_patch_t *p)
 {
     for(uint32_t i=0;i<16;i++)if(p->c[i][0]<-24 || p->c[i][0]>24 || p->c[i][1]<-64 || p->c[i][1]>63 || p->c[i][2]<-64 || p->c[i][2]>63 || p->c[i][3]<0)return 0;
@@ -419,7 +424,7 @@ typedef struct track {
     int8_t mpc_octave;           /* MPC bank's input octave, -3..3; independent of song.octave */
     uint16_t user;                /* user preset slot + 1 the sound came from (UI), 0 = none */
     uint8_t user_native;         /* legacy project origin only; new presets use the shared bank */
-    voice_t v[NVOICE];
+    voice_t *v;                  /* NVOICE voices: the part's (part_voice), a MIDI-only track the silent midi_voice */
     /* LFO */
     uint32_t lfo_ph;
     int32_t lfo_val;             /* Q15 */
@@ -489,7 +494,7 @@ typedef struct {
     uint8_t rec_wait, rec_pass;   /* waiting for loop zero, or recording since pattern start */
     uint8_t rec_latch;           /* explicit REC stays armed across pattern ends: bit per track */
     uint8_t sel;                 /* selected track 0..trk_n()-1: keys, pages, editor */
-    uint8_t ntrk;                /* tracks in use: 1..ntrk play, the rest wait empty and silent (0: all NTRK) */
+    uint8_t ntrk;                /* tracks in use: 1..ntrk play, the rest wait empty and silent (0: the NPART parts) */
     int8_t octave;
     uint32_t tick;               /* sub-blocks since play */
     uint32_t cpu_q8;             /* audio ISR load, 1/256 */
@@ -497,7 +502,21 @@ typedef struct {
     int32_t batt_raw;            /* smoothed ADC ch3 (battery divider), 0 = not read yet */
 } song_t;
 
-static track_t trk[NTRK];        /* the instrument: four parts */
+static track_t trk[NTRK];        /* the instrument: four parts, then the MIDI-only tracks */
+static voice_t part_voice[NPART][NVOICE];
+static voice_t midi_voice[NVOICE];   /* shared by the MIDI-only tracks: never started (their notes go out as MIDI) */
+static void trk_voices_bind(void)    /* boot, and a host fixture after clearing trk: every voice silent */
+{
+    memset(part_voice, 0, sizeof part_voice);
+    memset(midi_voice, 0, sizeof midi_voice);
+    for (uint32_t k = 0; k < NTRK; k++) trk[k].v = k < NPART ? part_voice[k] : midi_voice;
+}
+/* the part a voice belongs to (NPART: none, midi_voice) */
+static inline uint32_t voice_part(const voice_t *v)
+{
+    uintptr_t d = (uintptr_t)v - (uintptr_t)part_voice;
+    return (uintptr_t)v >= (uintptr_t)part_voice && d < sizeof part_voice ? (uint32_t)(d / sizeof part_voice[0]) : NPART;
+}
 static song_t song;
 /* Audio-owner snapshot of the insert release override; zero keeps the sound's envelope. */
 static uint8_t midi_verb[NTRK];
@@ -507,7 +526,11 @@ static int32_t input_octave(const track_t *t)
 { return t->p[P_QUANT] == Q_MPC ? t->mpc_octave : song.octave; }
 /* The tracks in use: 1..trk_n(), always from track 1 (it clocks the song). The others keep their structs, sound and
  * play nothing (voice.c trk_note_on), are drawn nowhere and get a fresh sound when added (project.c track_add) */
-static inline uint32_t trk_n(void) { return song.ntrk - 1u < NTRK ? song.ntrk : NTRK; }
+static inline uint32_t trk_n(void) { return song.ntrk - 1u < NTRK ? song.ntrk : NPART; }
+/* the parts in use: the tracks the audio renders and mixes (a MIDI-only track never sounds) */
+static inline uint32_t trk_parts(void) { uint32_t n = trk_n(); return n < NPART ? n : NPART; }
+/* track k can only be a MIDI Track (tracks 5..8) */
+static inline int trk_midi_slot(uint32_t k) { return k >= NPART && k < NTRK; }
 
 #include "microtonal.h"
 

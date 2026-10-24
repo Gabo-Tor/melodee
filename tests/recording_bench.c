@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     puts("cursor,queue,sustained,quant,tracks,notes_per_step,stored_records,event_hash,capture_instructions_per_note,instructions_per_tick,ns_per_tick");
     for(uint32_t q=0;q<=3;q+=3) for (uint32_t tracks=1; tracks<=4; tracks*=4) for(uint32_t notes=1;notes<=4;notes*=4) {
         timing_reset(0,24000000u);song.rec=(uint8_t)((1u<<tracks)-1u);
-        for(uint32_t k=0;k<NTRK;k++){
+        for(uint32_t k=0;k<NPART;k++){
             track_t *t=&trk[k];t->p[P_RECQ]=(int16_t)q;t->p[P_SLEN]=64;t->p[P_VOICE]=V_POLY;
             memset(t->step,0,sizeof t->step);for(uint32_t i=0;i<NSTEP;i++)t->step[i].time=ST_REST;
         }

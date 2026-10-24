@@ -26,6 +26,9 @@ enum { ED_CORE1_TEST = 79 };                         /* test builds only: CPU1 f
 static void core1_test_stall(void *unused) { (void)unused; for (;;) ; }
 #endif
 
+#ifdef FM1_IRQ_TARGET
+static void stack_report(uint32_t *v);                  /* main.c: the stacks' high-water marks */
+#endif
 static uint8_t ed_out[1024];                        /* the longest: a NAMES page (PROPHET pages its 201) */
 static uint32_t ed_n;
 
@@ -95,7 +98,10 @@ static uint32_t ed_eng(const track_t *t) { return t->eng_req % NENGINES; }
 #define ED_NV (P_COUNT + G_COUNT)
 /* v4: the parameters of the tracks that are not selected which TRACK_CHANGED follows (the mixer) */
 static const uint8_t ED_TIDS[3] = {P_LEVEL, P_PAN, P_MUTE};
-#define ED_NT (NTRK * 3u)
+#define ED_TRK NPART                                   /* the tracks the protocol lists (the web editor's four) */
+#define ED_NT (ED_TRK * 3u)
+/* the selected track as the protocol lists the tracks: one of the MIDI-only ones (5..8) in the last place */
+static uint32_t ed_sel(void) { return song.sel < ED_TRK ? song.sel : ED_TRK - 1u; }
 static struct {
     uint8_t on, eng, preset, sel;
     uint8_t v4;                                          /* WATCH bit 1: TRACK_CHANGED pushes too */
@@ -162,7 +168,7 @@ static void ed_sync(void)                                /* main loop */
         ed_begin(ED_RELOAD);
         ed_b(ed_eng(TSEL));
         ed_b(TSEL->preset);
-        ed_b(song.sel);
+        ed_b(ed_sel());
         ed_b(TSEL->preset >> 7);                     /* presets past 127 (PROPHET): high bits last */
         ed_send();
         return;
@@ -176,7 +182,7 @@ static void ed_sync(void)                                /* main loop */
         ed_w.st[i] = h;
         ed_begin(ED_STEP_CHANGED);
         ed_b(i);
-        ed_b(song.sel);
+        ed_b(ed_sel());
         ed_send();
         n++;
     }
@@ -328,7 +334,7 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
         return n == 2u || n == 10u || n == 13u || (n == 14u && a[13] <= 100u);
     case ED_MOTION:
         return (n == 1u || (n == 2u && a[1] == 2u) || (n == 3u && a[1] == 1u && a[2] <= 1u) ||
-                (n == 6u && a[1] == 3u) || ((n == 4u || n == 6u) && a[1] == 4u)) && a[0] < NTRK;
+                (n == 6u && a[1] == 3u) || ((n == 4u || n == 6u) && a[1] == 4u)) && a[0] < NPART;
     case ED_BANK_SONG: case ED_SONG:
         return n && (a[0] == 1u || n == 1u);
     default:
@@ -483,8 +489,9 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     }
 #endif
 #if MELODEE_USB_AUDIO
-    case ED_AUDIO_STATS: {                         /* flags: 1 resets maxima, 2 voices, 4 cores, 8 memory, 16 part victims */
-        uint32_t snapshot[64] = {0}, k, count = na && (a[0] & 32u) ? 64u : na && (a[0] & 16u) ? 55u : na && (a[0] & 8u) ? 47u : na && (a[0] & 4u) ? 32u : na && (a[0] & 2u) ? 26u : 20u;
+    case ED_AUDIO_STATS: {                         /* flags: 1 resets maxima, 2 voices, 4 cores, 8 memory, 16 part victims,
+                                                    * 32 complete timing, 64 stack high-water marks */
+        uint32_t snapshot[70] = {0}, k, count = na && (a[0] & 64u) ? 70u : na && (a[0] & 32u) ? 64u : na && (a[0] & 16u) ? 55u : na && (a[0] & 8u) ? 47u : na && (a[0] & 4u) ? 32u : na && (a[0] & 2u) ? 26u : 20u;
         fm1_irq_off();
         snapshot[0] = ua.play_alt;
         snapshot[1] = ua.cap_alt;
@@ -554,7 +561,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                 snapshot[47u+p] = shed_part[p];
                 snapshot[51u+p] = voice_kills_part[p];
             }
-        if(count==64u){
+        if(count>=64u){
             /* Upper envelope includes measured C entry/exit and allows one
              * TIMER5 preemption during the short assembly footer, plus 4 us
              * for register/timestamp/return overhead at supported clocks. */
@@ -567,6 +574,10 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             snapshot[63]=(uint32_t)audio_bench_active()|(audio_bench_shed_requests<<1u);
 #endif
         }
+#ifdef FM1_IRQ_TARGET
+        if (count == 70u)
+            stack_report(snapshot + 64);           /* main.c */
+#endif
         if (na && (a[0] & 1u)) {
             audio_full_max_us=0;
             audio_irq_max_ticks=0;
@@ -577,7 +588,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
 #endif
         }
         fm1_irq_on();
-        ed_b(count == 64u ? 7u : count == 55u ? 6u : count == 47u ? 5u : count == 32u ? 4u : count == 26u ? 3u : 2u);
+        ed_b(count == 70u ? 8u : count == 64u ? 7u : count == 55u ? 6u : count == 47u ? 5u : count == 32u ? 4u : count == 26u ? 3u : 2u);
         for (i = 0; i < count; i++)
             for (k = 0; k < 5u; k++)
                 ed_b(snapshot[i] >> (7u * k));
@@ -697,7 +708,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(P_E0);
         for (i = 0; i < NENGINES; i++)
             ed_str(ENGINES[i]->name, 8);
-        ed_b(NTRK);                                       /* v3 */
+        ed_b(ED_TRK);                                     /* v3 */
         ed_b(0);                                          /* project-based SONG retired: tagged bank SONG below */
         ed_b(0x55); ed_b(1); ed_b(ed_ui_caps());             /* tagged preferences v1: commands 34..38 */
         ed_b(0x4d); ed_b(2); ed_b(MOTION_MAX); ed_b(1); /* motion v2: native ids, chance v1 */
@@ -955,16 +966,16 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             if (ed_w.on)
                 ed_shadow();                               /* the editor re-reads it: no RELOAD for this */
         }
-        ed_b(song.sel);
-        ed_b(NTRK);
-        for (i = 0; i < NTRK; i++) {
+        ed_b(ed_sel());
+        ed_b(ED_TRK);
+        for (i = 0; i < ED_TRK; i++) {
             ed_b(ed_eng(&trk[i]));
             ed_b(trk[i].preset);
             ed_v(trk[i].p[P_LEVEL]);
             ed_b(trk[i].p[P_MUTE] != 0);
             ed_b((song.rec >> i) & 1u);
         }
-        for (i = 0; i < NTRK; i++)                         /* the presets' high bits, last */
+        for (i = 0; i < ED_TRK; i++)                       /* the presets' high bits, last */
             ed_b(trk[i].preset >> 7);
         break;
     case ED_TRACK_MIX: {                                   /* track [, level v14, mute] -> track, level, mute */
@@ -1047,14 +1058,14 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             else if (chain_busy()) rc = 2;
             else {
                 for (uint32_t row = 0; row < a[1]; row++) {
-                    for (uint32_t k = 0; k < NTRK; k++) if (a[2u + row * 5u + k] >= NPAT) rc = 1;
+                    for (uint32_t k = 0; k < ED_TRK; k++) if (a[2u + row * 5u + k] >= NPAT) rc = 1;
                     if (!a[6u + row * 5u] || a[6u + row * 5u] > 16u) rc = 1;
                 }
                 if (!rc) {
                     chain_defaults(&chain_config); memset(chain_patterns, 0, sizeof chain_patterns);
                     chain_config.count = a[1];
                     for (uint32_t row = 0; row < a[1]; row++) {
-                        memcpy(chain_patterns[row], a + 2u + row * 5u, NTRK);
+                        memcpy(chain_patterns[row], a + 2u + row * 5u, ED_TRK);
                         chain_config.row[row] = (chain_row_t){chain_patterns[row][0], a[6u + row * 5u]};
                     }
                     ui.song_row = 0; ui.force = 1;
@@ -1064,7 +1075,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         else if (a[0] == 3u) transport_req = 2;
         ed_b(a[0]); ed_b(rc); ed_b(chain_config.count); ed_b(chain.running); ed_b(chain.row); ed_b(chain.remaining);
         for (uint32_t row = 0; row < chain_config.count; row++) {
-            for (uint32_t k = 0; k < NTRK; k++) ed_b(chain_patterns[row][k]);
+            for (uint32_t k = 0; k < ED_TRK; k++) ed_b(chain_patterns[row][k]);
             ed_b(chain_config.row[row].repeat);
         }
         break;

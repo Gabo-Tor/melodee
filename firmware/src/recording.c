@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 #include "performance_options.h"
-/* A bounded performance store shared by the project's 32 banks. Step notes
+/* A bounded performance store shared by the project's banks (NTRK x NPAT). Step notes
  * are its editable overview; the original onsets, velocities and independent
  * releases live here. QNT commits a grid to the new take when it finishes. */
 static recorded_note_t recording[RECORD_MAX] __attribute__((section(".pool")));
@@ -20,15 +20,7 @@ static struct { uint32_t held, left; } recording_run[RECORD_MAX];
 static uint8_t recording_flags[RECORD_MAX]; /* 1: live hold; 2: runtime list; 4: heard this loop; 8: captured in this take; 16: release overview bit 6 */
 static uint32_t recording_fraction[NTRK];
 /* Index by bank and cache onset arithmetic outside the steady audio tick. */
-#define RECORDING_EMPTY8 RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX
-static uint16_t recording_head[NTRK * NPAT] = {
-    RECORDING_EMPTY8, RECORDING_EMPTY8, RECORDING_EMPTY8, RECORDING_EMPTY8,
-#if NPAT == 16u
-    RECORDING_EMPTY8, RECORDING_EMPTY8, RECORDING_EMPTY8, RECORDING_EMPTY8,
-#endif
-};
-_Static_assert(NTRK == 4u && (NPAT == 8u || NPAT == 16u), "recording head initializer covers every bank");
-#undef RECORDING_EMPTY8
+static uint16_t recording_head[NTRK * NPAT] = {[0 ... NTRK * NPAT - 1u] = RECORD_MAX};
 static uint16_t recording_next[RECORD_MAX];
 /* Keep the onset cache in ordinary RAM: the expanded event payload remains in
  * the pool, leaving the full audio reserve alongside CPU1's private stacks. */
@@ -39,7 +31,7 @@ static struct { uint32_t period, key, ordered_period, ordered_key; uint16_t curs
 /* Only capture holds (or sounding events in countdown mode) are visited. Keep the extra index in
  * the pool, rather than taking the target's remaining data SRAM. */
 static uint16_t recording_live_next[RECORD_MAX] __attribute__((section(".pool")));
-static uint16_t recording_live_head[NTRK] = {RECORD_MAX, RECORD_MAX, RECORD_MAX, RECORD_MAX};
+static uint16_t recording_live_head[NTRK] = {[0 ... NTRK - 1u] = RECORD_MAX};
 #endif
 static uint32_t recording_view(const track_t *t, const recorded_note_t *r);
 #if MELODEE_RECORD_QUEUE
@@ -49,7 +41,7 @@ static uint32_t recording_view(const track_t *t, const recorded_note_t *r);
  * ten bits address the heap. For longer patterns, a spare runtime flag keeps
  * the seventh overview bit, without enlarging the 1024-entry index. */
 _Static_assert(RECORD_MAX == 1024u && NSTEP <= 128u, "packed queue index");
-/* The four heaps share one store of 32-entry chunks. Row tr holds track tr's
+/* The NTRK heaps share one store of 32-entry chunks. Row tr holds track tr's
  * first 32 entries, so the tick's top and small queues index it directly; a
  * deeper chunk is taken from the free stack as a heap grows past a multiple
  * of 32 and returned as it shrinks back. A note sounds in at most one track's
@@ -57,7 +49,7 @@ _Static_assert(RECORD_MAX == 1024u && NSTEP <= 128u, "packed queue index");
  * RECORD_MAX / 32 + NTRK: the store cannot run out. */
 #define RECORDING_ROWS (RECORD_MAX / 32u + NTRK)
 #define RECORDING_SHARED (RECORDING_ROWS - NTRK)
-_Static_assert(RECORDING_ROWS == 36u && RECORDING_ROWS <= 128u, "every sounding note has a chunk; row - j fits a byte");
+_Static_assert(RECORDING_ROWS == RECORD_MAX / 32u + NTRK && RECORDING_ROWS <= 128u, "every sounding note has a chunk; row - j fits a byte");
 static uint16_t recording_heap_store[RECORDING_ROWS * 32u] __attribute__((section(".pool")));
 /* Entries 32j..32j+31 live in row chunk[tr][j] + j: keeping row - j lets
  * (chunk << 5) + at index the store directly. [0] is tr once the heap has

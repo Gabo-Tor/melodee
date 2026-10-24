@@ -46,7 +46,7 @@ int main(int argc,char **argv)
     apply_preset_to(t,200u);project_capture(&saved);
     bad+=check("project restore resumes at the last of all 200 factory programs",proj_pack(&wire,&saved)&&proj_import(&readback,&wire,sizeof wire)&&!project_restore_runtime(&readback)&&!t->user&&t->preset==200u&&preset_all_pos(&total)==200u);
     apply_preset_to(t,0u);project_capture(&saved);saved.p5[0]=*p5_fac(199);saved.t[0].preset=0;*proj_p5_origin(&saved,0)=0;saved.sum=proj_sum(&saved);
-    uint32_t origin_at=68u+NTRK*(P_COUNT+2u+NSTEP*9u)+sizeof saved.chain+sizeof saved.motion;
+    uint32_t origin_at=68u+NPART*(P_COUNT+2u+NSTEP*9u)+sizeof saved.chain+sizeof saved.motion;
     proj_pack(&wire,&saved);wire.raw[origin_at]=wire.raw[origin_at+1u]=0u;
     uint32_t checksum=proj_hash(wire.raw,PROJ_STORE_SIZE-4u);memcpy(wire.raw+PROJ_STORE_SIZE-4u,&checksum,4u);
     bad+=check("older projects locate their embedded Prophet factory patch",proj_import(&readback,&wire,sizeof wire)&&!project_restore_runtime(&readback)&&!t->user&&t->preset==200u);

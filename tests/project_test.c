@@ -21,7 +21,7 @@ static int check(const char *what, int ok)
 static void blank(project_t *a)
 {
     memset(a, 0, sizeof *a);
-    for (uint32_t k = 0; k < NTRK; k++) {
+    for (uint32_t k = 0; k < NPART; k++) {
         p5_patch_init(&a->p5[k]);
         cz_patch_init(a->cz[k].raw);
         memcpy(a->fm6[k], FM6_INIT, FM6_PACKED);
@@ -92,7 +92,7 @@ int main(void)
         static project_store_t st, st2;
         uint32_t i, zero = 1;
         bad += check("FUN16: the name at the end of the record, the FM6 patches before the tones, after the data",
-                     PROJ_NAME_OFF == PROJ_STORE_SIZE - 16u && PROJ_FM6_OFF == 3104u && 68u + NTRK * (P_COUNT + 2u + NSTEP * 8u) +
+                     PROJ_NAME_OFF == PROJ_STORE_SIZE - 16u && PROJ_FM6_OFF == 3104u && 68u + NPART * (P_COUNT + 2u + NSTEP * 8u) +
                      sizeof(chain_config_t) + sizeof(motion_store_t) + 188u == PROJ_FM6_OFF);
         blank(&a);
         a.t[1].p[P_LEVEL] = 99;
@@ -129,7 +129,7 @@ int main(void)
         static project_store_t st, slot;
         uint32_t i, k, sum;
         blank(&a);
-        for (k = 0; k < NTRK; k++) {
+        for (k = 0; k < NPART; k++) {
             memcpy(a.fm6[k], FM6_FACTORY[k * 2u], FM6_PACKED);
             a.t[k].engine = ENGI_FM6;
             a.t[k].p[P_E7] = (int16_t)(k * 2u);
@@ -137,7 +137,7 @@ int main(void)
         memcpy(a.name, "FM SONG", 7);
         a.sum = proj_sum(&a);
         ok = proj_pack(&st, &a) && ((uint32_t *)st.raw)[0] == PROJ_MAGIC && proj_import(&c, &st, sizeof st);
-        for (k = 0; k < NTRK; k++)
+        for (k = 0; k < NPART; k++)
             ok &= !memcmp(c.fm6[k], FM6_FACTORY[k * 2u], FM6_PACKED) && c.t[k].engine == ENGI_FM6 &&
                   !memcmp(st.raw + PROJ_FM6_OFF + k * FM6_PACKED, FM6_FACTORY[k * 2u], FM6_PACKED);
         bad += check("FUN16: the four FM6 patches round trip (bytes at PROJ_FM6_OFF)", ok && !memcmp(c.name, "FM SONG", 7));

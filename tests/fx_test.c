@@ -8,7 +8,7 @@ static void reset_fx(void)
 {
     fx_clear_all();memset(fx_state,0,sizeof fx_state);
     for(uint32_t k=0;k<FX_STATE_COUNT;k++)resource_release(RES_FX0+k);
-    memset(trk,0,sizeof trk);spread_on=0;trk[0].p[P_FXRATE]=60;trk[0].p[P_FXCHAR]=64;
+    memset(trk,0,sizeof trk);trk_voices_bind();spread_on=0;trk[0].p[P_FXRATE]=60;trk[0].p[P_FXCHAR]=64;
 }
 static uint64_t fx_signal(uint32_t type,int rate,int character,int mix,const char *demo)
 {
@@ -68,7 +68,7 @@ static void frozen_three_slots(void)
         if(k==2){assert(tmpl_take(b,n));template_load();}else {assert(k?bank_valid(b,n):proj_import(&proj_scratch,b,n));assert(!project_restore_runtime(&proj_scratch));}
         if(k==0){ /* Old engine ID 112 shifts, a tagged native 112 must not. */
             motion_store_t m={.count=2,.on=1,.event={{0,112,10},{0,112,(MO_TAG_FM6<<8)|80}}};
-            uint32_t off=68u+NTRK*(116u+2u+NSTEP*8u)+sizeof(chain_config_t);memcpy(b+off,&m,sizeof m);uint32_t h=proj_hash(b,n-4u);memcpy(b+n-4u,&h,4);
+            uint32_t off=68u+NPART*(116u+2u+NSTEP*8u)+sizeof(chain_config_t);memcpy(b+off,&m,sizeof m);uint32_t h=proj_hash(b,n-4u);memcpy(b+n-4u,&h,4);
             assert(proj_import(&proj_scratch,b,n));assert(proj_scratch.motion.event[0].param==P_E4 && proj_scratch.motion.event[1].param==112 && proj_scratch.motion.event[1].value==((MO_TAG_FM6<<8)|80));
         }
         assert(!memcmp(trk[0].p+P_FXTYPE,chain,sizeof chain));assert(!trk[0].p[P_FXSEND]);

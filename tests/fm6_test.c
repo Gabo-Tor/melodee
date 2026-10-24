@@ -64,7 +64,7 @@ static void op_set(uint8_t *v, uint32_t opn, const int *r, const int *l, int ol,
 static void setup(const uint8_t *v, const int16_t *e)
 {
     uint32_t i;
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     eng_state_reset();
     memset(fm6_eff, 0, sizeof fm6_eff);
     fm6_fn_reset();
@@ -75,7 +75,7 @@ static void setup(const uint8_t *v, const int16_t *e)
     fm6_put_patch(0, v, 1);
     T->p[P_VOICE] = V_POLY;
     T->p[P_RESERVED34] = T->p[P_RESERVED35] = T->p[P_RESERVED36] = 0;
-    memcpy(ED, fm6_patch[0], sizeof ED);
+    memcpy(ED, fm6_patch_of(0), sizeof ED);
 }
 
 static void fresh(void)                                  /* track 1 = FM6 with the init voice, nothing else */
@@ -810,7 +810,7 @@ static void macros(void)
             host_preset(T, ENGI_FM6, k);
             fm6_factory(k, pk); fm6_unpack(pk, v);
             check("factory preset loads its corresponding patch with E7 unused",
-                  !T->p[P_E7] && !memcmp(fm6_patch[0], v, FP_SIZE));
+                  !T->p[P_E7] && !memcmp(fm6_patch_of(0), v, FP_SIZE));
         }
     }
 }
@@ -925,7 +925,7 @@ static void demo(const char *dir, uint32_t pi)
     if (!(w = fopen(path, "wb")))
         return;
     wav_hdr(w, 0);
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     eng_state_reset();
     fm6_fn_reset();
     host_tracks_init();

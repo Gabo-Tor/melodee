@@ -9,6 +9,7 @@ static uint8_t cartridge[FM6_RX], voice[163];
 static void fresh_sysex(void)
 {
     reset(); fm6_init();
+    wire_release();
     fm6_rx_ready = fm6_rx_on = 0; fm6_rx_n = 0; fm6_bslot = 0;
     usb.sx_on = 0;
     set_engine_of(&trk[0], ENGI_FM6);
@@ -18,6 +19,7 @@ static void fresh_sysex(void)
  * single-byte packets in addition to normal CIN 4/5/6/7 packets. */
 static void usb_dump(const uint8_t *p, uint32_t n)
 {
+    wire_release();                                      /* next main-loop turn, before USB receives a frame */
     for (uint32_t i = 0; i < n;) {
         if (i % 41u == 0) {
             midi_in_event(0x0000f80fu);
@@ -75,7 +77,7 @@ int main(void)
     bad += check("bank receive stores all 32 packed patches without the editor", ok && native_used(ENGI_FM6,63));
     native_load(ENGI_FM6,0,0);
     fm6_unpack(cartridge + 6, unpacked);
-    bad += check("chosen user preset can be loaded explicitly after importing", !memcmp(fm6_patch[0],unpacked,FP_SIZE) && !trk[0].user_native && trk[0].user == 1);
+    bad += check("chosen user preset can be loaded explicitly after importing", !memcmp(fm6_patch_of(0),unpacked,FP_SIZE) && !trk[0].user_native && trk[0].user == 1);
     dump_request(7,9);
     bad += check("bank dump reply round trips every byte and request channel", host_wire_n == FM6_RX && !memcmp(host_wire,cartridge,FM6_RX));
     fm6_bslot = 32; make_bank(15); usb_dump(cartridge, sizeof cartridge);ui.uslot=32;sysex_choose();ui.confirm=0;sysex_commit();native_load(ENGI_FM6,32,0);
@@ -93,9 +95,9 @@ int main(void)
     song.sel=2;set_engine_of(&trk[2],ENGI_FM6);fm6_put_patch(2,unpacked,1);
     host_wire_n=0;fm6_send();host_drain();
     bad += check("device SEND uses the selected track MIDI channel", host_wire_n==163 && host_wire[2]==2 && !memcmp(host_wire+6,unpacked,FP_SIZE) && !strcmp(ui.msg,"VOICE SENT"));
-    memcpy(previous,fm6_patch[2],FP_SIZE);
+    memcpy(previous,fm6_patch_of(2),FP_SIZE);
     voice[6]^=1;usb_dump(voice,sizeof voice);
-    bad += check("bad voice checksum cannot change the track", !memcmp(previous,fm6_patch[2],FP_SIZE));voice[6]^=1;
+    bad += check("bad voice checksum cannot change the track", !memcmp(previous,fm6_patch_of(2),FP_SIZE));voice[6]^=1;
     uint32_t gen=up_gen;cartridge[4102]^=1;usb_dump(cartridge,sizeof cartridge);
     bad += check("bad bank checksum cannot mutate presets", up_gen==gen);cartridge[4102]^=1;
     song.playing=1;usb_dump(cartridge,sizeof cartridge);
@@ -104,10 +106,10 @@ int main(void)
     bad += check("oversized dump is discarded", up_gen==gen && !fm6_rx_ready);
     for(uint32_t i=0;i<162;i++)sysex_byte(voice[i]);
     sysex_byte(0x90);sysex_byte(0xf7);fm6_service();
-    bad += check("status inside SysEx aborts DX7 assembly", !fm6_rx_ready && !memcmp(previous,fm6_patch[2],FP_SIZE));
+    bad += check("status inside SysEx aborts DX7 assembly", !fm6_rx_ready && !memcmp(previous,fm6_patch_of(2),FP_SIZE));
     for(uint32_t i=0;i<162;i++)sysex_byte(voice[i]);
     midi_in_event(0x643c9009u);sysex_byte(0xf7);fm6_service();
-    bad += check("channel event in another USB packet aborts DX7 assembly", !fm6_rx_ready && !memcmp(previous,fm6_patch[2],FP_SIZE));
+    bad += check("channel event in another USB packet aborts DX7 assembly", !fm6_rx_ready && !memcmp(previous,fm6_patch_of(2),FP_SIZE));
     usb_dump((uint8_t[]){0xf0,0x43,0xf7},3);dump_request(3,0);
     bad += check("short frames recover for subsequent dump requests", host_wire_n==163 && host_wire[2]==3);
     /* Exact packed bank bytes (including unused bits) must survive export. */

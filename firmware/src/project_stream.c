@@ -16,12 +16,12 @@ static uint32_t proj_source_hash;
  * mutation. The existing full codec remains the independent host oracle. */
 static int proj_image_valid(const project_t *q)
 {
-    int8_t oct[NTRK];uint8_t step[8];
-    if(q->sel>=NTRK||q->parts>NPART||q->phys>PROJ_PHYS)return 0;
+    int8_t oct[PROJ_TRK];uint8_t step[8];
+    if(q->sel>=NTRK||q->parts>NTRK||q->phys>PROJ_PHYS)return 0;
     if(P_COUNT>127u||!chain_valid(&q->chain)||!motion_valid(&q->motion)||q->g[G_FXRETURN]<0||q->g[G_FXRETURN]>127||q->g[G_FXMODE]<0||q->g[G_FXMODE]>1)return 0;
     for(uint32_t i=0;i<FX_SLOTS*FX_PARAMS;i++)if(q->g[G_MFXTYPE+i]<GP[G_MFXTYPE+i].min||q->g[G_MFXTYPE+i]>GP[G_MFXTYPE+i].max)return 0;
     for(uint32_t i=0;i<FX_SLOTS;i++)if(q->g[G_MFXTONE+i]<-FX_TONE_MAX||q->g[G_MFXTONE+i]>FX_TONE_MAX)return 0;
-    for(uint32_t k=0;k<NTRK;k++){
+    for(uint32_t k=0;k<PROJ_TRK;k++){
         oct[k]=q->t[k].mpc_octave;
         if(q->t[k].engine>=NENGINES||q->pattern[k]>=NPAT||!cz_patch_valid(q->cz[k].raw)||!p5_patch_valid(&q->p5[k])||!drum_patch_valid(&q->drum[k]))return 0;
         for(uint32_t i=0;i<FM6_PACKED;i++)if(q->fm6[k][i]>127u)return 0;
@@ -29,8 +29,8 @@ static int proj_image_valid(const project_t *q)
         for(uint32_t i=0;i<NSTEP;i++)if(!proj_step_pack(step,&q->t[k].step[i]))return 0;
     }
     if(!mpc_octaves_pack(oct))return 0;
-    for(uint32_t i=0;i<RECORD_MAX;i++)if(!recording_valid(&q->recording[i])||(q->recording[i].vel&&(recorded_owner(&q->recording[i])>=32u||recorded_step(&q->recording[i])>=64u)))return 0;
-    return 68u+NTRK*(P_COUNT+2u+NSTEP*8u)+sizeof q->chain+sizeof q->motion+2u+2u*NTRK<=PROJ_MPC_OCT_WIRE;
+    for(uint32_t i=0;i<RECORD_MAX;i++)if(!recording_valid(&q->recording[i])||(q->recording[i].vel&&(recorded_owner(&q->recording[i])>=proj_owners()||recorded_step(&q->recording[i])>=64u)))return 0;
+    return 68u+PROJ_TRK*(P_COUNT+2u+NSTEP*8u)+sizeof q->chain+sizeof q->motion+2u+2u*PROJ_TRK<=PROJ_MPC_OCT_WIRE;
 }
 static int proj_image_capture(int runtime)
 {
@@ -47,8 +47,10 @@ static int proj_image_capture(int runtime)
  * dirty; a subsequent save captures one guarded, consistent image. */
 static int proj_image_hash(int runtime,uint32_t *result)
 {
-    uint32_t header[2]={BANK_MAGIC,BANK_STORE_SIZE};project_t *q=&proj_scratch;
+    project_t *q=&proj_scratch;
+    bank_wide=(uint8_t)(runtime && cap_tracks()>PROJ_TRK);   /* (the FUN record's takes: as the tail's kind) */
     if(!proj_pack(proj_image_store(),q))return 0;
+    uint32_t header[2]={bank_magic(),BANK_STORE_SIZE};
     uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),sizeof(project_store_t));
     if(!bank_pack_tail(proj_image_tail(),q,runtime)||!bank_tail_valid(proj_image_tail()))return 0;
     hash=fnv(hash,proj_image_tail(),BANK_TAIL_SIZE-4u);
@@ -56,6 +58,7 @@ static int proj_image_hash(int runtime,uint32_t *result)
 }
 static int proj_stream_read_hash(uint32_t obj,uint32_t copy,uint32_t off,uint32_t n,uint32_t *fn,uint32_t *crc)
 {
+    wire_take();
     while(n){
         uint32_t k=n>sizeof proj_wire_u.raw?sizeof proj_wire_u.raw:n;
         if(st_read_range(obj,copy,off,proj_wire_u.raw,k))return -1;
@@ -78,7 +81,7 @@ static int proj_stream_generate(st_stream_t *w,uint32_t obj)
     /* The tail is now immutable flash scratch; its RAM becomes the active
      * serializer output. The decoded project remains untouched beside it. */
     if(!proj_pack(proj_image_store(),q))return -1;
-    uint32_t header[2]={BANK_MAGIC,BANK_STORE_SIZE};
+    uint32_t header[2]={bank_magic(),BANK_STORE_SIZE};
     uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),sizeof(project_store_t));
     uint32_t crc=st_crc32_update(st_crc32_update(0xffffffffu,header,sizeof header),proj_image_store(),sizeof(project_store_t));
     if(proj_stream_read_hash(obj,w->head.slot,BANK_ACTIVE_OFF,BANK_TAIL_SIZE-4u,&hash,&crc))return -7;
@@ -92,10 +95,12 @@ static int proj_stream_generate(st_stream_t *w,uint32_t obj)
 static int proj_stream_load(uint32_t obj,uint32_t copy,uint32_t len)
 {
     project_t *q=&proj_scratch;uint32_t hash=2166136261u;
-    proj_source_hash=0;
+    proj_source_hash=0;bank_wide=0;
     if(bank_full(len)){
         uint32_t header[2];
-        if(st_read_range(obj,copy,0,header,sizeof header)||header[0]!=BANK_MAGIC||header[1]!=len)return 0;
+        if(st_read_range(obj,copy,0,header,sizeof header)||(header[0]!=BANK_MAGIC&&header[0]!=BANKL_MAGIC)||header[1]!=len)return 0;
+        bank_wide=(uint8_t)(header[0]==BANKL_MAGIC);
+        if(bank_wide&&st_read_range(obj,copy,BANKL_REC_OFF,proj_rec_ext,sizeof proj_rec_ext))return 0;
         if(st_read_range(obj,copy,8u,proj_image_store(),sizeof(project_store_t)))return 0;
         hash=fnv(fnv(hash,header,sizeof header),proj_image_store(),sizeof(project_store_t));
         if(!proj_import(q,proj_image_store(),sizeof(project_store_t)))return 0;

@@ -22,7 +22,7 @@ static void advance(uint32_t n)
 static void reset(void)
 {
     ui_power_on();
-    for (uint32_t tr = 0; tr < NTRK; tr++) {
+    for (uint32_t tr = 0; tr < NPART; tr++) {
         set_engine_of(&trk[tr], ENGI_FM6); engine_block(&trk[tr]);
         trk[tr].p[P_VOICE] = V_POLY; trk[tr].p[P_CHRD] = 0;
     }
@@ -128,8 +128,8 @@ static void fm6_release_rates(void)
     for (uint32_t tick = 0; tick < 3000; tick++) {
         midi_verb[0] = (uint8_t)((tick / 37) % 4 == 0 ? 0 : (tick / 37) % 4 == 1 ? 86 : (tick / 37) % 4 == 2 ? 127 : 10);
         if (tick % 101 == 0) {
-            fm6_patch[0][FP_R1+3] = (uint8_t)(tick % 100);
-            fm6_patch[0][FP_RS] = (uint8_t)(tick % 8);
+            fm6_patch_of(0)[FP_R1+3] = (uint8_t)(tick % 100);
+            fm6_patch_of(0)[FP_RS] = (uint8_t)(tick % 8);
             fm6_pgen[0]++; fm6_sync(TSEL, 0);
         }
         if (tick % 200 == 0) { v->gate = 1; fm6_note_on(TSEL, v); }

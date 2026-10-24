@@ -148,7 +148,7 @@ static const param_desc_t FM6_SD[4] = {                 /* the STORE page: the s
  * whole ratio) or, FIXED, Hz (CRS: 1, 10, 100, 1000) */
 static void fm6_freq_text(char *val, const char **unit, int coarse)
 {
-    const uint8_t *op = &fm6_patch[song.sel % NTRK][(5u - fm6_opsel % 6u) * FP_OP];
+    const uint8_t *op = &fm6_patch_of(song.sel % NTRK)[(5u - fm6_opsel % 6u) * FP_OP];
     int32_t c = op[FP_FC], f = coarse ? 0 : op[FP_FF];
     if (!op[FP_MODE]) {
         if (coarse && c)
@@ -716,7 +716,7 @@ static uint8_t fx_rack_row[2];   /* the racks' rows KNOB 2 picks: FX's (0..2 its
 static const param_desc_t *fm6_page_desc(const page_t *pg, uint32_t slot, int16_t **valp)
 {
     uint32_t id = pg->id[slot], tr = song.sel % NTRK;
-    const uint8_t *v = fm6_patch[tr];
+    const uint8_t *v = fm6_patch_of(tr);
     const param_desc_t *d;
     *valp = 0;
     if (id == 0xFFu || TSEL->eng_req != ENGI_FM6)
@@ -751,7 +751,7 @@ static void fm6_page_put(const page_t *pg, uint32_t slot, int32_t val)
             fm6_bslot = (uint16_t)(val - 1);
         return;
     }
-    memcpy(v, fm6_patch[tr], FP_SIZE);
+    memcpy(v, fm6_patch_of(tr), FP_SIZE);
     if (pg->scope == SC_FMOP) {
         uint32_t k = 5u - fm6_opsel % 6u;
         if (id == FP_OP) {

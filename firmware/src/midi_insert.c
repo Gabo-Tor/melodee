@@ -111,7 +111,7 @@ static void midi_insert_tick(uint32_t n, uint32_t beat)
 {
     if (!midi_insert.ready) midi_insert_init();
     midi_insert.beat = beat ? beat : FS / 2u;
-    for (uint32_t tr = 0; tr < NTRK; tr++) midi_insert_controls(tr);
+    for (uint32_t tr = 0; tr < NPART; tr++) midi_insert_controls(tr); /* tracks 5..8 cannot have note inserts */
     midi_insert.time += n;
     if (!midi_insert.pending) return;
     /* Snapshot admission: new deadlines are future-only, independent of queue position. */

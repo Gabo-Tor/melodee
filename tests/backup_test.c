@@ -72,7 +72,7 @@ static void reset(void)
 {
     memset(nor, 0xFF, sizeof nor);
     memset(&song, 0, sizeof song);
-    memset(trk, 0, sizeof trk);
+    memset(trk, 0, sizeof trk);trk_voices_bind();
     memset(&chain, 0, sizeof chain);
     chain_defaults(&chain_config);
     pattern_init();
@@ -178,13 +178,13 @@ static int runtime_bytes(uint8_t *out)
 static int full_pattern_archive(void)
 {
     int bad=0, ok=1; reset(); static uint8_t archive[BANK_STORE_SIZE], saved[BANK_STORE_SIZE];
-    for (uint32_t k=0; k<NTRK; k++) for (uint32_t b=0; b<NPAT; b++) {
+    for (uint32_t k=0; k<NPART; k++) for (uint32_t b=0; b<NPAT; b++) {
         track_t *t=&trk[k]; pattern_request(t,b); t->p[P_SLEN]=(int16_t)(16+b);
         t->step[3]=(step_t){{(uint8_t)(40+k*8+b),60,64,67},4,ST_NOTE,SF_ACCENT,100,0x81,0x80,(uint8_t)(20+b)};
         t->step[4]=(step_t){{0},0,ST_TIE}; motion_set_event(t,3,P_PAN,(int16_t)(k*8+b));
     }
     chain_config.count=1; chain_config.row[0]=(chain_row_t){0,2};
-    for (uint32_t k=0; k<NTRK; k++) chain_patterns[0][k]=(uint8_t)(k+1);
+    for (uint32_t k=0; k<NPART; k++) chain_patterns[0][k]=(uint8_t)(k+1);
     project_save_as(0,"CHORD BANKS");
     uint32_t len,crc; list(0,&len,&crc); runtime_bytes(archive);
     bad+=check("full bank archive contains all runtime banks with its verified CRC",len==sizeof archive && crc==st_crc32(archive,sizeof archive));
@@ -200,7 +200,7 @@ static int full_pattern_archive(void)
     bad+=check("full archive restores a saved slot through the A/B path",put_all(3,archive,sizeof archive,st_crc32(archive,sizeof archive))==0);
     pattern_init(); memset(&motion,0,sizeof motion); memset(proj_meta,0,sizeof proj_meta); memset(proj_slot,0,sizeof proj_slot);
     proj_fetch(1); project_load(1); ok=1;
-    for (uint32_t k=0; k<NTRK; k++) for (uint32_t b=0; b<NPAT; b++) {
+    for (uint32_t k=0; k<NPART; k++) for (uint32_t b=0; b<NPAT; b++) {
         track_t *t=&trk[k]; pattern_request(t,b);
         ok &= t->step[3].n==4 && t->step[3].note[0]==40+k*8+b && t->step[3].note[3]==67 &&
             t->step[4].time==ST_TIE && t->p[P_SLEN]==16+(int16_t)b && step_chance(&t->step[3])==20+b && motion_count(t)==1;
@@ -243,7 +243,7 @@ static int prophet_archive(void)
 static int expanded_recording_archive(void)
 {
     reset();
-    for(uint32_t k=0;k<NTRK;k++)for(uint32_t b=0;b<NPAT;b++) {
+    for(uint32_t k=0;k<NPART;k++)for(uint32_t b=0;b<NPAT;b++) {
         pattern_request(&trk[k],b);
         trk[k].step[3]=(step_t){{60},1,ST_NOTE,SF_RECORDED,100,0,0,0};
     }

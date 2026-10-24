@@ -385,7 +385,7 @@ static void pv_lfo(int32_t h)
  * point; the knob turning: its segment (a rate) or its point (a level) in text. PITCH: the note's own pitch dashed */
 static void pv_dxeg(int32_t h)
 {
-    const uint8_t *v = fm6_patch[song.sel % NTRK];
+    const uint8_t *v = fm6_patch_of(song.sel % NTRK);
     int pitch = cur_page()->graph == GR_FMPEG, lv = cur_page()->id[0] == FP_L1 || cur_page()->id[0] == FP_PL1;
     const uint8_t *r = pitch ? v + FP_PR1 : v + (5u - fm6_opsel % 6u) * FP_OP + FP_R1;
     const uint8_t *l = pitch ? v + FP_PL1 : v + (5u - fm6_opsel % 6u) * FP_OP + FP_L1;
@@ -828,14 +828,14 @@ static void pv_meter(uint32_t k, uint16_t c)
     uint16_t bg = ux_mix(T_BG, c, k == song.sel ? 24 : 11);
     cv_begin(PV_MIX_BAR_W, 3, bg);
     pv_meter_draw(k, 0, 0, c, bg);
-    cv_blit((uint32_t)(BOX_X + PV_MIX_BAR_X), (uint32_t)(st_row_y(k) + pv_mix_y(h) + TY_TX->cap + 8 + 7));
+    cv_blit((uint32_t)(BOX_X + PV_MIX_BAR_X), (uint32_t)(st_row_y(k % NPART) + pv_mix_y(h) + TY_TX->cap + 8 + 7));
 }
 static void pv_strip(uint32_t k)
 {
     track_t *t = &trk[k];
     uint32_t sel = k == song.sel, mute = t->p[P_MUTE] != 0, arm = (song.rec >> k) & 1u, lvl = trk_level(k), sig;
     uint32_t hot = sel && ui.hot_t ? ui.hot_col + 1u : 0u;   /* 1 LEVEL, 2 PAN, 3 unused, 4 MUTE */
-    int32_t pk = t->peak, m, pan = clamp(t->p[P_PAN], -64, 63), h = st_row_h(), y = st_row_y(k), top;
+    int32_t pk = t->peak, m, pan = clamp(t->p[P_PAN], -64, 63), h = st_row_h(), y = st_row_y(k % NPART), top;
     uint16_t tc = mute ? T_DIM : T_TRK(k), bg = ux_mix(T_BG, mute ? T_TRK(k) : tc, sel ? 24 : 11);
     const aafont_t *tf = TY_TX, *lf = TY_LB;
     int32_t T = pv_mix_y(h), ly = T + tf->cap + 8, cs = h >= 80 ? 34 : 26;
@@ -980,7 +980,7 @@ static void pv_draw(void)
         if (ui.force)
             lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
         draw_head();
-        for (k = 0; k < stage_rows(); k++)
+        for (k = trk_group(); k < trk_group() + stage_rows(); k++)   /* (the selected track's four) */
             if (k < trk_n())
                 pv_strip(k);
             else

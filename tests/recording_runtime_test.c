@@ -68,7 +68,7 @@ static int recapture_and_capture_pause(void)
 static int take_taker_boundaries(void)
 {
     pass_begin(0,16,0);
-    for(uint32_t k=0;k<NTRK;k++){
+    for(uint32_t k=0;k<NPART;k++){
         trk[k].p[P_SDIV]=TSEL->p[P_SDIV];trk[k].p[P_SSWING]=0;
     }
     trk[1].p[P_SLEN]=32;
@@ -82,7 +82,7 @@ static int take_taker_boundaries(void)
     seq_advance(loop-100u);
     uint32_t w=cap_w;
     int ok=rec_any() && !song.rec_wait;
-    for(uint32_t k=0;k<NTRK;k++){cap_on(&trk[k],80+k,90);cap_off(&trk[k],80+k);}
+    for(uint32_t k=0;k<NPART;k++){cap_on(&trk[k],80+k,90);cap_off(&trk[k],80+k);}
     /* Releasing an onset retained before punch-in must still close its hold. */
     input_off(&trk[1],72);
     ok &= cap_w==w && !(cap_ev[first%CAP_N].tr&128u) && cap_ev[first%CAP_N].dur>0;

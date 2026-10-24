@@ -71,14 +71,14 @@ static void dependency_tests(void)
     designer_at("P5 FLT ENV",0);p[P5_RELEASE_ON]=0;p[P5_ENV_FILTER]=0;p[P5_POLY_ENV]=0;turn(EN_K4,1);
     failures+=check("turning filter REL switches release and the filter envelope on",p[P5_RELEASE_ON] && p[P5_ENV_FILTER] && designer_need()==DF_NONE);
     designer_close(0);sound_init_of(TSEL,ENGI_FM6);designer_open();press(B_OCTUP);
-    fm6_on[0]=FM6_ON_ALL;fm6_patch[0][3*FP_OP+FP_OL]=50;designer_route();
-    designer_at("OUT",2);fm6_on[0]&=(uint8_t)~(1u<<3);fm6_patch[0][3*FP_OP+FP_OL]=0;turn(EN_K1,-1);
-    failures+=check("a silent operator's level turned down stays silent",!(fm6_on[0]&(1u<<3)) && !fm6_patch[0][3*FP_OP+FP_OL]);
+    fm6_on[0]=FM6_ON_ALL;fm6_patch_of(0)[3*FP_OP+FP_OL]=50;designer_route();
+    designer_at("OUT",2);fm6_on[0]&=(uint8_t)~(1u<<3);fm6_patch_of(0)[3*FP_OP+FP_OL]=0;turn(EN_K1,-1);
+    failures+=check("a silent operator's level turned down stays silent",!(fm6_on[0]&(1u<<3)) && !fm6_patch_of(0)[3*FP_OP+FP_OL]);
     turn(EN_K1,1);
-    failures+=check("turned up, the displayed OP3 (not reversed OP4) is switched on",(fm6_on[0]&(1u<<3)) && fm6_patch[0][3*FP_OP+FP_OL]>0);
+    failures+=check("turned up, the displayed OP3 (not reversed OP4) is switched on",(fm6_on[0]&(1u<<3)) && fm6_patch_of(0)[3*FP_OP+FP_OL]>0);
     designer_close(0);sound_init_of(TSEL,ENGI_CZ);designer_open();press(B_OCTUP);
     designer_at("CZ VIBRATO",0);designer_cz_put(LCZ_VDEP,0);turn(EN_K2,1);
-    failures+=check("turning CZ vibrato RATE gives it depth",cz_patch[0].raw[11]!=0 && designer_need()==DF_NONE);
+    failures+=check("turning CZ vibrato RATE gives it depth",cz_patch_of(0)->raw[11]!=0 && designer_need()==DF_NONE);
     designer_at("CZ DETUNE",0);designer_cz_put(LCZ_LINE,0);turn(EN_K4,1);
     failures+=check("turning a line-2 DETUNE selects 1+2'",designer_feat_get(DF_LINES)==2u && designer_need()==DF_NONE);
     designer_close(0);
@@ -99,7 +99,7 @@ static int32_t pcm_off[DS_PCM],pcm_again[DS_PCM],pcm_on[DS_PCM];
 static void designer_render(int32_t *pcm)
 {
     track_t *t=TSEL;
-    vage=0;t->engine=t->eng_req;t->xf=t->xf_on=0;memset(t->v,0,sizeof t->v);eng_state_clear(0);eng_state_prepare(t);
+    vage=0;t->engine=t->eng_req;t->xf=t->xf_on=0;memset(t->v, 0, NVOICE * sizeof *t->v);eng_state_clear(0);eng_state_prepare(t);
     trk_note_on(t,55,40);
     for(uint32_t frame=0;frame<DS_PCM;frame+=CTL){
         if(frame<=FS/3&&frame+CTL>FS/3)trk_note_on(t,67,110);
@@ -141,10 +141,10 @@ static void feature_tests(void)
             designer_render(pcm_on);
             /* INIT's two CZ lines are equal (1+2' sounds once line 2 is shaped: its controls are live);
              * SPREAD places voices after the track, in the stereo mix */
-            if(f==DF_LINES)audible&=cz_ed_active(cz_patch[0].raw,LCZ_LBASE(1)+LCZ_W1) && cz_ed_active(cz_patch[0].raw,LCZ_MOD);
+            if(f==DF_LINES)audible&=cz_ed_active(cz_patch_of(0)->raw,LCZ_LBASE(1)+LCZ_W1) && cz_ed_active(cz_patch_of(0)->raw,LCZ_MOD);
             else if(f==DF_SPREAD)audible&=TSEL->p[P_SPRD]>0 && trk_vmode(TSEL)==V_POLY;
             else if(!memcmp(pcm_off,pcm_on,sizeof pcm_on)){printf("inaudible feature: %s %s\n",ENGINES[TSEL->eng_req]->name,DF_WORD[f]);audible=0;}
-            if(TSEL->eng_req==ENGI_CZ)states&=cz_patch_valid(cz_patch[0].raw);
+            if(TSEL->eng_req==ENGI_CZ)states&=cz_patch_valid(cz_patch_of(0)->raw);
         }
         designer_close(1);
     }
@@ -210,7 +210,7 @@ static void route_recipe_tests(void)
             }
         }
         clean &= !song.grid && !kb_mask ;
-        if(TSEL->eng_req==ENGI_CZ)valid &= cz_patch_valid(cz_patch[0].raw);
+        if(TSEL->eng_req==ENGI_CZ)valid &= cz_patch_valid(cz_patch_of(0)->raw);
         TSEL->engine=TSEL->eng_req;memset(TSEL->v,0,sizeof TSEL->v);eng_state_clear(0);eng_state_prepare(TSEL);
         trk_note_on(TSEL,drum_track(TSEL)?36:60,100);int64_t energy=0;int32_t out[CTL];
         for(uint32_t k=0;k<1000;k++){track_render(TSEL,out,CTL);for(uint32_t n=0;n<CTL;n++)energy+=llabs(out[n]);}

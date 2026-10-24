@@ -538,9 +538,9 @@ static int up_store_to(uint32_t k,uint32_t tr,const char *name)
     up_set_name(&r,k,name);
     if(r.engine==ENGI_FM6 || r.engine==ENGI_PROPHET || (r.engine==ENGI_CZ && t->p[P_E7]==CZ_NATIVE)){
         r.ver=r.engine==ENGI_FM6?UP_VER_FM:r.engine==ENGI_PROPHET?UP_VER_P5:UP_VER_NATIVE_CZ;
-        if(r.engine==ENGI_FM6)fm6_pack(fm6_patch[tr],r.packed);
+        if(r.engine==ENGI_FM6)fm6_pack(fm6_patch_of(tr),r.packed);
         else if(r.engine==ENGI_PROPHET)memcpy(r.packed,p5_patch_of(t),sizeof(p5_patch_t));
-        else memcpy(r.packed,cz_patch[tr].raw,CZ_BYTES);
+        else memcpy(r.packed,cz_patch_of(tr)->raw,CZ_BYTES);
         r.np=sizeof UP_NATIVE_PARAMS;
         for(uint32_t i=0;i<r.np;i++)r.cz_extra[i]=(uint8_t)(motion_base_value(t,UP_NATIVE_PARAMS[i])+64);
         if(name && name[0])up_native_name(&r,name);
@@ -552,7 +552,7 @@ static int up_store_to(uint32_t k,uint32_t tr,const char *name)
         uint32_t any=0;for(uint32_t i=0;i<16u;i++)any|=step_lanes(&t->step[i]);
         if(any){r.ver=UP_VER_GRID;for(uint32_t i=0;i<16u;i++){r.note[i]=(uint8_t)step_lanes(&t->step[i]);r.flags[i]=(uint8_t)step_accents(&t->step[i]);}}
     }
-    if(r.engine==ENGI_DRUM){uint8_t b[DRUM_WIRE_BYTES];drum_patch_pack(b,&drum_patch[tr]);memcpy(r.cz_extra,b,sizeof r.cz_extra);memcpy(r.packed+r.np,b+sizeof r.cz_extra,8u);r.ver=r.ver==UP_VER_GRID?UP_VER_DRUM_GRID:UP_VER_DRUM;}
+    if(r.engine==ENGI_DRUM){uint8_t b[DRUM_WIRE_BYTES];drum_patch_pack(b,drum_patch_of(tr));memcpy(r.cz_extra,b,sizeof r.cz_extra);memcpy(r.packed+r.np,b+sizeof r.cz_extra,8u);r.ver=r.ver==UP_VER_GRID?UP_VER_DRUM_GRID:UP_VER_DRUM;}
     return up_put(k,&r);
 }
 static int up_store(uint32_t k,const char *name){return up_store_to(k,song.sel,name);}
@@ -584,6 +584,8 @@ static int up_load_to(uint32_t k,uint32_t tr)
     if (!up_used(k))
         return 1;
     rec = *up_rec(k);
+    if (trk_midi_slot(tr) && rec.engine != ENGI_MIDI)  /* (tracks 5..8: MIDI Track only) */
+        return 1;
     up_values(r, v);
     load_begin(t, UNDO_SOUND);                          /* (ui.c: the copy for EDIT held = undo) */
     panic_req |= (uint8_t)(1u << tr);
@@ -594,8 +596,8 @@ static int up_load_to(uint32_t k,uint32_t tr)
             if (!param_kept(i))
                 t->p[i] = param_reserved(i) ? 0 : v[i];
         t->preset = 0;
-        if (up_native_cz(r))up_cz_raw(r,cz_patch[tr].raw);
-        if(r->engine==ENGI_DRUM){memset(&drum_patch[tr],0,sizeof(drum_patch_t));if(r->ver==UP_VER_DRUM || r->ver==UP_VER_DRUM_GRID)up_drum_raw(r,&drum_patch[tr]);}
+        if (up_native_cz(r))up_cz_raw(r,cz_patch_of(tr)->raw);
+        if(r->engine==ENGI_DRUM){memset(drum_patch_of(tr),0,sizeof(drum_patch_t));if(r->ver==UP_VER_DRUM || r->ver==UP_VER_DRUM_GRID)up_drum_raw(r,drum_patch_of(tr));}
         if(r->engine==ENGI_PROPHET && r->ver==UP_VER_P5){memcpy(&p5_patch[tr],r->packed,sizeof(p5_patch_t));p5_ready[tr]=1;p5_track_accept(t);}
         cz_track_accept(t);
         fm1_irq_on();

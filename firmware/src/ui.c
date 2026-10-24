@@ -90,7 +90,14 @@ static void glo_select_set(uint32_t v) { GLO_SELECT = (uint8_t)((GLO_SELECT & ~0
 /* UNUSED TRACKS (the menu): HIDE in bit 5 of the same byte. SHOW (0): Stage and MIXER keep a greyed row for each
  * place not in use, saying "Add track"; HIDE: the tracks in use share the rows (one track: the wide card) */
 #define TRACKS_HIDE 32u
-static uint32_t stage_rows(void) { return GLO_SELECT & TRACKS_HIDE ? trk_n() : NTRK; }
+/* the four tracks Stage, MIXER, PATTERNS, SONG and SEQ's track keys show: the selected one's (1..4, or the MIDI-only
+ * 5..8); a row k of them is track trk_group() + k */
+static uint32_t trk_group(void) { return song.sel / NPART * NPART; }
+static uint32_t stage_rows(void)
+{
+    uint32_t g = trk_group(), n = trk_n() > g ? trk_n() - g : 0u;
+    return GLO_SELECT & TRACKS_HIDE ? (n < NPART ? n : NPART) : NPART;
+}
 
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
 
@@ -260,6 +267,7 @@ static int native_page(uint32_t i, uint32_t fam)       /* page i: one of fam's n
 static int page_visible(uint32_t i)
 {
     if (midi_track_only(TSEL)) {
+        if (trk_midi_slot(song.sel) && PAGES[i].graph == GR_BROWSE) return 0;   /* (tracks 5..8: no other sound) */
         if (PAGES[i].fam == FAM_ENV || PAGES[i].fam == FAM_LFO) return 0;
         if (PAGES[i].scope == SC_TRACK && PAGES[i].fam == FAM_EDIT) return 0;
         if (PAGES[i].fam == FAM_FX && PAGES[i].scope == SC_TRACK && PAGES[i].graph != GR_FXRACK) return 0;
@@ -689,10 +697,10 @@ static uint32_t track_sig(const track_t *t)      /* the sound (an FM6 track's pa
 {
     uint8_t id[5] = {t->eng_req, t->preset, (uint8_t)t->user, (uint8_t)(t->user>>8), t->user_native};
     uint32_t h = fnv(fnv(steps_sig(t), t->p, sizeof t->p), id, 3), k = trk_index(t);
-    h = fnv(h, fm6_patch[k], sizeof fm6_patch[k]); /* (a patch the editor sent between two loads) */
-    h = fnv(h, cz_patch[k].raw, CZ_BYTES);
+    h = fnv(h, fm6_patch_of(k), FP_SIZE + 1u);   /* (a patch the editor sent between two loads) */
+    h = fnv(h, cz_patch_of(k)->raw, CZ_BYTES);
     h = fnv(h,p5_patch_of(&trk[k]),sizeof(p5_patch_t));
-    h = fnv(h,&drum_patch[k],sizeof(drum_patch_t));
+    h = fnv(h,drum_patch_of(k),sizeof(drum_patch_t));
     for (uint32_t j = 0; j < motion.count; j++)
         if ((motion.event[j].place >> 6) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
     return h ^ ((motion.on >> k) & 1u);
@@ -712,7 +720,7 @@ static void momentary_restore(void)
     if(!momentary.active)return;
     uint32_t tr=momentary.track;fm1_irq_off();
     if(momentary.native==1){fm6_put_patch(tr,momentary.fm,0);memcpy(fm6_fn[tr],momentary.fn,FM6_NFN);fm6_on[tr]=momentary.on;}
-    else if(momentary.native==2)cz_patch[tr]=momentary.cz;
+    else if(momentary.native==2)(*cz_patch_of(tr))=momentary.cz;
     else if(momentary.native==3){p5_patch[tr]=momentary.p5;trk[tr].p[P_VOICE]=momentary.p5_voice;trk[tr].p[P_PRIO]=momentary.p5_prio;trk[tr].p[P_DETUNE]=momentary.p5_detune;trk[tr].p[P_ALLOC]=momentary.p5_alloc;}
     for(uint32_t i=0;i<momentary.count;i++)*momentary.ptr[i]=momentary.value[i];
     momentary.active=momentary.count=momentary.native=0;fm1_irq_on();ui.force=1;
@@ -731,8 +739,8 @@ static void momentary_take(uint32_t slot)
     if(!momentary.active){momentary.track=song.sel;momentary.active=1;}
     if(native && !momentary.native){
         uint32_t tr=song.sel;fm1_irq_off();momentary.native=(uint8_t)native;
-        memcpy(momentary.fm,fm6_patch[tr],sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];
-        momentary.cz=cz_patch[tr];momentary.p5=*p5_patch_of(TSEL);
+        memcpy(momentary.fm,fm6_patch_of(tr),sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];
+        momentary.cz=(*cz_patch_of(tr));momentary.p5=*p5_patch_of(TSEL);
         momentary.p5_voice=TSEL->p[P_VOICE];momentary.p5_prio=TSEL->p[P_PRIO];momentary.p5_detune=TSEL->p[P_DETUNE];momentary.p5_alloc=TSEL->p[P_ALLOC];fm1_irq_on();
     }
     if(!native){uint32_t i;for(i=0;i<momentary.count && momentary.ptr[i]!=vp;i++);
@@ -773,10 +781,10 @@ static void load_begin_guarded(track_t *t, uint32_t what)
     u->user_native=t->user_native;
     memcpy(u->p, t->p, sizeof u->p);
     step_snapshot_save(u->step, t->step);
-    memcpy(u->fm6, fm6_patch[i], FP_SIZE);
-    u->cz = cz_patch[i];
+    memcpy(u->fm6, fm6_patch_of(i), FP_SIZE);
+    u->cz = (*cz_patch_of(i));
     u->p5 = *p5_patch_of(&trk[i]);
-    u->drum=drum_patch[i];
+    u->drum=(*drum_patch_of(i));
     u->pat = pat_sig[i];
     u->patn = pat_last[i];
     motion_snapshot_track(t, &u->motion_backup);
@@ -903,12 +911,12 @@ static void undo_step_guarded(int redo)
                                                    * converted DIGITAL sound), preserved with the sound */
         uint32_t tr = trk_index(t);
         uint8_t v[FP_SIZE + 1u];
-        memcpy(v, fm6_patch[tr], FP_SIZE);
+        memcpy(v, fm6_patch_of(tr), FP_SIZE);
         fm6_set_patch(tr, u->fm6);
         memcpy(u->fm6, v, FP_SIZE);
-        {drum_patch_t dp=drum_patch[tr];drum_patch[tr]=u->drum;u->drum=dp;}
+        {drum_patch_t dp=(*drum_patch_of(tr));(*drum_patch_of(tr))=u->drum;u->drum=dp;}
         { p5_patch_t pp=*p5_patch_of(t);p5_patch[tr]=u->p5;u->p5=pp;p5_ready[tr]=1; }
-        { cz_patch_t cp = cz_patch[tr]; cz_patch[tr] = u->cz; u->cz = cp; cz_track_accept(t); }
+        { cz_patch_t cp = (*cz_patch_of(tr)); (*cz_patch_of(tr)) = u->cz; u->cz = cp; cz_track_accept(t); }
 
     }
     u->keep = 0;                                /* the next load copies the track as it is now */
@@ -957,7 +965,7 @@ static int scale_shared(uint32_t id) { return id == P_ROOT || id == P_SCALE || i
 static void scale_share(const track_t *from)
 {
     uint32_t k;
-    for (k = 0; k < NPART; k++) {
+    for (k = 0; k < NTRK; k++) {
         trk[k].p[P_ROOT] = from->p[P_ROOT];
         trk[k].p[P_SCALE] = from->p[P_SCALE];
         trk[k].p[P_QUANT] = from->p[P_QUANT];
@@ -984,7 +992,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     }
     pi %= e->npresets;
     t->preset = (uint8_t)pi;
-    memset(&drum_patch[t-trk],0,sizeof(drum_patch_t));
+    memset(drum_patch_of(t-trk),0,sizeof(drum_patch_t));
     for (i = 0; i < P_E0; i++)                        /* the rest of the sound to its defaults: a preset */
         if (!param_kept(i))                           /* sounds the same after any edit */
             t->p[i] = TP[i].def;
@@ -1015,6 +1023,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
  * its values or the new one with its own (voice.c engine_block), never one with the other's */
 static void engine_load_of(track_t *t, uint32_t ei, uint32_t pi)
 {
+    if (t >= &trk[NPART] && t < &trk[NTRK]) { ei = ENGI_MIDI; pi = 0; }   /* (tracks 5..8: MIDI Track only) */
     const engine_t *e = ENGINES[ei % NENGINES];
     uint32_t i;
     load_begin(t, UNDO_SOUND);

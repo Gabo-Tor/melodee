@@ -18,7 +18,7 @@ static const char *const NR_NAME[NR_N] = {"--", "KEEP", "DRUMS", "BASS", "CHORDS
 static const uint8_t NR_CAT[NR_N] = {CAT_NONE, CAT_NONE, CAT_DRUM, CAT_BASS, CAT_KEYS, CAT_LEAD, CAT_PAD};
 static struct {
     uint8_t on;                                     /* 0 closed, 1 KEY, 2 ROLES */
-    uint8_t root, scale, role[NTRK];
+    uint8_t root, scale, role[NPART];                 /* (the parts: a new song's MIDI-only tracks come later) */
     int16_t bpm;
 } nw;
 static int new_on(void) { return nw.on != 0; }
@@ -30,7 +30,7 @@ static void new_open(void)
     int32_t b = song.g[G_BPM];
     template_key(&r, &s, &b);                       /* (the template's, when there is one) */
     memset(&nw, 0, sizeof nw);
-    for (uint32_t k = 0; k < template_tracks() && k < NTRK; k++)
+    for (uint32_t k = 0; k < template_tracks() && k < NPART; k++)
         nw.role[k] = NR_KEEP;                       /* (the others: --) */
     nw.root = (uint8_t)r;
     nw.scale = (uint8_t)s;
@@ -62,10 +62,10 @@ static void new_create(void)
     if (transport_busy()) { ui_message("STOP FIRST"); return; }
     if (template_used()) template_load();
     else project_new_blank();
-    song.ntrk = NTRK;                               /* (every place: the roles say which stay) */
-    sel = song.sel;
+    song.ntrk = NPART;                              /* (every part's place: the roles say which stay) */
+    sel = song.sel % NPART;
     undo_depth++;                                   /* (no undo levels: a new project) */
-    for (k = 0; k < NTRK; k++) {
+    for (k = 0; k < NPART; k++) {
         uint32_t src, kk, cs, ck;
         track_t *t = &trk[k];
         if (nw.role[k] <= NR_KEEP)
@@ -87,7 +87,7 @@ static void new_create(void)
     }
     undo_depth--;
     song.sel = (uint8_t)sel;
-    for (k = NTRK; k-- > 0u;) {                     /* the places with no role: the last ones empty, one between moves */
+    for (k = NPART; k-- > 0u;) {                    /* the places with no role: the last ones empty, one between moves */
         if (nw.role[k] != NR_NONE || trk_n() < 2u)  /* the tracks after down (one track stays) */
             continue;
         if (k + 1u == trk_n()) {
@@ -193,8 +193,8 @@ static void new_role_row(uint32_t k)
         nm[0] = 0;
         e = 0xFFu;
     } else if (src == USER_NONE && nw.role[k] == NR_KEEP && !template_used()) {   /* KEEP: the power-on sound */
-        entry_label(TRK_DEF[k % NTRK][0], TRK_DEF[k % NTRK][1], tag, nm);
-        e = TRK_DEF[k % NTRK][0];
+        entry_label(TRK_DEF[k % NPART][0], TRK_DEF[k % NPART][1], tag, nm);
+        e = TRK_DEF[k % NPART][0];
     } else if (src == USER_NONE) {
         str_cpy(nm, nw.role[k] > NR_KEEP ? "--" : "Template", sizeof nm);
         e = 0xFFu;
@@ -230,7 +230,7 @@ static void new_draw(void)
                     (ui.hot_t ? ui.hot_col + 1u : 0u) * 7u + ux.pal * 31u;
     char v[12];
     const char *unit;
-    for (k = 0; k < NTRK; k++)
+    for (k = 0; k < NPART; k++)
         s = s * 33u + nw.role[k];
     if (ui.force)
         lcd_fill(0, H_HEAD, 240, 240 - H_HEAD, T_BG);
@@ -268,7 +268,7 @@ static void new_draw(void)
         }
         new_keys(0);
     } else {                                        /* ROLES: a row each */
-        for (k = 0; k < NTRK; k++)
+        for (k = 0; k < NPART; k++)
             new_role_row(k);
         new_keys(1);
     }

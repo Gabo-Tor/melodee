@@ -234,7 +234,7 @@ static void view_keys(const uint32_t *on, const uint8_t *of, int faded)
 /* track k's pulse: a ring in its colour, a disc in it as large as its level now */
 static void view_pulse(uint32_t k)
 {
-    static const uint8_t PX[NTRK] = {6, 202, 6, 202}, PY[NTRK] = {36, 36, 170, 170};
+    static const uint8_t PX[NPART] = {6, 202, 6, 202}, PY[NPART] = {36, 36, 170, 170};
     track_t *t = &trk[k];
     int32_t m = t->p[P_MUTE] ? 0 : meter_px(t->peak);
     uint32_t sig;
@@ -262,7 +262,7 @@ static void view_draw(void)
     stage_knobs();
     if (!ui.force && (ui.frame & 1u))
         return;
-    for (k = 0; k < trk_n(); k++)
+    for (k = 0; k < trk_parts(); k++)                   /* (the parts': a MIDI-only track has no level) */
         view_pulse(k);
     view_notes(on, of, &faded);
     sig = 2166136261u;
