@@ -356,6 +356,9 @@ static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint3
     if ((st == 0x80u || (st == 0x90u && !d2)) && (mn_get(ch, d1) & 0x7Fu))
         destination = &trk[(mn_get(ch, d1) & 0x7Fu) - 1u];
     if (destination && !midi_track_accept(destination) && st != 0x80u && !(st == 0x90u && !d2)) return;
+    /* Panel CCs are consumed once, before modulation, synth controls or MIDI
+     * Track forwarding. ROUT admits the channel; the UI edits the selected part. */
+    if (st == 0xB0u && t && midi_knob_receive(ch, d1, d2)) return;
     if (st != 0x80u && st != 0x90u) {
         uint32_t targets = midi_targets(ch);
         for (uint32_t tr = 0; tr < trk_n(); tr++)

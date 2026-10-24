@@ -832,6 +832,8 @@
             <tr><td>LIGHTS</td><td>Idle indicator brightness, OFF (only pressed / engaged / selectable) through FULL.</td></tr>
             <tr><td>USB AUDIO</td><td>In+Out / In / Out / Off.</td></tr>
             <tr><td>USB INPUT</td><td><strong>STEREO</strong> (default) records the master, including track and shared effects. <strong>4 TRACKS</strong> records an isolated mono stem per track place, after that track’s effects and level and before the shared effects and the master. A track that is not in the song is silent on its stem.</td></tr>
+            <tr><td>MIDI KNOBS</td><td><strong>OFF</strong> (default), <strong>GENERAL</strong> or <strong>MINILAB</strong>. Operate the eight panel controls from a MIDI controller. Remembered; see <a href="#midi-knobs">MIDI knobs</a>.</td></tr>
+            <tr><td>MIDI MODE</td><td><strong>ABSOLUTE</strong> (default), <strong>REL 1</strong>, <strong>REL 2</strong> or <strong>REL 3</strong>. Match the controller’s encoder output. Remembered.</td></tr>
             <tr><td>AUDIO CLICK</td><td><strong>OFF</strong> / <strong>REC</strong> (while recording) / <strong>ON</strong>.</td></tr>
             <tr><td>CLICK LEVEL</td><td>Metronome volume.</td></tr>
             <tr><td>COUNT-IN</td><td>Bars of count-in before an armed track records when you start with <kbd>PLAY</kbd> (internal clock only).</td></tr>
@@ -858,10 +860,29 @@
           <li>The <strong>DRUM</strong> channel (default 10) plays the first Drum track only when that channel is inside the ROUT group, or when ROUT is <strong>SEL</strong>. With <strong>CH1-4</strong>, channel 10 does nothing: set ROUT to <strong>CH9-12</strong> or <strong>SEL</strong>, or set DRUM to a channel in the group (DRUM 2 plays the kit instead of track 2). With no Drum track, the channel follows ordinary routing. Set OFF to disable.</li>
           <li>A note that already started still releases on the track that played it if you change ROUT so its channel is no longer included.</li>
           <li>The keys send on the selected track’s channel.</li>
-          <li>Pitch bend, sustain, panic and clock (INT / USB / TRS) are supported. Common CCs control level, pan, cutoff/brightness, envelope times and glide. CC91 and CC93 do nothing.</li>
+          <li>Pitch bend, sustain, panic and clock (INT / USB / TRS) are supported. Common CCs control level, pan, cutoff/brightness, envelope times and glide. CC91 does nothing. CC93 operates KNOB1 with the MINILAB profile; otherwise it does nothing.</li>
           <li>Local <kbd>PLAY</kbd> keeps the internal tempo until the selected MIDI input sends Start, Continue or Stop. Clock pulses alone do not take over.</li>
           <li>Microtonal MIDI out sends degree addresses; an external synth needs the same tuning and mapping to match.</li>
         </ul>
+        <h3 id="midi-knobs">MIDI knobs</h3>
+        <p>Hold <kbd>HOME</kbd> and choose <strong>MIDI KNOBS → MINILAB</strong> for an Arturia MiniLab 3 with its factory Arturia or User CC assignments. Use its MIDI port and Arturia/User program, outside arpeggiator editing; DAW/MCU mode sends a different mapping. Leave <strong>MIDI MODE → ABSOLUTE</strong> for factory settings. No controller reprogramming is needed. The profile and mode survive power-off.</p>
+        <p>There is no universal eight-knob panel layout. <strong>GENERAL</strong> uses MIDI’s eight general-purpose CCs for controllers you can assign. Both profiles use this order:</p>
+        <table>
+          <thead><tr><th>Controller knob</th><th>Melodee control</th><th>GENERAL CC</th><th>MINILAB CC</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Volume</td><td>16</td><td>74</td></tr>
+            <tr><td>2</td><td>Select</td><td>17</td><td>71</td></tr>
+            <tr><td>3</td><td>Presets</td><td>18</td><td>76</td></tr>
+            <tr><td>4</td><td>Algorithm (track selection)</td><td>19</td><td>77</td></tr>
+            <tr><td>5</td><td>KNOB1</td><td>80</td><td>93</td></tr>
+            <tr><td>6</td><td>KNOB2</td><td>81</td><td>18</td></tr>
+            <tr><td>7</td><td>KNOB3</td><td>82</td><td>19</td></tr>
+            <tr><td>8</td><td>KNOB4</td><td>83</td><td>16</td></tr>
+          </tbody>
+        </table>
+        <p>KNOB1–4 follow the current page, selected track and held panel-button layers. In ABSOLUTE mode, the first value establishes the knob’s position; subsequent movement sets ordinary parameter values across their full range (0 = minimum, 127 = maximum). Navigation and special controls jog by the change in position, so connecting a controller does not jump to a different page, track or preset. For unlimited navigation with endless encoders, select a matching relative mode: REL 1 uses 63/65 for down/up (64 neutral), REL 2 uses 127/1 (0 neutral), REL 3 uses 15/17 (16 neutral). Relative movement retains each transmitted step without extra panel acceleration.</p>
+        <p>Volume responds immediately and attenuates the physical master knob: 0 mutes, 127 keeps the physical knob’s level. It also applies to computer playback. Turning MIDI KNOBS OFF restores the physical master level. MIDI volume resets to full on power-on.</p>
+        <p>USB and TRS work identically. A channel admitted by ROUT controls the selected panel track, even when that channel’s notes play another track. Mapped CCs are consumed by the panel; they do not also change a synth parameter or pass through a MIDI Track. Other CCs retain their normal behavior. Set MIDI KNOBS OFF to keep all conventional CC behavior, including CC74 brightness and CC71 resonance. The MiniLab assignments are documented in <a href="https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions">Arturia’s MIDI implementation chart</a>.</p>
       </section>
 
       <section id="usb-audio">

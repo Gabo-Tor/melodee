@@ -202,6 +202,14 @@ static void ui_power_on(void)
     track_solo = 0;
     memset(&lys, 0, sizeof lys);
     settings_hold = HOLD_DEF;
+    settings_midi_knobs = MK_OFF; settings_midi_knob_mode = MK_ABSOLUTE;
+    midi_knob_r = midi_knob_w = midi_knob_overflow = 0;
+    memset(midi_knob_seen, 0, sizeof midi_knob_seen);
+    midi_knob_ui_config = ~0u;
+    midi_panel_mask = 0; midi_edit_value = -1;
+    memset(midi_panel_delta, 0, sizeof midi_panel_delta);
+    for (i = 0; i < NE; i++) midi_panel_absolute[i] = -1;
+    midi_master_volume = 127; midi_master_physical_q12 = 4096;
     fm1_in.buttons = fm1_in.notes = 0;
 }
 /* power-on with track 1 on a general engine (SID): for the general user presets, the generic ENV / LFO pages and the

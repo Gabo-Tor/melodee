@@ -54,6 +54,7 @@ static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 static uint32_t trk_midi_ch(uint32_t i)
 { return midi_track_only(&trk[i % NTRK]) ? midi_track_channel(&trk[i % NTRK]) : i % NTRK; }
 static uint32_t midi_event_source; /* 0: internal/test dispatch, 1 USB, 2 TRS */
+#include "midi_knobs.c"
 static int midi_track_accept(const track_t *t)
 {
     return !midi_track_only(t) || !midi_event_source ||
@@ -1313,6 +1314,7 @@ static void events_block(uint32_t n)
     static uint8_t usb_discard;
     uint32_t usb_lost = midi_usb_lost;
     if (usb_lost) {
+        midi_knob_usb_epoch++;                       /* a replug starts a new absolute controller position */
         midi_usb_lost = 0;
         usb_discard_until = mi_w;
         usb_discard = 1;
@@ -1326,6 +1328,7 @@ static void events_block(uint32_t n)
         for (uint32_t tr = 0; tr < NTRK; tr++) midi_track_all_off(&trk[tr]);
     }
     if (midi_in_overflow) {                            /* a lost note-off must never leave a held note */
+        midi_knob_overflow = 1;
         mi_r = mi_w;
         memset(midi_sel_on, 0, sizeof midi_sel_on);
         memset(midi_ch, 0, sizeof midi_ch);

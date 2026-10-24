@@ -301,7 +301,7 @@ static void fm1_main(void)
                 uint32_t k10;
                 knob += (a * 16 - knob) / 8;
                 k10 = (uint32_t)(knob / 16);
-                song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
+                midi_master_physical((k10 * k10) >> 8);       /* physical pot, then MIDI master attenuation */
             }
         }
         {   /* OCT- + OCT+ held 5 s: enter UBOOT with RAM intact (debug / update); a countdown

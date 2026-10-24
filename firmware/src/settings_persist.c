@@ -1,4 +1,5 @@
 #include "recording_preferences.h"
+#include "midi_knobs.h"
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Shared PER5 layout: each feature updates only its own fields, preserving
@@ -38,6 +39,9 @@ static int16_t settings_glo[4];                     /* ext.glo: project.c GLO_KE
  * Untagged/unknown records keep Classic; no settings/project layout change. */
 #define FX_PREF_ROW 1u
 #define FX_PREF_BYTE 24u
+/* Retired DIGITAL row bytes 20..23: 'M', 'K', profile, encoder mode.
+ * Untagged/unknown records keep panel MIDI OFF and the PER5 layout unchanged. */
+#define MIDI_KNOB_PREF_BYTE 20u
 /* Retired DIGITAL row, outside all live preset/settings bits. Kept by older
  * Melodee builds along with the other favorites; no layout or magic change. */
 static const uint8_t SETTINGS_OWNER[4] = {'M', 'D', 'S', 1};
@@ -88,6 +92,12 @@ static int settings_import(persist_t *p, int n)
     p->palette = palette_to_stored(palette_from_stored(p->palette));
     settings_screen=p->favorites.factory[15][27] < 8u ? p->favorites.factory[15][27] : 0u;
     settings_autosave = p->favorites.factory[15][28] != AUTOSAVE_OFF_TAG;
+    {
+        const uint8_t *m = p->favorites.factory[1] + MIDI_KNOB_PREF_BYTE;
+        int valid = m[0] == 'M' && m[1] == 'K' && m[2] < MK_PROFILES && m[3] < MK_MODES;
+        settings_midi_knobs = valid ? m[2] : MK_OFF;
+        settings_midi_knob_mode = valid ? m[3] : MK_ABSOLUTE;
+    }
     settings.magic = SETTINGS_MAGIC;
     settings.palette = palette_from_stored(p->palette);
     settings.lowcut = 0;
@@ -133,6 +143,13 @@ static void settings_export(persist_t *p)
     p->ext.spare[0] = favorites_user_hi;
 #endif
     memcpy(p->favorites.factory[1] + 28, SETTINGS_OWNER, sizeof SETTINGS_OWNER);
+    {
+        uint8_t *m = p->favorites.factory[1] + MIDI_KNOB_PREF_BYTE;
+        memset(m, 0, 4);
+        if (settings_midi_knobs || settings_midi_knob_mode) {
+            m[0] = 'M'; m[1] = 'K'; m[2] = settings_midi_knobs; m[3] = settings_midi_knob_mode;
+        }
+    }
     {
         uint8_t *q = p->favorites.factory[FX_PREF_ROW] + FX_PREF_BYTE;
         memset(q, 0, 4);

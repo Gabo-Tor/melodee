@@ -43,6 +43,21 @@ static int up_favorite_set(uint32_t k,int on){if(k>=64u)return 0;uint32_t *word=
 int main(void)
 {
     persist_t original = {0}, p;
+    {   /* Tagged knob preferences survive saves without touching adjacent favorites. */
+        persist_t q = {0}; q.magic = PERSIST_MAGIC; q.panel = PANEL_DEFAULT;
+        assert(settings_import(&q, sizeof q) && settings_midi_knobs == MK_OFF && settings_midi_knob_mode == MK_ABSOLUTE);
+        for (uint32_t profile = 0; profile < MK_PROFILES; profile++)
+            for (uint32_t mode = 0; mode < MK_MODES; mode++) {
+                settings_midi_knobs = profile; settings_midi_knob_mode = mode;
+                settings_export(&q);
+                settings_midi_knobs = settings_midi_knob_mode = 255;
+                assert(settings_import(&q, sizeof q) && settings_midi_knobs == profile && settings_midi_knob_mode == mode);
+                assert(sizeof q == 604u && settings_owned(&q));
+            }
+        q.favorites.factory[1][MIDI_KNOB_PREF_BYTE + 2] = 255;
+        assert(settings_import(&q, sizeof q) && settings_midi_knobs == MK_OFF && settings_midi_knob_mode == MK_ABSOLUTE);
+        settings_export(&q);
+    }
     {   /* Retired fidelity bytes remain reserved in PER5 and are cleared on save. */
         persist_t q={0};q.magic=PERSIST_MAGIC;q.panel=PANEL_DEFAULT;
         uint8_t *f=q.favorites.factory[FX_PREF_ROW]+FX_PREF_BYTE;

@@ -4,6 +4,7 @@
 /* Melodee UI input: LEDs, knobs and buttons, SEQ step entry, panel setup. */
 #include "ui_name.c"                                    /* NAME: naming user presets and projects */
 #include "ui_new.c"                                     /* NEW SONG: key, tempo, roles */
+#include "ui_midi_knobs.c"
 /* ----------------------------------------------------------- LEDs --- */
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
@@ -504,7 +505,7 @@ static int32_t accel_by(uint32_t role, int32_t s, uint32_t cap, uint32_t *fast)
     uint32_t now = fm1_ms & 0xFFFFFFu, st = ui.enc_t[role % NE], up = s > 0, run = st >> 25, a, dt, m = 1;
     if (fast)
         *fast = 0;
-    if ((PREF_BITS & PREF_ACCEL_OFF) || !s)
+    if ((PREF_BITS & PREF_ACCEL_OFF) || (midi_panel_mask & (1u << (role % NE))) || !s)
         return s;
     a = (uint32_t)(s < 0 ? -s : s);
     dt = ((now - st) & 0xFFFFFFu) / a;                  /* ms per detent of this read */
@@ -1118,8 +1119,15 @@ static void edit_param(uint32_t slot, int32_t steps)
     d = page_desc(pg, slot, &vp);
     if (!d || !vp || d->max == d->min)
         return;
-    v = accel(EN_K1 + slot, steps, desc_range(d));
-    v = fx_names(d) ? fx_step(d, *vp, v) : enum_step(d, *vp, clamp(*vp + v, d->min, d->max));
+    if (midi_edit_value >= 0) {
+        if (fx_names(d)) {
+            int32_t rank = (midi_edit_value * ((int32_t)fx_order_n(d) - 1) + 63) / 127;
+            v = fx_step(d, *vp, rank - (int32_t)fx_rank(*vp));
+        } else v = enum_step(d, *vp, d->min + (midi_edit_value * (d->max - d->min) + 63) / 127);
+    } else {
+        v = accel(EN_K1 + slot, steps, desc_range(d));
+        v = fx_names(d) ? fx_step(d, *vp, v) : enum_step(d, *vp, clamp(*vp + v, d->min, d->max));
+    }
     if (pg->scope == SC_TRACK && pg->graph == GR_FXRACK && slot == 0u && *vp != v && fx_is_midi(v)) {
         /* Note effects have their own useful starting controls. */
         if (!vp[1]) vp[1] = 64;
@@ -1829,7 +1837,7 @@ static int fx_rack_back(void)
 }
 
 /* KNOB k turned s on the page shown (the sound designer's pages too): what it edits there, its card hot */
-static void page_knob(uint32_t k, int32_t s)
+static void page_knob_edit(uint32_t k, int32_t s)
 {
     const page_t *pg = cur_page();
     int16_t *hv;
@@ -1864,6 +1872,13 @@ static void page_knob(uint32_t k, int32_t s)
         edit_param(k, s);
         pick_touch(k);                                  /* a name from a long list: its picker (ui_popup.c) */
     }
+}
+
+static void page_knob(uint32_t k, int32_t s)
+{
+    midi_edit_value = midi_panel_mask & (1u << (EN_K1 + k)) ? midi_panel_absolute[EN_K1 + k] : -1;
+    page_knob_edit(k, s);
+    midi_edit_value = -1;
 }
 
 static int bulk_context(void)
@@ -2023,6 +2038,7 @@ static void ui_confirm_accept(void)
 #include "ui_designer_input.c"
 static void ui_input(void)
 {
+    midi_knobs_poll();
     pattern_poll();
     uint32_t pressed = fm1_input_edges(0), notes = fm1_input_note_edges(), now = fm1_ticks(), id, b, k;
     dq_poll();                                          /* (destructive edits waiting for their loop end) */
