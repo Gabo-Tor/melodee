@@ -441,6 +441,7 @@ static __attribute__((noinline,section(".audio_text"))) void fx_zero(fx_state_t 
 static __attribute__((noinline)) void *fx_memory(uint32_t id,uint32_t bytes){return resource_get(id,bytes);}
 static __attribute__((noinline,section(".audio_text"))) int fx_active(const track_t *t)
 {
+    if (midi_track_only(t)) return 0;
     uint32_t ti=(uint32_t)(t-trk);
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
     if(fx_profile_track(ti))return 1;

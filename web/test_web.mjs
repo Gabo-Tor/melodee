@@ -243,7 +243,7 @@ async function editorMock() {
   inp.onmidimessage = (e) => link.receive(e.data);
   const rq = async (r, o) => link.request(r, o);
   const info = E.parse[E.CMD.INFO](await rq(E.req.info()));
-  ok(info.nengines === 20 && info.engines[14] === "-" && info.engines[1] === "-" && info.engines[12] === "FM6" && info.engines[13] === "-"
+  ok(info.nengines === 22 && info.engines[20] === "-" && info.engines[21] === "MIDI Track" && info.engines[14] === "-" && info.engines[1] === "-" && info.engines[12] === "FM6" && info.engines[13] === "-"
  && info.engines[2] === "-" && info.engines[5] === "-" && info.engines[6] === "-" && info.engines[7] === "-" && info.engines[8] === "-" && info.engines[9] === "-" && info.engines[10] === "DRUM" && info.engines[11] === "-" && info.pcount === 124 && info.pe0 === 116 && info.engines[4] === "-",
     "editor: INFO");
   let descs = 0;
@@ -343,17 +343,17 @@ async function editorMock() {
   await rq(E.req.upErase(31));
   prefs = await E.readDevicePreferences(rq, info, names, prefs);
   ok(!prefs.favorites[info.namespace.general][31] && !E.devicePresetRows(info, names, prefs).some((r) => r.user), "editor: erased slot disappears and loses star");
-  {   /* the lists in the device's order (engines.c ENGINE_ORDER): FM6 second, DRUM last, "-" never; the numbers stay */
+  {   /* the lists in the device's order: FM6 second, MIDI Track last, "-" never; the numbers stay */
     const shown = E.engineOrder(info.engines).map((i) => info.engines[i]);
-    ok(shown.join() === "PROPHET,FM6,CZ-1,SID,DRUM" &&
-       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines).at(-1) === 10,
-       "editor: engines listed FM6 second, DRUM last (indices kept)");
+    ok(shown.join() === "PROPHET,FM6,CZ-1,SID,DRUM,MIDI Track" &&
+       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines).at(-1) === 21,
+       "editor: engines listed FM6 second, MIDI Track last (indices kept)");
     ok(E.engineOrder(["ANALOG", "X", "-", "DRUM", "FM6"]).join() === "0,4,3,1", "editor: an unknown engine follows the known ones");
     m.state.favorites[10][0] = m.state.favorites[12][0] = true;
     await rq(E.req.uiSet(3, 0));
     prefs = await E.readDevicePreferences(rq, info, names, prefs);
     const rows = E.devicePresetRows(info, names, prefs).filter((r) => !r.user), eng = [...new Set(rows.map((r) => r.engine))];
-    ok(eng[0] === 19 && eng[1] === 12 && eng[eng.length - 1] === 10, "editor: device presets in the device's engine order");
+    ok(eng[0] === 19 && eng[1] === 12 && eng[eng.length - 1] === 21, "editor: device presets in the device's engine order");
   }
   const none = await E.readDevicePreferences(() => { throw new Error("unexpected request"); }, { uiCaps: 0 }, []);
   ok(none === null, "editor: old firmware receives no unsupported preference requests");
@@ -431,6 +431,28 @@ async function editorMock() {
 async function editorSamplePresets() {
  const {rq,done}=attachMock();const info=E.parse[E.CMD.INFO](await rq(E.req.info()));
  ok([4,6,7,8,9,13,14].every(i=>info.engines[i]==="-" && !E.engineOrder(info.engines).includes(i)),"editor: SAMPLE, GRAIN and SLICE removed; other engine IDs kept");done();
+}
+
+async function editorMidiTrack() {
+  const {m,rq,done} = attachMock();
+  const C=E.CMD, info=E.parse[C.INFO](await rq(E.req.info()));
+  await rq(E.req.track(2)); await rq(E.req.set(1,20,21));
+  let dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.engine===21 && dump.p[info.pe0]===3, "MIDI Track: editor defaults output channel to track number");
+  const names=E.parse[C.NAMES](await rq(E.req.names(21)));
+  ok(names.names.length===1 && names.names[0]==="DEFAULT", "MIDI Track: one default factory preset");
+  await rq(E.req.set(0,info.pe0,16)); await rq(E.req.set(0,info.pe0+1,1));
+  const level=dump.p[0],pan=dump.p[39];
+  await rq(E.req.set(0,0,0)); await rq(E.req.trackParam(2,39,30));
+  await rq(E.req.trackMix(2,0,true));
+  await rq(E.req.set(0,96,8)); await rq(E.req.trackParam(2,108,127));
+  dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.p[0]===level && dump.p[39]===pan && dump.p[40]===1 && !dump.p[96] && !dump.p[108],
+    "MIDI Track: editor disables audio controls and FX while retaining mute");
+  await rq(E.req.project(1,0)); await rq(E.req.set(0,info.pe0,1)); await rq(E.req.project(0,0));
+  dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
+  ok(dump.engine===21 && dump.p[info.pe0]===16 && dump.p[info.pe0+1]===1, "MIDI Track: editor project round-trip retains routing");
+  done();
 }
 
 /* the mock's tables == the firmware's (build/host/desc.json from tests/descdump.c, written by run_tests.sh):
@@ -746,7 +768,7 @@ async function editorLibrarian() {
   const ctx = { keys, engines: info.engines, firmware: info.version, pe0: info.pe0 };
   const pts = [cap, { ...bass, engineName: info.engines[bass.engine], tags: ["bass", "device"] }];
   const file = JSON.parse(JSON.stringify(E.libraryFile("library", pts, ctx)));
-  ok(file.format === "felucca-library" && file.version === 1 && file.pCount === info.pcount && file.paramLabels.length === info.pcount && file.paramLabels[81] === "CHRD" && file.paramLabels[82] === "VOIC" && file.paramLabels[83] === "DEG" && file.paramLabels.slice(92, 96).join() === "SYNC,TRIG,POL,SPRD" && file.engines.length === 20,
+  ok(file.format === "felucca-library" && file.version === 1 && file.pCount === info.pcount && file.paramLabels.length === info.pcount && file.paramLabels[81] === "CHRD" && file.paramLabels[82] === "VOIC" && file.paramLabels[83] === "DEG" && file.paramLabels.slice(92, 96).join() === "SYNC,TRIG,POL,SPRD" && file.engines.length === 22,
     "library file: versioned, with P_COUNT, labels and engines");
   const back = E.readLibraryFile(file, ctx);
   const oldKeys = keys.slice(); oldKeys[8] = "FX";
@@ -1671,6 +1693,7 @@ setupLeaving({getLanguage:()=>"en",isBusy:()=>writing,setBusy:on=>{writing=on;},
 await stockRestore();
 await patternProtocol();
 await editorMock();
+await editorMidiTrack();
 await editorSamplePresets();
 mockTables();
 await editorLibrarian();

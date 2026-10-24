@@ -401,6 +401,14 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
 
 - **Five selectable instruments:** PROPHET, FM6, CZ-1, SID and DRUM, each with factory presets;
   DRUM contains synthesized 808 and 909 kits
+- **MIDI Track:** a USB MIDI engine with one **DEFAULT** preset. Its **CH** control (Stage KNOB 1,
+  EDIT 1 KNOB 1) selects output channel 1–16, initially the track number. Keys, scales, chords, arpeggios,
+  step sequences, recorded takes, pattern changes and SONG use the same musical paths as the instruments.
+  **TRS** (THRU, KNOB 2) additionally accepts routed TRS input while SYSTEM **MIDI** shows USB; with it off,
+  MIDI Track receives the input selected there. Synth tracks continue accepting both inputs. Incoming channel
+  controls are forwarded on the chosen output channel. Channel and TRS THRU are saved in projects/templates.
+  Track level, pan, audio modulation, insert FX, note FX and FX sends are disabled; MIDI Track allocates no
+  audio voices or engine/FX working memory. Mute, solo, stop and sound/channel changes release outgoing notes.
 - **One to four tracks**, one instrument and sound per track: a new song starts with one, so the FM-1 can be a
   single synth; add more when the song needs them. FM6 plays up to 16 voices; PROPHET plays up
   to eight voices per track in the default dual-core build (five if CPU1 is unavailable or disabled).
@@ -457,7 +465,8 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
   channels on the selected track. **DRUM** (10 by default, any channel or OFF) redirects its channel to the
   first DRUM track only within the chosen range; without a DRUM track, normal routing applies.
   The keys send on the track's channel; pitch bend, sustain, panic; clock from internal, USB or TRS;
-  GLO > SYSTEM KNOB 1 shows the USB or the TRS input's status (RX while it receives; both always play)
+  GLO > SYSTEM KNOB 1 shows the USB or the TRS input's status (RX while it receives; synths accept both;
+  MIDI Track follows this selection and its TRS THRU option).
   Local PLAY uses the internal tempo until the selected input sends Start, Continue or Stop. Clock
   pulses alone do not take over. Changing the clock source clears this transport selection.
 - **Web:** editor for every parameter (with a 6-operator FM patch editor), step grid, mixer,

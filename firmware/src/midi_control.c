@@ -18,6 +18,9 @@ static midi_channel_t midi_ch[16];
  * channel's pedal. mn_get / mn_set speak the byte form: track + 1, MIDI_PEDAL_NOTE */
 static uint8_t midi_sel_on[16][64];
 static uint16_t midi_owners[NTRK];           /* avoids rescanning all 2048 entries for CC123 */
+/* MIDI Track accepts a selectable input plus optional TRS. Releases follow
+ * the stream that started the note, even after its input setting changes. */
+static uint32_t midi_owner_trs[16][4];
 #define MIDI_PEDAL_NOTE 0x80u
 _Static_assert(NTRK < 8u, "a note's owner fits three bits");
 static uint32_t mn_get(uint32_t ch, uint32_t note)
@@ -160,6 +163,7 @@ static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
     uint32_t id = mn_get(ch, note) & 0x7Fu;
     if (vel) {
         track_t *t = midi_note_track(ch, note);
+        if (t && !midi_track_accept(t)) return;
         /* Repeated notes replace the previous press, including a pedal-held one. */
         if (id)
             midi_release(ch, note);
@@ -174,9 +178,14 @@ static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
             midi_hint = (uint8_t)(trk_index(t) + 1u);
         c->targets |= (uint8_t)(1u << trk_index(t));
         mn_set(ch, note, trk_index(t) + 1u);
+        uint32_t mask = 1u << (note & 31u);
+        if (midi_event_source == 2u) midi_owner_trs[ch][note >> 5] |= mask;
+        else midi_owner_trs[ch][note >> 5] &= ~mask;
         midi_owners[trk_index(t)]++;
         c->owned[trk_index(t)]++;
     } else if (id) {
+        if (midi_event_source && midi_track_only(&trk[id - 1u]) &&
+            !!(midi_owner_trs[ch][note >> 5] & (1u << (note & 31u))) != (midi_event_source == 2u)) return;
         if (c->pedal && !drum_track(&trk[id - 1u])) {
             step_midi_edge(id - 1u, 0, 0, ch, note);   /* physical release ends step entry, even under sustain */
             mn_set(ch, note, mn_get(ch, note) | MIDI_PEDAL_NOTE);
@@ -247,6 +256,7 @@ static int midi_track_held(uint32_t track)
 /* Native envelope loops run only for their CC, outside the audio IRQ's hot loops. */
 static __attribute__((noinline)) void midi_parameter(track_t *t,uint32_t cc,uint32_t value)
 {
+    if (midi_track_only(t)) return; /* incoming controls belong to the USB destination */
     uint32_t id=P_COUNT;
     switch(cc){case 5:id=P_GLIDE;break;case 7:id=P_LEVEL;break;case 10:id=P_PAN;break;
     case 72:id=P_REL;break;case 73:id=P_ATK;break;case 75:id=P_DEC;break;
@@ -342,6 +352,16 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
 static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint32_t d1, uint32_t d2)
 {
     track_t *t = midi_track(ch);
+    track_t *destination = (st == 0x90u && d2) ? midi_note_track(ch, d1) : t;
+    if ((st == 0x80u || (st == 0x90u && !d2)) && (mn_get(ch, d1) & 0x7Fu))
+        destination = &trk[(mn_get(ch, d1) & 0x7Fu) - 1u];
+    if (destination && !midi_track_accept(destination) && st != 0x80u && !(st == 0x90u && !d2)) return;
+    if (st != 0x80u && st != 0x90u) {
+        uint32_t targets = midi_targets(ch);
+        for (uint32_t tr = 0; tr < trk_n(); tr++)
+            if ((targets & (1u << tr)) && midi_track_only(&trk[tr]) && midi_track_accept(&trk[tr]))
+                midi_track_controller(&trk[tr], st, d1, d2);
+    }
     /* Controllers retain channel state even outside ROUT, but only mapped/owned tracks receive them.
      * In particular, pedal-up must clear sustain even if the channel currently owns no notes. */
     if (st == 0x90u || st == 0x80u)

@@ -1,0 +1,206 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
+/* Real panel, USB/TRS parser, sequencer, song, recorder, mixer and project paths. */
+#define UI_TEST_NO_MAIN 1
+#include "ui_test.c"
+#include <assert.h>
+
+static void reset_midi(uint32_t track)
+{
+    ui_power_on();
+    track_solo = 0;
+    mi_r = mi_w = mo_r = mo_w = 0; midi_in_overflow = 0;
+    memset(midi_sel_on, 0, sizeof midi_sel_on);
+    memset(midi_owners, 0, sizeof midi_owners);
+    memset(midi_ch, 0, sizeof midi_ch);
+    memset(&um, 0, sizeof um);
+    usb.config = 1;
+    set_engine_of(&trk[track], ENGI_MIDI);
+    events_block(0); /* consume the sound-change panic before playing */
+    assert(trk[track].engine == ENGI_MIDI);
+    mo_r = mo_w = 0;
+}
+static uint32_t pop_midi(uint32_t status, uint32_t note, uint32_t value)
+{
+    if (mo_r == mo_w) fprintf(stderr, "Missing MIDI %02x %u %u (input owners %u, route %d, input %d)\n", status, note, value, midi_owners[1], song.g[G_ROUTE], song.g[G_MIDI]);
+    assert(mo_r != mo_w);
+    uint32_t pkt = midi_out_q[mo_r++ % MQ];
+    assert(((pkt >> 8) & 255u) == status);
+    assert(((pkt >> 16) & 127u) == note);
+    assert(((pkt >> 24) & 127u) == value);
+    assert((pkt & 15u) == status >> 4);
+    return pkt;
+}
+static void empty_midi(void) { assert(mo_r == mo_w); }
+static void trs(uint32_t status, uint32_t note, uint32_t value)
+{
+    um_byte(status); um_byte(note);
+    if (um_len(status) == 2u) um_byte(value);
+    events_block(0);
+}
+static void notes_and_panel(void)
+{
+    for (uint32_t tr = 0; tr < NTRK; tr++) {
+        reset_midi(tr); track_t *t = &trk[tr];
+        assert(eng_ok(ENGI_MIDI) && ENGINES[ENGI_MIDI]->npresets == 1 && !eng_state_size(ENGI_MIDI));
+        assert(t->p[P_E0] == (int32_t)tr + 1);
+        trk_note_on(t, 0, 73); trk_note_on(t, 127, 119);
+        pop_midi(0x90u | tr, 0, 73); pop_midi(0x90u | tr, 127, 119);
+        assert(!gates());
+        trk_note_off(t, 0); trk_note_on(t, 127, 0);
+        pop_midi(0x80u | tr, 0, 0); pop_midi(0x80u | tr, 127, 0); empty_midi();
+    }
+    reset_midi(0); track_t *t = TSEL;
+    t->p[P_E0] = 16;
+    go_home(); kb_note[0] = 60; kb_trk[0] = 0;
+    key_on(0, t); pop_midi(0x9F, 60, 100); empty_midi();
+    key_off(0, t); pop_midi(0x8F, 60, 0); empty_midi();
+    t->p[P_AMODE] = 1;
+    key_on(0, t); empty_midi(); /* keys feed the arp; no duplicate raw key */
+    arp_step(t, seq_beat_samples(), seq_beat_samples());
+    assert(mo_w > mo_r && !gates());
+    seq_stop(); key_off(0, t); mo_r = mo_w;
+    puts("MIDI Track: default channels, full note range, velocities, keys and arp passed");
+}
+static void routing(void)
+{
+    reset_midi(1); track_t *t = &trk[1];
+    t->p[P_E0] = 12;
+    trs(0x91, 60, 77); empty_midi(); /* USB selected, extra TRS off */
+    t->p[P_E1] = 1;
+    trs(0x91, 60, 77); pop_midi(0x9B, 60, 77);
+    trs(0x81, 60, 0); pop_midi(0x8B, 60, 0); empty_midi();
+    midi_in_event(0x09u | 0x91u << 8 | 62u << 16 | 81u << 24); events_block(0);
+    pop_midi(0x9B, 62, 81);
+    t->p[P_E1] = 0;
+    trs(0x81, 62, 0); empty_midi(); /* a disabled input cannot release USB's note */
+    midi_in_event(0x08u | 0x81u << 8 | 62u << 16); events_block(0);
+    pop_midi(0x8B, 62, 0);
+    t->p[P_E1] = 0; song.g[G_MIDI] = 1;
+    trs(0x91, 64, 90); pop_midi(0x9B, 64, 90);
+    song.g[G_MIDI] = 0; /* a release from its original input survives a selection change */
+    trs(0x81, 64, 0); pop_midi(0x8B, 64, 0);
+    song.g[G_MIDI] = 1;
+    /* Existing range and selected-track routing precede the output remap. */
+    song.g[G_ROUTE] = 2;
+    trs(0x91, 65, 90); empty_midi();
+    trs(0x95, 65, 90); pop_midi(0x9B, 65, 90);
+    trs(0x85, 65, 0); pop_midi(0x8B, 65, 0);
+    song.g[G_ROUTE] = 1; song.sel = 1;
+    t->p[P_CHRD] = CH_MAJ;
+    trs(0x98, 60, 91);
+    pop_midi(0x9B, 60, 91); pop_midi(0x9B, 64, 91); pop_midi(0x9B, 67, 91);
+    trs(0x88, 60, 0);
+    pop_midi(0x8B, 60, 0); pop_midi(0x8B, 64, 0); pop_midi(0x8B, 67, 0);
+    trs(0xB8, 1, 100); pop_midi(0xBB, 1, 100);
+    int16_t level = t->p[P_LEVEL];
+    trs(0xB8, 7, 22); pop_midi(0xBB, 7, 22); assert(t->p[P_LEVEL] == level);
+    trs(0xE8, 5, 70); pop_midi(0xEB, 5, 70);
+    trs(0xD8, 80, 0); pop_midi(0xDB, 80, 0);
+    trs(0xC8, 23, 0); pop_midi(0xCB, 23, 0);
+    empty_midi();
+    puts("MIDI Track: TRS toggle, USB, ranges, SEL, chords and channel controls passed");
+}
+static void cleanup(void)
+{
+    reset_midi(0); track_t *t = TSEL;
+    trk_note_on(t, 60, 100); pop_midi(0x90, 60, 100);
+    t->p[P_E0] = 7; events_block(0); pop_midi(0x80, 60, 0);
+    trk_note_on(t, 64, 88); pop_midi(0x96, 64, 88);
+    t->p[P_MUTE] = 1; events_block(0); pop_midi(0x86, 64, 0);
+    trk_note_on(t, 65, 100); empty_midi();
+    t->p[P_MUTE] = 0;
+    trk_note_on(t, 60, 100); pop_midi(0x96, 60, 100);
+    track_solo = 2; events_block(0); pop_midi(0x86, 60, 0);
+    track_solo = 0;
+    trk_note_on(t, 60, 100); pop_midi(0x96, 60, 100);
+    set_engine_of(t, ENGI_FM6); events_block(0); pop_midi(0x86, 60, 0); empty_midi();
+    reset_midi(0); t = TSEL;
+    midi_event(0xB0, 0, 64, 127); pop_midi(0xB0, 64, 127);
+    midi_event(0x90, 0, 60, 97); pop_midi(0x90, 60, 97);
+    midi_event(0x80, 0, 60, 0); empty_midi();
+    seq_stop(); pop_midi(0xB0, 64, 0); pop_midi(0x80, 60, 0); empty_midi();
+    /* Fill the real USB ring: releases are retried, new notes fail silent. */
+    reset_midi(0); t = TSEL;
+    for (uint32_t n = 0; n < MQ; n++) trk_note_on(t, n, 100);
+    assert(mo_w - mo_r == MQ);
+    trk_note_on(t, 100, 100); assert(!(midi_output[0].held[3] & (1u << 4)));
+    trk_all_off(t); assert(midi_track_pending(0));
+    mo_r = mo_w; events_block(0);
+    for (uint32_t n = 0; n < MQ; n++) pop_midi(0x80, n, 0);
+    empty_midi(); assert(!midi_track_pending(0));
+    puts("MIDI Track: channel changes, mute, solo, sound changes, sustain, stop and full USB queue passed");
+}
+static void silent_and_saved(void)
+{
+    reset_midi(0); track_t *t = TSEL;
+    t->p[P_E0] = 14; t->p[P_E1] = 1;
+    int16_t level = t->p[P_LEVEL], pan = t->p[P_PAN];
+    tracks_edit(0, -20); tracks_edit(1, 10);
+    assert(t->p[P_LEVEL] == level && t->p[P_PAN] == pan);
+    go_title("FX"); edit_param(0, 10); edit_param(3, 100); press(B_OCTUP);
+    assert(t->p[P_FXTYPE] == FX_OFF && pop.on != POP_LIST && cur_page()->graph == GR_FXRACK);
+    /* Stale/restored FX and audio modulation cannot allocate or render. */
+    t->p[P_FXTYPE] = FX_REVERB; t->p[P_FXMIX] = 127;
+    t->p[P_FX2TYPE] = FX_MIDIDELAY; t->p[P_FX2MIX] = 127;
+    t->p[P_FXSEND] = t->p[P_FXSEND2] = 127;
+    t->p[P_M1SRC] = 1; t->p[P_M1DST] = MD_PITCH; t->p[P_M1AMT] = 63;
+    trk_note_on(t, 60, 99); trk_note_off(t, 60); mo_r = mo_w;
+    int32_t out[CTL * 2]; uint32_t lfo = t->lfo_ph;
+    for (uint32_t k = 0; k < 10; k++) mix_block(out, CTL);
+    for (uint32_t k = 0; k < NELEM(out); k++) assert(!out[k]);
+    assert(!gates() && !fx_active(t) && !midi_insert.pending && !midi_verb[0] && t->lfo_ph == lfo);
+    assert(!resource[RES_ENGINE0].size);
+    for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!resource[RES_FX0 + s].size);
+    project_capture(&proj_scratch);
+    static project_t saved; saved = proj_scratch;
+    t->p[P_E0] = 1; t->p[P_E1] = 0;
+    assert(!project_restore_runtime(&saved)); events_block(0);
+    assert(t->eng_req == ENGI_MIDI && t->p[P_E0] == 14 && t->p[P_E1] == 1);
+    static project_store_t packed;
+    project_capture(&saved); assert(proj_pack(&packed, &saved));
+    assert(proj_import(&proj_scratch, &packed, sizeof packed));
+    assert(proj_scratch.t[0].engine == ENGI_MIDI && proj_scratch.t[0].p[P_E0] == 14 && proj_scratch.t[0].p[P_E1] == 1);
+    puts("MIDI Track: disabled mixer/FX, zero voices/FX resources, silence and project round-trip passed");
+}
+static void sequencing(void)
+{
+    reset_midi(0); track_t *t = TSEL;
+    t->p[P_SLEN] = 2; t->p[P_SDIV] = 0; t->p[P_SGATE] = 64;
+    step_clear(&t->step[0]); t->step[0].n = 1; t->step[0].note[0] = 60; t->step[0].time = ST_NOTE; t->step[0].vel = 71;
+    seq_start(); seq_advance(0); pop_midi(0x90, 60, 71);
+    seq_stop(); pop_midi(0x80, 60, 0); empty_midi();
+    /* A take preserves its original onset, velocity and held duration. */
+    reset_midi(0); t = TSEL;
+    song.rec = song.rec_latch = 1; seq_start(); seq_advance(0);
+    seq_advance(600); input_on(t, 64, 83); pop_midi(0x90, 64, 83);
+    seq_advance(300); input_off(t, 64); pop_midi(0x80, 64, 0);
+    seq_stop(); song.rec = song.rec_latch = 0;
+    assert(recording[0].note == 64 && recording[0].vel == 83 && recording[0].duration);
+    mo_r = mo_w; seq_start(); seq_advance(0); empty_midi();
+    seq_advance(600); pop_midi(0x90, 64, 83);
+    seq_advance(300); pop_midi(0x80, 64, 0); seq_stop(); empty_midi();
+    /* SONG changes banks through the same track without changing its destination. */
+    reset_midi(0); t = TSEL; t->p[P_E0] = 9;
+    for (uint32_t bank = 0; bank < 2; bank++) {
+        pattern_t p; pattern_read(0, bank, &p);
+        for (uint32_t n = 0; n < NSTEP; n++) step_clear(&p.step[n]);
+        p.step[0].n = 1; p.step[0].note[0] = (uint8_t)(60 + bank * 7); p.step[0].time = ST_NOTE; p.step[0].vel = 90;
+        p.timing[0] = 1; p.timing[1] = 0; p.timing[2] = 0; p.timing[3] = 64;
+        pattern_write(0, bank, &p);
+    }
+    chain_defaults(&chain_config); chain_config.count = 2;
+    chain_patterns[0][0] = 0; chain_patterns[1][0] = 1;
+    assert(!chain_prepare()); events_block(1); pop_midi(0x98, 60, 90);
+    pattern_poll(); seq_advance(seq_beat_samples());
+    pop_midi(0x88, 60, 0); pop_midi(0x98, 67, 90);
+    pattern_poll(); seq_advance(seq_beat_samples()); pop_midi(0x88, 67, 0);
+    assert(!song.playing && !chain.running && t->p[P_E0] == 9); empty_midi();
+    puts("MIDI Track: step sequencing, recorded-take timing/velocity and multi-row song playback passed");
+}
+int main(void)
+{
+    notes_and_panel(); routing(); cleanup(); silent_and_saved(); sequencing();
+    puts("MIDI TRACK TESTS PASSED");
+    return 0;
+}

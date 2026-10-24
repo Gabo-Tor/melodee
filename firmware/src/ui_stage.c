@@ -210,6 +210,7 @@ static uint32_t stage_picture(int32_t *v)
     }
     if (sp->scope != SC_ENGINE)
         return SP_NONE;
+    if (id >= P_COUNT) return SP_NONE;
     if (id >= P_ATK && id <= P_REL) {
         for (k = 0; k < 4u; k++)
             v[k] = TSEL->p[P_ATK + k];
@@ -218,6 +219,7 @@ static uint32_t stage_picture(int32_t *v)
     {   /* an engine's filter: its F_CUTOFF knob and the RES beside it */
         int32_t cut = -1, res = 0;
         for (k = 0; k < 4u; k++) {
+            if (sp->id[k] >= P_COUNT) continue;
             const param_desc_t *d = track_desc(TSEL, sp->id[k]);
             if (d->fmt == F_CUTOFF) cut = (int32_t)k;
             else if (str_eq(d->label, "RES")) res = TSEL->p[sp->id[k]];

@@ -987,7 +987,7 @@ int main(int argc, char **argv)
     /* 1 + 2: the golden renders */
     g0 = nj;
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, eng_preset(ENGINES[e], pi)->name, sizeof s);
             snprintf(name, sizeof name, "preset/%s/%02u_%s", ENGINES[e]->name, pi, s);
@@ -1032,7 +1032,7 @@ int main(int argc, char **argv)
     /* 3: CPU, one child at a time (the ns are for information; the instruction counts do not care) */
     c0 = nj;
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, eng_preset(ENGINES[e], pi)->name, sizeof s);
             snprintf(name, sizeof name, "cpu/%s/%02u_%s", ENGINES[e]->name, pi, s);
@@ -1212,7 +1212,7 @@ int main(int argc, char **argv)
     }
     printf("regress: CPU, one part with 8 notes held (VOICE 4), heaviest preset per engine (instructions / ns per sample):\n");
     for (e = 0; e < NENGINES; e++)
-        if (eng_ok(e))
+        if (eng_ok(e) && e != ENGI_MIDI)
             printf("regress:   %-8s %-14s %6.0f instr  %6.1f ns\n", ENGINES[e]->name, eng_preset(ENGINES[e], heavy_p[e])->name,
                    heavy[e], heavy_ns[e]);
     for (i = c1 - 3u; i < c1; i++)

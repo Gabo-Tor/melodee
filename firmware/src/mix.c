@@ -226,7 +226,9 @@ static __attribute__((noinline)) void mix_prepare_batch(uint32_t n,uint32_t nt) 
     }
 #endif
     for(uint32_t p=0;p<nt;p++){
-        track_t *t=&trk[p];mod_begin(t);batch_mod[p]=mod;memcpy(batch_params[p],t->p,sizeof t->p);
+        track_t *t=&trk[p];
+        if(t->engine==ENGI_MIDI){batch_rendered[p]=0;continue;}
+        mod_begin(t);batch_mod[p]=mod;memcpy(batch_params[p],t->p,sizeof t->p);
         spread_on=t->p[P_SPRD]>0 && (trk_vmode(t)==V_POLY || trk_vmode(t)==V_UNISON);
         batch_spread_on[p]=spread_on;spread_buf=batch_spread[p];
         batch_rendered[p]=track_render_audio(t,batch_pcm[p],n,0);
@@ -237,6 +239,16 @@ static __attribute__((noinline)) void mix_prepare_batch(uint32_t n,uint32_t nt) 
 #endif
 static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
 {
+    if (midi_track_only(t)) {
+        uint32_t ti = (uint32_t)(t - trk);
+        for (uint32_t slot = 0; slot < FX_SLOTS; slot++) {
+            uint32_t si = ti * FX_SLOTS + slot;
+            if (fx_state[si].type || resource[RES_FX0 + si].size) {
+                resource_release(RES_FX0 + si); fx_zero(&fx_state[si]);
+            }
+        }
+        if (t->engine == ENGI_MIDI) { t->peak = 0; return; }
+    }
     uint32_t extra=0;
     if(fx_send_on && fx_bus_separate)for(uint32_t slot=0;slot<FX_SLOTS-1u;slot++){
         uint32_t amount=(uint32_t)t->p[P_FXSEND2+slot];fx_extra_gain[slot]=(amount+(amount==127u))*512u;extra|=amount;
@@ -275,7 +287,7 @@ static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
     if(rendered || fx_active(t)){
         if(!rendered){memset(part_buf,0,n*sizeof *part_buf);if(spread_on)memset(spread_buf,0,n*sizeof *spread_buf);}
         AP_START(fx_start);int wet;
-        wet=fx_process(t,part_buf,n);
+        wet=midi_track_only(t) ? 0 : fx_process(t,part_buf,n);
         AP_END(AP_FX,fx_start);
         if(wet){
             void (*volatile run)(track_t *,uint32_t)=mix_fx_samples;run(t,n);

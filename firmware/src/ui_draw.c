@@ -549,8 +549,9 @@ static void sound_name(const track_t *t, char *b)
 #else
 #define MIDI_TRS_STATE "OFF"
 #endif
-/* SYSTEM's MIDI column: input trs (0 USB, 1 TRS) received something in the last 250 ms (both inputs always play;
- * KNOB 1 only picks the one shown). Sampled whenever the column draws */
+/* SYSTEM's MIDI column: input trs (0 USB, 1 TRS) received something in the last 250 ms (synths accept both;
+ * MIDI Track also uses this selection unless its additional TRS input is enabled).
+ * Sampled whenever the column draws */
 static int midi_rx_recent(uint32_t trs)
 {
     static uint32_t last[2], at[2];
@@ -673,6 +674,13 @@ static void draw_columns(void)
     const char *unit;
     if (cur_page()->scope == SC_TRK) {                 /* LEVEL PAN MUTE of the selected track */
         const track_t *t = TSEL;
+        if (midi_track_only(t)) {
+            draw_column(0, "LEVEL", "--", "", T_DIM, -1, ICON_NONE);
+            draw_column(1, "PAN", "--", "", T_DIM, -1, ICON_NONE);
+            draw_column(2, "", "", "", T_DIM, -1, ICON_NONE);
+            draw_column(3, "MUTE", t->p[P_MUTE] ? "ON" : "OFF", "", t->p[P_MUTE] ? T_ACCENT : VAL(3u), -1, ICON_AUTO);
+            return;
+        }
         uint32_t lvl = trk_level(song.sel);
         param_format(&TP[P_LEVEL], (int32_t)lvl, val, &unit);   /* (0: OFF) */
         draw_column(0, "LEVEL", val, unit, lvl && !t->p[P_MUTE] ? VAL(0u) : T_DIM, (int32_t)lvl * 1000 / 127, ICON_AUTO);

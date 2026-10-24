@@ -591,15 +591,24 @@ static void trk_note_off_engine(track_t *t, uint32_t note)
         }
 }
 
+#include "midi_track.c"
 #include "midi_insert.c"
 /* All ordinary notes go through the persistent per-track MIDI inserts. */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
-{ if (vel) trk_note_on_raw(t, note, vel); else trk_note_off_raw(t, note); }
+{
+    if (midi_track_only(t)) {
+        if (vel) midi_track_note_on(t, note, vel); else midi_track_note_off(t, note);
+    } else if (vel) trk_note_on_raw(t, note, vel); else trk_note_off_raw(t, note);
+}
 static void trk_note_off(track_t *t, uint32_t note)
-{ trk_note_off_raw(t, note); }
+{
+    midi_track_note_off(t, note); /* releases retain their original output channel */
+    if (!midi_track_only(t)) trk_note_off_raw(t, note);
+}
 
 static void trk_all_off(track_t *t)
 {
+    midi_track_all_off(t);
     midi_insert_cancel((uint32_t)(t - trk));
     memset(midi_insert.held[t-trk], 0, sizeof midi_insert.held[0]);
     uint32_t i;
@@ -764,6 +773,10 @@ static void engine_render(track_t *t,voice_t *v,const engine_t *e,int32_t *out,u
  * the ISR's code footprint and permits an independent target cost check. */
 static __attribute__((noinline)) uint32_t track_render_audio(track_t *t, int32_t *out, uint32_t n, int clear_idle)
 {
+    if (t->engine == ENGI_MIDI) {
+        if (clear_idle) memset(out, 0, n * sizeof *out);
+        return 0;
+    }
     const engine_t *e = ENGINES[t->engine];
     const int16_t *p = t->p;
     uint32_t i;

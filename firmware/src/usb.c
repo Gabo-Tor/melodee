@@ -124,14 +124,17 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
     return 1;
 }
 
-static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
+static int midi_track_emit(uint32_t pkt)            /* from the audio ISR */
 {
     if (usb.config && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
         RING_PUBLISH();
         mo_w++;
+        return 1;
     }
+    return 0;
 }
+static void midi_out_event(uint32_t pkt) { (void)midi_track_emit(pkt); }
 
 /* ------------------------------------------------------- descriptors --- */
 /* interfaces: 0 audio control, 1 MIDI streaming, then CDC's two, or duplex audio's three (usb_audio_desc.h).

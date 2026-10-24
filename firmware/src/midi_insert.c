@@ -66,6 +66,11 @@ static uint32_t midi_insert_velocity(uint32_t vel, const int16_t *p)
 }
 static void midi_insert_controls(uint32_t tr)
 {
+    if (midi_track_only(&trk[tr])) {
+        if (midi_insert.signature[tr]) midi_insert_cancel(tr);
+        midi_insert.signature[tr] = midi_verb[tr] = 0;
+        return;
+    }
     uint32_t signature = 0, release = 0;
     for (uint32_t s = 0; s < FX_SLOTS; s++) {
         const int16_t *p = trk[tr].p + P_FXTYPE + s * FX_PARAMS;
@@ -80,6 +85,7 @@ static void midi_insert_controls(uint32_t tr)
 }
 static void trk_note_on_raw(track_t *t, uint32_t note, uint32_t vel)
 {
+    if (midi_track_only(t)) { midi_track_note_on(t, note, vel); return; }
     if (!midi_insert.ready) midi_insert_init();
     if (note > 127u) return;
     uint32_t tr = (uint32_t)(t-trk);

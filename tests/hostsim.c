@@ -804,7 +804,7 @@ static int tracks_test(const char *dir)
     printf("tracks: WAVs in %s: %s (mix), %s, %s, %s, %s, steal.wav, engine_switch.wav\n", dir, SOLO[0], SOLO[1], SOLO[2], SOLO[3], SOLO[4]);
     /* one part: every preset with 8 held notes (the engine's cap: VOICE 4); the worst one */
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; e != ENGI_MIDI && pi < ENGINES[e]->npresets; pi++) {
             uint8_t parts[NPART][3] = {{(uint8_t)e, (uint8_t)pi, 8}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
             double c = tracks_cost(parts, 0);
             if (c > best_e[e]) {
@@ -819,7 +819,7 @@ static int tracks_test(const char *dir)
         }
     printf("tracks: one part, 8 notes held (host -O2, ns per sample, heaviest preset per engine):");
     for (e = 0; e < NENGINES; e++)
-        if (eng_ok(e))
+        if (eng_ok(e) && e != ENGI_MIDI)
             printf(" %s %s %.1f%s", ENGINES[e]->name, eng_preset(ENGINES[e], heavy[e])->name, best_e[e],
                    e + 1u < NENGINES ? "," : "\n");
     {   /* FM6, PHASE, VOICE (their heaviest presets) and drums on part 4 at once:

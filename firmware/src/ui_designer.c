@@ -114,7 +114,7 @@ static const uint8_t DS_F_ANY[] = {DF_VOICE, DF_GLIDE, DF_SPREAD, DF_PENV, DF_VI
 static const uint8_t *designer_feats(uint32_t *n)       /* the selected track's engine's (a drum kit: none) */
 {
     uint32_t e=TSEL->eng_req;
-    if(drum_track(TSEL)){*n=0;return 0;}
+    if(drum_track(TSEL) || midi_track_only(TSEL)){*n=0;return 0;}
     *n=e==ENGI_PROPHET?sizeof DS_F_P5:e==ENGI_FM6?sizeof DS_F_FM:e==ENGI_CZ?sizeof DS_F_CZ:sizeof DS_F_ANY;
     return e==ENGI_PROPHET?DS_F_P5:e==ENGI_FM6?DS_F_FM:e==ENGI_CZ?DS_F_CZ:DS_F_ANY;
 }
@@ -308,7 +308,7 @@ static const char *designer_silent(void)
 static void designer_recipe(void)
 {
     track_t *t=TSEL;uint32_t g=ds.goal;
-    if(g==DG_FREE || drum_track(t))return;
+    if(g==DG_FREE || drum_track(t) || midi_track_only(t))return;
     int pad=g==DG_PAD, shorty=g==DG_PLUCK||g==DG_KEYS;
     t->p[P_VOICE]=(g==DG_BASS||g==DG_LEAD)?V_MONO:V_POLY;
     if(t->eng_req==ENGI_PROPHET){
@@ -366,6 +366,7 @@ static int designer_category(uint32_t i)
 static int designer_page_ok(uint32_t i)
 {
     const page_t *p=&PAGES[i];
+    if (midi_track_only(TSEL)) return p->scope == SC_ENGINE && p->id[0] == P_E0;
     if(!page_visible(i) || (p->fam!=FAM_EDIT && p->fam!=FAM_ENV && p->fam!=FAM_LFO))return 0;
     if(p->graph==GR_FMSTORE || p->graph==GR_CZTOOLS || p->scope==SC_P5STORE || p->graph==GR_MOTION)return 0;
     /* Track mixer/performance parameters and the drum lanes' notes are outside a tone. */

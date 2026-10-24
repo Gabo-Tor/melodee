@@ -259,6 +259,12 @@ static int native_page(uint32_t i, uint32_t fam)       /* page i: one of fam's n
 
 static int page_visible(uint32_t i)
 {
+    if (midi_track_only(TSEL)) {
+        if (PAGES[i].fam == FAM_ENV || PAGES[i].fam == FAM_LFO) return 0;
+        if (PAGES[i].scope == SC_TRACK && PAGES[i].fam == FAM_EDIT) return 0;
+        if (PAGES[i].fam == FAM_FX && PAGES[i].scope == SC_TRACK && PAGES[i].graph != GR_FXRACK) return 0;
+        if (PAGES[i].scope == SC_ENGINE && PAGES[i].id[0] == P_E4) return 0;
+    }
     if (PAGES[i].fam == FAM_FX && PAGES[i].graph != GR_FXRACK) {   /* a slot's page (its MIX first): while it holds
                                                                      * an effect (the rack shows it either way); NOTE
                                                                      * TAIL none: its row is all of it, KNOB 4 REL */
@@ -542,6 +548,7 @@ static int fam_has(uint32_t fam, uint32_t page)         /* page: one the family'
 
 static void open_family(uint32_t fam)
 {
+    if (midi_track_only(TSEL) && (fam == FAM_ENV || fam == FAM_LFO)) return;
     if ((fam == FAM_ENV || fam == FAM_LFO) && native_titles(fam)) {   /* ENV / LFO of the Prophet, FM6, CZ-1 */
         uint8_t pg[NPAGES];
         uint32_t n = fam_pages(fam, pg), k;
@@ -984,6 +991,13 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     const preset_t *pr = eng_preset(e, pi);
     for (i = 0; i < 8u; i++)
         t->p[P_E0 + i] = (int16_t)pr->e[i];
+    if (midi_track_only(t)) {
+        t->p[P_E0] = (int16_t)(trk_index(t) + 1u);
+        for (i = 0; i < FX_SLOTS; i++) {
+            t->p[P_FXTYPE + i * FX_PARAMS] = FX_OFF;
+            t->p[P_FXSEND + i] = 0;
+        }
+    }
     t->p[P_ATK] = pr->env[0];
     t->p[P_DEC] = pr->env[1];
     t->p[P_SUS] = pr->env[2];

@@ -126,6 +126,7 @@ static void ui_power_on(void)
 {
     uint32_t i;
     midi_insert_init();
+    memset(midi_output, 0, sizeof midi_output);
     punch_reset(); punch_panel_mask=punch_panel_lock=0;
     fx_clear_all();
     for(uint32_t k=0;k<FX_STATE_COUNT;k++)resource_release(RES_FX0+k);

@@ -682,9 +682,30 @@ static int library_transfers(void)
     sysex_cancel();bad+=check("cancel releases a pending import without changing its destination",!sx_import.count&&native_used(ENGI_FM6,3));
     return bad;
 }
+static int midi_track_protocol(void)
+{
+    reset(); int bad = 0;
+    song.sel = 2; set_engine_of(TSEL, ENGI_MIDI);
+    int16_t level = TSEL->p[P_LEVEL], pan = TSEL->p[P_PAN];
+    uint8_t a[4] = {0, P_E0, 16, 64};
+    request(ED_SET, a, 4);
+    a[1] = P_E1; a[2] = 1; request(ED_SET, a, 4);
+    bad += check("MIDI Track channel and TRS controls use ordinary track parameters",
+                 TSEL->eng_req == ENGI_MIDI && TSEL->p[P_E0] == 16 && TSEL->p[P_E1] == 1);
+    a[1] = P_LEVEL; a[2] = 0; request(ED_SET, a, 4);
+    a[0] = 2; a[1] = P_PAN; a[2] = 30; request(ED_TRACK_PARAM, a, 4);
+    a[1] = 0; a[2] = 64; a[3] = 1; request(ED_TRACK_MIX, a, 4);
+    bad += check("MIDI Track editor level and pan are inert while mute remains available",
+                 TSEL->p[P_LEVEL] == level && TSEL->p[P_PAN] == pan && TSEL->p[P_MUTE]);
+    a[0] = 0; a[1] = P_FXTYPE; a[2] = FX_REVERB; a[3] = 64; request(ED_SET, a, 4);
+    a[0] = 2; a[1] = P_FXSEND; a[2] = 127; request(ED_TRACK_PARAM, a, 4);
+    bad += check("MIDI Track editor cannot enable insert FX or shared sends",
+                 TSEL->p[P_FXTYPE] == FX_OFF && !TSEL->p[P_FXSEND]);
+    return bad;
+}
 int main(void)
 {
-    int bad = library_transfers() + native_motion_protocol() + prophet_protocol() + bank_protocol() + preferences() + framing() + uart_recovery() + steps() + song_protocol() + malformed_saves() + names_whole() +
+    int bad = midi_track_protocol() + library_transfers() + native_motion_protocol() + prophet_protocol() + bank_protocol() + preferences() + framing() + uart_recovery() + steps() + song_protocol() + malformed_saves() + names_whole() +
               native_protocol() + shared_protocol() + fm6_patches() + user_preset_roundtrip() + cz_native_protocol() + cz_dedicated_banks() + cz_casio_sysex() + concert_pitch() + scale_catalogue() + project_scale_protocol();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");
     return bad != 0;

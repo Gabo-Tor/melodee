@@ -534,6 +534,7 @@ static int32_t list_accel(uint32_t role, int32_t s, uint32_t total, uint32_t *fa
 static void tracks_edit(uint32_t slot, int32_t steps)
 {
     track_t *t = TSEL;
+    if (midi_track_only(t) && slot != 3u) return;
     int16_t *vp;
     const param_desc_t *d;
     switch (slot) {
@@ -1794,6 +1795,7 @@ static int fx_rack_enter(void)
     const page_t *pg = cur_page();
     uint32_t sh = pg->scope == SC_GLOBAL, r = fx_rack_row[sh] & 3u;
     int16_t *vp = 0;
+    if (midi_track_only(TSEL) && !sh && !ui.home && pg->graph == GR_FXRACK && r < FX_SLOTS) return 1;
     if (ui.home || pg->graph != GR_FXRACK || (sh && r == FX_SLOTS))
         return 0;
     if (r == FX_SLOTS) {
@@ -1911,6 +1913,7 @@ static void select_turn(uint32_t hs, int32_t s)
     case HS_CHORD:
     case HS_ARATE: {
         uint32_t id = hs == HS_LEVEL ? P_LEVEL : hs == HS_TRANS ? P_TRANS : hs == HS_CHORD ? P_CHRD : P_ARATE;
+        if (midi_track_audio_disabled(t->eng_req, id)) return;
         const param_desc_t *d = &TP[id];
         x = d->fmt == F_ENUM ? (s > 0 ? 1 : -1) : accel(EN_SELECT, s, desc_range(d));   /* (names: one a detent) */
         t->p[id] = (int16_t)clamp(t->p[id] + x, d->min, d->max);

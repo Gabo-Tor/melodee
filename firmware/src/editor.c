@@ -218,7 +218,11 @@ static void ed_sync(void)                                /* main loop */
 
 /* descriptor of parameter id of track t: the engine parameters of the engine it asked for
  * (t->engine follows in the audio ISR, after a short fade) */
-static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id) { return param_desc_of(t->eng_req % NENGINES, id); }
+static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id)
+{
+    if (midi_track_audio_disabled(t->eng_req, id)) return track_desc(t, id);
+    return param_desc_of(t->eng_req % NENGINES, id);
+}
 /* descriptor and value slot of (scope, id): scope 0 = the selected track, 1 = global */
 static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
 {
@@ -971,7 +975,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         t = &trk[a[0]];
         lv = &t->p[P_LEVEL];
         if (na >= 4u) {
-            *lv = (int16_t)clamp(ed_rv(a + 1), 0, 127);
+            if (!midi_track_only(t)) *lv = (int16_t)clamp(ed_rv(a + 1), 0, 127);
             t->p[P_MUTE] = (int16_t)(a[3] ? 1 : 0);
             ed_known(a[0], P_LEVEL);                       /* the editor's own change: no push */
             ed_known(a[0], P_MUTE);

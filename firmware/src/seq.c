@@ -51,7 +51,14 @@ static volatile uint8_t midi_hint;       /* track + 1; MPC sets FOLLOW for silen
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
-static uint32_t trk_midi_ch(uint32_t i) { return i % NTRK; }   /* MIDI channel 0..15 of track i (keys -> MIDI out) */
+static uint32_t trk_midi_ch(uint32_t i)
+{ return midi_track_only(&trk[i % NTRK]) ? midi_track_channel(&trk[i % NTRK]) : i % NTRK; }
+static uint32_t midi_event_source; /* 0: internal/test dispatch, 1 USB, 2 TRS */
+static int midi_track_accept(const track_t *t)
+{
+    return !midi_track_only(t) || !midi_event_source ||
+           midi_event_source == (song.g[G_MIDI] ? 2u : 1u) || (midi_event_source == 2u && t->p[P_E1]);
+}
 
 static int drum_track(const track_t *t) { return ENGINES[eng_idx(t->eng_req)] == &ENG_DRUM; }
 
@@ -698,7 +705,7 @@ static void key_chord_tone(uint32_t k, track_t *t)
     kb_chn[k]++;
     if (held) return;
     input_on(t, x, 100);
-    midi_out_event(0x09u | (0x90u | trk_midi_ch(trk_index(t))) << 8 | x << 16 | 100u << 24);
+    if (!midi_track_only(t)) midi_out_event(0x09u | (0x90u | trk_midi_ch(trk_index(t))) << 8 | x << 16 | 100u << 24);
 }
 
 static void key_on(uint32_t k, track_t *t)
@@ -723,7 +730,7 @@ static void key_off(uint32_t k, track_t *t)
         uint32_t x = kb_chord[k][i];
         if (midi_local_held(t, x)) continue;
         input_off(t, x);
-        midi_out_event(0x08u | (0x80u | mc) << 8 | x << 16);
+        if (!midi_track_only(t)) midi_out_event(0x08u | (0x80u | mc) << 8 | x << 16);
     }
 }
 
@@ -1023,6 +1030,7 @@ static void seq_stop(void)
         if ((takes >> i) & 1u) recording_quantize(&trk[i]);
         recording_undo_finish(&trk[i]);
         seq_release(&trk[i]);
+        if (midi_track_only(&trk[i])) midi_track_all_off(&trk[i]);
         trk[i].rh_n = 0;                           /* a recorded note held over the stop: as far as it got */
     }
     chain_stop();
@@ -1318,6 +1326,7 @@ static void events_block(uint32_t n)
     }
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
+        midi_track_service(t);
         if ((pr >> i) & 1u) {
             midi_forget_track(i);
             recording_stop(t);
@@ -1374,7 +1383,9 @@ static void events_block(uint32_t n)
         } else {
             if (clock_mode && song.playing)
                 seq_advance(midi_clock_advance(time));
+            midi_event_source = source;
             midi_event(st, ch, d1, d2);
+            midi_event_source = 0;
         }
     }
     if(song.playing)resource_release(RES_NOTE_HISTORY);
