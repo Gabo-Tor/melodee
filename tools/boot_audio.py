@@ -1,28 +1,45 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-"""Pack resident instructions for boot and verify their decoder's XIP closure."""
+# Portions Copyright (C) 2026 Charles Vestal (LZMA, every SRAM load image)
+"""Pack the SRAM load images for boot and verify their decoder's XIP closure."""
+import lzma
 import re
 import struct
-import zlib
-import zopfli.zlib
 
-MAGIC = 0x31465A41
+MAGIC = 0x31414D4C  # LMA1: firmware/src/boot_lzma.h BOOT_LZMA_MAGIC
+# Raw LZMA1, as boot_lzma.h decodes it: lc 1, lp 1, pb 1 (instructions are
+# halfword aligned), with the end marker. The dictionary is the whole image.
+FILTERS = [{'id': lzma.FILTER_LZMA1, 'preset': 9 | lzma.PRESET_EXTREME,
+            'lc': 1, 'lp': 1, 'pb': 1, 'dict_size': 1 << 20}]
+# The sections fm1_cstart copies to SRAM, in their load order from _rt_load
+# (firmware/app.ld, firmware/src/main.c BOOT_IMAGES).
+SECTIONS = ('ramtext.bin', 'dsptext.bin', 'dsptables.bin', 'data.bin', 'audiotext.bin')
 
 
 def pack(raw):
-    # Zopfli produces the same DEFLATE format with a smaller load image.
-    # Strip only its zlib wrapper; the firmware decoder and RAM image stay
-    # unchanged. Pin the build dependency in requirements-build.txt.
-    data = zopfli.zlib.compress(raw, numiterations=15)[2:-4]
-    if zlib.decompress(data, -15) != raw:
-        raise ValueError('resident audio compression round trip failed')
-    if len(data) + 16 < len(raw):
-        return struct.pack('<4I', MAGIC, len(data), len(raw), 0) + data
-    # A raw image must never be mistaken for a compressed header.
-    if raw[:4] == struct.pack('<I', MAGIC):
-        raise ValueError('raw audio image collides with compression header')
-    return raw
+    """one load image: [MAGIC, packed bytes, raw bytes, 0], the stream, padded to a word"""
+    data = lzma.compress(raw, format=lzma.FORMAT_RAW, filters=FILTERS)
+    if lzma.decompress(data, format=lzma.FORMAT_RAW, filters=FILTERS) != raw:
+        raise ValueError('boot image compression round trip failed')
+    return struct.pack('<4I', MAGIC, len(data), len(raw), 0) + data + b'\0' * (-len(data) % 4)
+
+
+def pack_images(blobs):
+    """every section's load image, one after another (an empty section still has its record)"""
+    return b''.join(pack(blob) for blob in blobs)
+
+
+def unpack_images(image, count):
+    """the packager's records read back (the tests): [(raw size, stream)]"""
+    out, at = [], 0
+    for _ in range(count):
+        magic, n, size, reserved = struct.unpack_from('<4I', image, at)
+        if magic != MAGIC or reserved:
+            raise ValueError(f'no load image record at {at}')
+        out.append((size, image[at + 16:at + 16 + n]))
+        at += 16 + n + (-n % 4)
+    return out
 
 
 def check_decoder(syms, dis, xip_start, xip_end):
@@ -40,7 +57,7 @@ def check_decoder(syms, dis, xip_start, xip_end):
             functions[current] = []
         elif current:
             functions[current].append(line)
-    errors, seen, pending = [], set(), ['boot_inflate']
+    errors, seen, pending = [], set(), ['boot_lzma']
     while pending:
         name = pending.pop()
         if name in seen:
@@ -58,6 +75,6 @@ def check_decoder(syms, dis, xip_start, xip_end):
                 pending.append(target[1])
     # Constant tables must also be available before executable SRAM is copied.
     for name, address in addresses.items():
-        if name.startswith('boot_inflate.') and not xip_start <= address < xip_end:
+        if name.startswith('boot_lzma.') and not xip_start <= address < xip_end:
             errors.append(f'boot decoder table {name} must be in XIP')
     return errors

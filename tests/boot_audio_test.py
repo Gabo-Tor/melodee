@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-"""Independent zlib fixtures, malformed decoder inputs and real packed image."""
+"""Independent LZMA fixtures, malformed decoder inputs and the real packed image."""
+import lzma
 import os
 from pathlib import Path
 import random
@@ -11,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import boot_audio
 
@@ -36,67 +36,70 @@ def elf_symbol(path, wanted):
 
 
 class BootAudio(unittest.TestCase):
-    def test_raw_reference_and_collision(self):
-        raw = bytes(random.Random(741).randbytes(512))
-        self.assertEqual(boot_audio.pack(raw), raw)
-        with self.assertRaisesRegex(ValueError, 'collides'):
-            boot_audio.pack(b'AZF1')
+    def test_record_and_round_trip(self):
+        for raw in (b'', b'A', bytes(random.Random(741).randbytes(512))):
+            data = boot_audio.pack(raw)
+            magic, n, size, reserved = struct.unpack('<4I', data[:16])
+            self.assertEqual((magic, size, reserved), (boot_audio.MAGIC, len(raw), 0))
+            self.assertEqual(len(data), 16 + n + (-n % 4))
+            self.assertEqual(lzma.decompress(data[16:16 + n], format=lzma.FORMAT_RAW, filters=boot_audio.FILTERS), raw)
+        images = [b'', b'xyz', bytes(range(256)) * 4]
+        self.assertEqual([size for size, _ in boot_audio.unpack_images(boot_audio.pack_images(images), 3)],
+                         [len(i) for i in images])
+        with self.assertRaisesRegex(ValueError, 'no load image'):
+            boot_audio.unpack_images(b'\0' * 16, 1)
 
     def test_dependency_gate(self):
-        syms = '02001000 l F .text 00000020 boot_inflate\n02001040 l F .text 00000020 helper\n'
-        dis = 'boot_inflate:\n 2001000: 00 00 \tcall 64 <helper : 2001040 >\nhelper:\n 2001040: 00 00 \trts\n'
+        syms = '02001000 l F .text 00000020 boot_lzma\n02001040 l F .text 00000020 helper\n'
+        dis = 'boot_lzma:\n 2001000: 00 00 \tcall 64 <helper : 2001040 >\nhelper:\n 2001040: 00 00 \trts\n'
         self.assertEqual(boot_audio.check_decoder(syms, dis, 0x2001000, 0x208d000), [])
         self.assertTrue(boot_audio.check_decoder(syms.replace('02001040', '01c01040'), dis, 0x2001000, 0x208d000))
         self.assertTrue(boot_audio.check_decoder(syms, dis.replace('call 64 <helper : 2001040 >', 'call r3'), 0x2001000, 0x208d000))
-        self.assertTrue(boot_audio.check_decoder(syms + '01c01000 l O .data 00000020 boot_inflate.table\n', dis, 0x2001000, 0x208d000))
+        self.assertTrue(boot_audio.check_decoder(syms + '01c01000 l O .data 00000020 boot_lzma.table\n', dis, 0x2001000, 0x208d000))
 
     def test_decoder(self):
         rng = random.Random(9025)
         payloads = [b'', b'A', bytes(range(256)), b'ABCD' * 32768,
                     bytes(rng.randrange(256) for _ in range(8192))]
-        resident = Path('build/audiotext.bin')
-        if resident.exists() and resident.stat().st_size:
-            payloads.append(resident.read_bytes())
-        with tempfile.TemporaryDirectory(prefix='melodee-inflate-') as temp:
+        for name in boot_audio.SECTIONS:
+            p = Path('build') / name
+            if p.exists() and p.stat().st_size:
+                payloads.append(p.read_bytes())
+        with tempfile.TemporaryDirectory(prefix='melodee-lzma-') as temp:
             root = Path(temp)
-            exe = root / 'inflate'
-            flags = ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
-            subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), *flags, 'tests/boot_inflate_test.c', '-o', str(exe)], check=True)
+            exe = root / 'lzma'
+            flags = shlex.split(os.environ.get('BOOT_SANITIZE', '-fsanitize=address,undefined'))
+            subprocess.run([*shlex.split(os.environ.get('CC', 'cc')), '-O1', '-g', *flags, '-fno-omit-frame-pointer',
+                            'tests/boot_lzma_test.c', '-o', str(exe)], check=True)
             for raw in payloads:
-                for level, strategy in [(0, 0), (9, 0), (9, zlib.Z_FIXED), (9, zlib.Z_HUFFMAN_ONLY)]:
-                    compressor = zlib.compressobj(level, zlib.DEFLATED, -15, 8, strategy)
-                    data = compressor.compress(raw) + compressor.flush()
-                    (root / 'packed').write_bytes(data)
-                    (root / 'raw').write_bytes(raw)
-                    subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(len(raw))], check=True)
                 data = boot_audio.pack(raw)
-                if data[:4] == struct.pack('<I', boot_audio.MAGIC):
-                    magic, packed, size, reserved = struct.unpack('<4I', data[:16])
-                    self.assertEqual((packed, size, reserved), (len(data) - 16, len(raw), 0))
-                    self.assertEqual(zlib.decompress(data[16:], -15), raw)
-                    # Exercise the firmware decoder against the chosen build
-                    # compressor for every payload, including small streams.
-                    (root / 'packed').write_bytes(data[16:])
-                    (root / 'raw').write_bytes(raw)
-                    subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(len(raw))], check=True)
+                n = struct.unpack_from('<I', data, 4)[0]
+                (root / 'packed').write_bytes(data[16:16 + n])
+                (root / 'raw').write_bytes(raw)
+                subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(len(raw))], check=True)
             # Check bytes actually emitted by the packager, not another compressor invocation.
-            if resident.exists() and resident.stat().st_size:
+            sections = [Path('build') / name for name in boot_audio.SECTIONS]
+            if all(p.exists() for p in sections) and Path('build/melodee.bin').exists():
                 image = Path('build/melodee.bin').read_bytes()
                 # ROM entry maps app-file offset zero to 0x02000120.
-                offset = elf_symbol(Path('build/melodee.elf'), '_audio_load') - 0x02000120
+                offset = elf_symbol(Path('build/melodee.elf'), '_rt_load') - 0x02000120
                 self.assertGreaterEqual(offset, 3808)
-                if image[offset:offset+4] != struct.pack('<I', boot_audio.MAGIC):
-                    # MELODEE_COMPRESS_AUDIO=0 is the raw-copy reference profile.
-                    self.assertEqual(image[offset:offset+resident.stat().st_size], resident.read_bytes())
+                if image[offset:offset + 4] != struct.pack('<I', boot_audio.MAGIC):
+                    # MELODEE_COMPRESS_AUDIO=0 is the raw-copy reference profile: each at its load address.
+                    for name, sym in zip(boot_audio.SECTIONS, ('_rt_load', '_dsp_load', '_dt_load', '_data_load', '_audio_load')):
+                        at = elf_symbol(Path('build/melodee.elf'), sym) - 0x02000120
+                        raw = (Path('build') / name).read_bytes()
+                        self.assertEqual(image[at:at + len(raw)], raw)
                     return
-                magic, n, size, reserved = struct.unpack_from('<4I', image, offset)
-                self.assertLessEqual(offset + 16 + n, len(image))
-                self.assertEqual((size, reserved), (resident.stat().st_size, 0))
-                data = image[offset + 16:offset + 16 + n]
-                self.assertEqual(zlib.decompress(data, -15), resident.read_bytes())
-                (root / 'packed').write_bytes(data)
-                (root / 'raw').write_bytes(resident.read_bytes())
-                subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(size)], check=True)
+                records = boot_audio.unpack_images(image[offset:], len(sections))
+                self.assertLessEqual(offset + len(boot_audio.pack_images([p.read_bytes() for p in sections])), len(image))
+                for (size, data), p in zip(records, sections):
+                    raw = p.read_bytes()
+                    self.assertEqual(size, len(raw))
+                    self.assertEqual(lzma.decompress(data, format=lzma.FORMAT_RAW, filters=boot_audio.FILTERS), raw)
+                    (root / 'packed').write_bytes(data)
+                    (root / 'raw').write_bytes(raw)
+                    subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(size)], check=True)
 
 
 if __name__ == '__main__':

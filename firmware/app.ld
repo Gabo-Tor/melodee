@@ -24,15 +24,18 @@ MEMORY
 SECTIONS
 {
     .text : { KEEP(*(.text.crt0)) *(.text*) *(.rodata*) . = ALIGN(4); _etext = .; } > XIP
-    .ram_text : { _rt_start = .; KEEP(*(.ram_text*)) . = ALIGN(4); _rt_end = .; } > RAMTEXT AT > XIP
+    /* Every section copied to SRAM at boot has an explicit LMA after .text, outside the XIP region: the packager
+     * stores them boot-compressed from _rt_load on (tools/boot_audio.py), so their compressed size, not the ELF's raw
+     * sections, determines the flash available. The packager enforces the image limit. */
+    .ram_text : AT (ALIGN(_etext, 4)) { _rt_start = .; KEEP(*(.ram_text*)) . = ALIGN(4); _rt_end = .; } > RAMTEXT
     _rt_load = LOADADDR(.ram_text);
-    .dsp_text : { _dsp_start = .; *(.dsp_text*) . = ALIGN(4); _dsp_end = .; } > RAMTEXT AT > XIP
+    .dsp_text : AT (ALIGN(LOADADDR(.ram_text) + SIZEOF(.ram_text), 4)) { _dsp_start = .; *(.dsp_text*) . = ALIGN(4); _dsp_end = .; } > RAMTEXT
     _dsp_load = LOADADDR(.dsp_text);
-    .dsp_tables : { _dt_start = .; *(.dsp_tables*) . = ALIGN(4); _dt_end = .; } > RAMTEXT AT > XIP
+    .dsp_tables : AT (ALIGN(LOADADDR(.dsp_text) + SIZEOF(.dsp_text), 4)) { _dt_start = .; *(.dsp_tables*) . = ALIGN(4); _dt_end = .; } > RAMTEXT
     _dt_load = LOADADDR(.dsp_tables);
     _resource_low_start = ALIGN(_dt_end, 4);
     _resource_low_end = 0x01C07F00;
-    .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
+    .data : AT (ALIGN(LOADADDR(.dsp_tables) + SIZEOF(.dsp_tables), 4)) { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); _data_end = .; } > RAM
     _data_load = LOADADDR(.data);
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     _resource_data_start = _bss_end;
@@ -42,9 +45,6 @@ SECTIONS
         /* The backend can synthesize libc calls after IR relocation. Keep
          * these resident entry points at the high end, within XIP call range. */
         *(.audio_libc*) . = ALIGN(4); _audio_end = .; } > POOL
-    /* Its load bytes are boot-compressed by the packager. An explicit LMA
-     * permits the final compressed size, rather than the ELF's raw section,
-     * to determine available flash. The packager enforces the image limit. */
     _audio_load = LOADADDR(.audio_text);
     _app_xip_end = ORIGIN(XIP) + LENGTH(XIP);
     _guard_ram_end = SIZEOF(.audio_text) ? _audio_end : _dsp_end;
