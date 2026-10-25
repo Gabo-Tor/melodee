@@ -84,9 +84,9 @@ static void trace(int audio_only)
 {
     host_tracks_init();
     int32_t input[CTL],out[CTL*2];
-    /* Insert, shared CHAIN and SPLIT. Other slots keep time/filter histories
+    /* Shared CHAIN and SPLIT. Other slots keep time/filter histories
      * audible long after zero input; Chorus must wait for its own exact proof. */
-    for(uint32_t mode=0;mode<3;mode++)for(uint32_t effect=FX_PHASER;effect<FX_AUDIO_COUNT;effect++){
+    for(uint32_t mode=1;mode<3;mode++)for(uint32_t effect=FX_PHASER;effect<FX_AUDIO_COUNT;effect++){
         if(fx_retired(effect))continue;
         for(uint32_t id=0;id<RES_COUNT;id++)resource_release(id);
         memset(fx_state,0,sizeof fx_state);memset(trk,0,sizeof trk);trk_voices_bind();memset(&song,0,sizeof song);host_tracks_init();
@@ -114,8 +114,7 @@ static void trace(int audio_only)
                 input[i]=x;spread_buf[i]=x/3;fx_send_l[i]=x;fx_send_r[i]=-x/2;
                 for(uint32_t k=0;k<FX_SLOTS-1;k++){fx_send_extra_l[k][i]=x/(int32_t)(k+2u);fx_send_extra_r[k][i]=-x;}
             }
-            if(mode==0){int active=fx_process(&trk[0],input,CTL);digest(&active,sizeof active);}
-            else {fx_bus_start(CTL);fx_bus_join();digest(&fx_bus_result,sizeof fx_bus_result);}
+            fx_bus_start(CTL);fx_bus_join();digest(&fx_bus_result,sizeof fx_bus_result);
             digest(fx_left,sizeof fx_left);digest(fx_right,sizeof fx_right);
             for(uint32_t si=0;si<FX_STATE_COUNT;si++){
                 /* The PCM/allocation trace also compares different state
@@ -128,10 +127,10 @@ static void trace(int audio_only)
             if(block==1100u)fx_clear_all();
         }
     }
-    /* Frozen PCM and allocation bytes from 1e4476e before coefficient sharing.
+    /* Frozen shared-only PCM/allocation bytes captured from 753adbf before insert removal.
      * State layout is intentionally omitted; all routed audio and delay
      * contents still participate, including stereo-to-mono transitions. */
-    if(audio_only)assert(hash==0xd63b453a1469d794ull);
+    if(audio_only)assert(hash==0x986ce309ec9fbf0cull);
     printf("%016llx\n",(unsigned long long)hash);
 }
 static volatile uint32_t checksum;

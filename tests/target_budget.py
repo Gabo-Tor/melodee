@@ -27,7 +27,7 @@ FUNCS = ["phase_render", "sid_render", "cz_native_render", "cz_native_wave", "fo
          "fm1_alnk0_irq", "track_render_audio",       # per-track renderer has its own bounded function
          "midi_parameter", "audition_tick", "click_render", # bounded optional recording/performance paths
          "mod_begin", "mod_voice", "mod_end",                 # the modulation matrix (mod.c), called when active
-         "fx_filter", "fx_down", "fx_up", "fx_time", "mix_fx_samples",
+         "fx_filter", "fx_down", "fx_up", "fx_time",
          "fx_tape",                                        # fused, smoothed stereo Tape path
          "fx_chorus",                                      # full-rate integer stereo taps
          "mix_extra_sends", "fx_bus_kernel",                # optional independent sends and returns

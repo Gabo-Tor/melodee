@@ -12,6 +12,7 @@ static const char *const N_LTRIG[] = {"NOTE", "FREE"};
 static const char *const N_LPOL[] = {"BI", "UNI"};
 /* SOFT .. FUZZ are one DRIVE, their SHAPE on KNOB 4 (N_SHAPE) */
 static const char *const N_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "REVERB", "CHORUS", "NOTE TAIL", "NOTE ECHO", "DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"};
+static const char *const N_NOTE_FX[FX_COUNT] = {"OFF", "", "", "", "", "", "", "", "", "", "NOTE TAIL", "NOTE ECHO", "", "", "", "", "", "", "", ""};
 static const char *const N_AUDIO_FX[] = {"OFF", "PHASER", "WIDTH", "FORMANT", "TAPE", "SPIT", "", "ROOM", "REVERB", "CHORUS", "", "", "DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"};
 static const char *const N_SHAPE[FX_FUZZ + 1u] = {[FX_SOFT] = "SOFT", [FX_HARD] = "HARD", [FX_FOLD] = "FOLD", [FX_FUZZ] = "FUZZ"};
 /* the effects as the picker and the list give them (README "FX rack"), in families: Space, Motion, Dirt, Colour,
@@ -170,13 +171,13 @@ static void fm6_freq_text(char *val, const char **unit, int coarse)
 }
 
 static const param_desc_t TP[P_COUNT] = {
-    [P_FXTYPE] = PE("FX", N_FX, 0),
+    [P_FXTYPE] = PE("NOTE FX", N_NOTE_FX, 0),
     [P_FXMIX] = PD("MIX", F_PCT, 0, 127, 0),
     [P_FXRATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
     [P_FXCHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [P_FX2TYPE] = PE("FX", N_FX, 0), [P_FX2MIX] = PD("MIX", F_PCT, 0, 127, 0),
+    [P_FX2TYPE] = PE("NOTE FX", N_NOTE_FX, 0), [P_FX2MIX] = PD("MIX", F_PCT, 0, 127, 0),
     [P_FX2RATE] = PD("RATE", F_LFOHZ, 0, 127, 60), [P_FX2CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
-    [P_FX3TYPE] = PE("FX", N_FX, 0), [P_FX3MIX] = PD("MIX", F_PCT, 0, 127, 0),
+    [P_FX3TYPE] = PE("NOTE FX", N_NOTE_FX, 0), [P_FX3MIX] = PD("MIX", F_PCT, 0, 127, 0),
     [P_FX3RATE] = PD("RATE", F_LFOHZ, 0, 127, 60), [P_FX3CHAR] = PD("CHAR", F_PCT, 0, 127, 64),
     [P_LN0] = PD("KICK", F_PCT, 0, 127, 127),
     [P_LN1] = PD("SNARE", F_PCT, 0, 127, 127),

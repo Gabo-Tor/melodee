@@ -203,22 +203,6 @@ static void mix_solo(track_t *t,int32_t *b,uint32_t n)
     }
     solo_gain[ti]=from;
 }
-static __attribute__((noinline,section(".dsp_text"))) void mix_fx_samples(track_t *t,uint32_t n)
-{
-    uint32_t ti=(uint32_t)(t-trk);int32_t lvl=LEVEL_Q12[t->p[P_LEVEL]&127],pk=t->peak;
-    uint32_t send=fx_send_on?fx_send_gain(t):0u;
-    int32_t gain=solo_gain[ti],to=!t->p[P_MUTE] && (!track_solo || ((track_solo>>ti)&1u))?32768:0;
-    for(uint32_t i=0;i<n;i++){
-        gain+=clamp(to-gain,-256,256);
-        int32_t l=fx_scale(fx_left[i],(uint32_t)gain*2u),r=fx_scale(fx_right[i],(uint32_t)gain*2u);
-        l=clamp(fx_div_pow2((l>>2)*lvl,10),-524287,524287);r=clamp(fx_div_pow2((r>>2)*lvl,10),-524287,524287);
-        mix_add(l,r,i,send);int32_t a=l<0?-l:l,c=r<0?-r:r;if(c>a)a=c;if(a>pk)pk=a;
-#if MELODEE_USB_AUDIO
-        if(track_capture_on)track_capture[i*NPART+ti]=fx_div_pow2(l+r,1);
-#endif
-    }
-    solo_gain[ti]=gain;t->peak=pk;
-}
 #if MELODEE_BATCH_AUDIO && !MELODEE_LEGACY_EXTRAS
 static int32_t batch_pcm[NPART][CTL],batch_spread[NPART][CTL];
 static uint32_t batch_rendered[NPART];static uint8_t batch_spread_on[NPART],batch_ready;
@@ -254,16 +238,7 @@ static __attribute__((noinline)) void mix_prepare_batch(uint32_t n,uint32_t nt) 
 #endif
 static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
 {
-    if (midi_track_only(t)) {
-        uint32_t ti = (uint32_t)(t - trk);
-        for (uint32_t slot = 0; slot < FX_SLOTS; slot++) {
-            uint32_t si = ti * FX_SLOTS + slot;
-            if (fx_state[si].type || resource[RES_FX0 + si].size) {
-                resource_release(RES_FX0 + si); fx_zero(&fx_state[si]);
-            }
-        }
-        if (t->engine == ENGI_MIDI) { t->peak = 0; return; }
-    }
+    if(t->engine==ENGI_MIDI){t->peak=0;return;}
     uint32_t extra=0;
     if(fx_send_on && fx_bus_separate)for(uint32_t slot=0;slot<FX_SLOTS-1u;slot++){
         uint32_t amount=(uint32_t)t->p[P_FXSEND2+slot];fx_extra_gain[slot]=(amount+(amount==127u))*512u;extra|=amount;
@@ -299,22 +274,14 @@ static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
     if(fx_profile_control>>30u && fx_profile_track((uint32_t)(t-trk))){for(uint32_t i=0;i<n;i++)part_buf[i]=((i&8u)?-8000:8000)+(int32_t)i*97;rendered=1;spread_on=0;}
 #endif
     AP_START(mix_start);
-    if(rendered || fx_active(t)){
-        if(!rendered){memset(part_buf,0,n*sizeof *part_buf);if(spread_on)memset(spread_buf,0,n*sizeof *spread_buf);}
-        AP_START(fx_start);int wet;
-        wet=midi_track_only(t) ? 0 : fx_process(t,part_buf,n);
-        AP_END(AP_FX,fx_start);
-        if(wet){
-            void (*volatile run)(track_t *,uint32_t)=mix_fx_samples;run(t,n);
-        }else{
-            mix_solo(t,part_buf,n);
-            if(spread_on)mix_spread(t,part_buf,n);
-            else{
+    if(rendered){
+        mix_solo(t,part_buf,n);
+        if(spread_on)mix_spread(t,part_buf,n);
+        else{
             mix_cache_t *mc=&mix_cache[(uint32_t)(t-trk)];
             if(!mc->valid || mc->level!=t->p[P_LEVEL] || mc->pan!=t->p[P_PAN])mix_cache_update(t,mc);
             void (*volatile mix)(track_t *,int32_t *,uint32_t,const mix_cache_t *)=mix_mono_samples;
             mix(t,part_buf,n,mc);
-            }
         }
     }
     AP_END(AP_MIX,mix_start);

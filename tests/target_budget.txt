@@ -77,7 +77,6 @@ fx_down 126
 fx_up 141
 # Two smoothed wet-input cuts (the low one always: the floor), evaluated at quarter rate, and the echo loop's low cut.
 fx_time 351
-mix_fx_samples 82
 mix_extra_sends 94
 fx_bus_kernel 267
 # Full-rate stereo chorus: two integer taps; no sample-loop calls or divides.

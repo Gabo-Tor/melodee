@@ -412,50 +412,11 @@ static __attribute__((noinline,section(".dsp_text"))) void fx_copy(fx_state_t *f
 #endif
     f->mono=(uint8_t)mono;
 }
-static __attribute__((noinline,section(".dsp_text"))) void fx_pan(track_t *t,int32_t *b,uint32_t n)
-{
-    if(!spread_on){
-        for(uint32_t i=0;i<n;i++)fx_left[i]=fx_right[i]=clamp(b[i],-65536,65536);
-        return;
-    }
-    int32_t pan=0,s=spread_on?(t->p[P_SPRD]+1)>>1:0;
-    int32_t pa=clamp(pan-s,-64,63),pb=clamp(pan+s,-64,63);
-    int32_t gla=4096-(pa>0?pa*64:0),gra=4096+(pa<0?pa*64:0),glb=4096-(pb>0?pb*64:0),grb=4096+(pb<0?pb*64:0);
-    for(uint32_t i=0;i<n;i++){
-        int32_t a=spread_on?spread_buf[i]:fx_div_pow2(b[i],1),c=b[i]-a;
-        a=clamp(a,-262143,262143);c=clamp(c,-262143,262143);
-        fx_left[i]=clamp(fx_div_pow2(a*gla+c*glb,12),-65536,65536);fx_right[i]=clamp(fx_div_pow2(a*gra+c*grb,12),-65536,65536);
-    }
-}
-/* Position the finished track once. A mono engine stays mono through its
- * filter chain even when PAN is slightly off centre; stereo effects and
- * genuine engine spread retain their independent channels and tails. */
-static __attribute__((noinline,section(".audio_text"))) void fx_post_pan(track_t *t,uint32_t n)
-{
-    int32_t pan=t->p[P_PAN];if(!pan)return;
-    int32_t gl=4096-(pan>0?pan*64:0),gr=4096+(pan<0?pan*64:0);
-    for(uint32_t i=0;i<n;i++){
-        fx_left[i]=fx_scale(fx_left[i],(uint32_t)gl*16u);fx_right[i]=fx_scale(fx_right[i],(uint32_t)gr*16u);
-    }
-}
 static __attribute__((noinline,section(".audio_text"))) void fx_zero(fx_state_t *f)
 {
     typedef uint32_t word_t __attribute__((may_alias));word_t *words=(word_t *)f;for(uint32_t k=0;k<sizeof *f/4u;k++)words[k]=0;
 }
 static __attribute__((noinline)) void *fx_memory(uint32_t id,uint32_t bytes){return resource_get(id,bytes);}
-static __attribute__((noinline,section(".audio_text"))) int fx_active(const track_t *t)
-{
-    if (midi_track_only(t)) return 0;
-    uint32_t ti=(uint32_t)(t-trk);
-#if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
-    if(fx_profile_track(ti))return 1;
-#endif
-    for(uint32_t slot=0;slot<FX_SLOTS;slot++){
-        uint32_t base=P_FXTYPE+slot*FX_PARAMS;
-        if((t->p[base] && !fx_is_midi(t->p[base]) && !fx_retired(t->p[base]) && t->p[base+1u]) || fx_state[ti*FX_SLOTS+slot].mix)return 1;
-    }
-    return 0;
-}
 typedef struct {fx_state_t *f;int16_t *mem;int32_t target;int16_t third;uint8_t active,shared;} fx_plan_t;
 /* CPU0 owns allocation, releases and control snapshots. A worker receives
  * only fixed handles, preventing a retired worker from interrupting the arena. */
@@ -470,8 +431,7 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     int32_t target=type?(amount+(amount==127))*256:0;
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
     uint32_t slot=si%FX_SLOTS;
-    uint32_t bus=fx_profile_control>>30u,profiling=bus?si/FX_SLOTS==NPART:si/FX_SLOTS<NPART && fx_profile_track(si/FX_SLOTS);
-    if(bus && si/FX_SLOTS<NPART){type=0;target=0;}
+    uint32_t bus=fx_profile_control>>30u,profiling=bus!=0u;
     if(profiling){type=(fx_profile_control>>(slot*4u))&15u;target=type?(bus?32768:100*256):0;}
 #endif
     uint32_t changed=f->type!=type;
@@ -482,12 +442,12 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
     }
     if(f->epoch!=fx_epoch || (type && changed && !f->mix)){
         resource[RES_FX0+si].size=0;fx_zero(f);
-        f->epoch=fx_epoch;f->type=(uint8_t)type;f->rng=(int32_t)(0x73a9825du+si*997u);
+        f->epoch=fx_epoch;f->type=(uint8_t)type;f->rng=(int32_t)(0x73a9825du+(NPART*FX_SLOTS+si)*997u);
     }
     f->rate=(int16_t)clamp(p[2],0,127);f->character=(int16_t)clamp(p[3],0,127);
     if(fx_has_tone(f->type)){   /* the low cut (section 0: the floor, TONE above 0 higher), TONE below 0 the high cut (1) */
-        uint32_t slot=si%FX_SLOTS,master=si/FX_SLOTS==NPART,div=f->type==FX_REVERB?1u:4u;
-        int32_t tone=clamp(master?song.g[G_MFXTONE+slot]:trk[si/FX_SLOTS].p[P_FXTONE+slot],-FX_TONE_MAX,FX_TONE_MAX);
+        uint32_t slot=si%FX_SLOTS,div=f->type==FX_REVERB?1u:4u;
+        int32_t tone=clamp(song.g[G_MFXTONE+slot],-FX_TONE_MAX,FX_TONE_MAX);
         for(uint32_t k=0;k<2u;k++){   /* (a2: the cutoff now, Hz; 0 off) */
             int32_t hz=k?(tone<0?fx_tone_hz(tone):0):fx_low_cut_hz(f->type,tone);
             fx_bq_t *q=&f->time_tone[k];
@@ -502,14 +462,16 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
 #endif
     int16_t *mem=0;
     if(f->type==FX_ROOM || f->type==FX_CHORUS || f->type==FX_REVERB || fx_sloop_type(f->type)){
+        if(f->type==FX_REVERB)for(uint32_t k=0;k<FX_STATE_COUNT;k++)
+            if(k!=si && fx_state[k].type==FX_REVERB && resource[RES_FX0+k].size)return;
         uint32_t bytes=f->type==FX_REVERB?sizeof(fx_sloop_reverb_t):fx_sloop_type(f->type)?fx_sloop_insert_bytes(f->type):2048u;
         if(!f->failed && !resource[RES_FX0+si].size){
             void *(*volatile allocate)(uint32_t,uint32_t)=fx_memory;mem=allocate(RES_FX0+si,bytes);if(!mem)f->failed=1;
         }else if(resource[RES_FX0+si].size)mem=resource[RES_FX0+si].ptr;
         if(!mem){f->mix=0;return;}
     }
-    plan->shared=si/FX_SLOTS==NPART;
-    plan->third=plan->shared?song.g[G_MFXTONE+si%FX_SLOTS]:trk[si/FX_SLOTS].p[P_FXTONE+si%FX_SLOTS];
+    plan->shared=1u;
+    plan->third=song.g[G_MFXTONE+si%FX_SLOTS];
     plan->f=f;plan->mem=mem;plan->target=target;plan->active=1;
 }
 static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx_plan_t *plan,uint32_t n)
@@ -544,38 +506,6 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
     }
     return 1;
 }
-static __attribute__((noinline,section(".audio_text"))) int fx_slot_values(uint32_t si,const int16_t *p,uint32_t n)
-{
-    fx_plan_t plan;void (*volatile prepare)(fx_plan_t *,uint32_t,const int16_t *)=fx_slot_prepare;prepare(&plan,si,p);
-    int (*volatile run)(const fx_plan_t *,uint32_t)=fx_slot_run;return run(&plan,n);
-}
-static __attribute__((noinline,section(".audio_text"))) int fx_process_impl(track_t *t,int32_t *b,uint32_t n)
-{
-    uint32_t ti=(uint32_t)(t-trk);
-    if(!fx_active(t)){
-        for(uint32_t slot=0;slot<FX_SLOTS;slot++){
-            uint32_t si=ti*FX_SLOTS+slot;
-            if(fx_state[si].type || resource[RES_FX0+si].size){resource[RES_FX0+si].size=0;fx_zero(&fx_state[si]);}
-        }
-        return 0;
-    }
-    void (*volatile pan)(track_t *,int32_t *,uint32_t)=fx_pan;pan(t,b,n);
-    int active=0;for(uint32_t slot=0;slot<FX_SLOTS;slot++)active|=fx_slot_values(ti*FX_SLOTS+slot,t->p+P_FXTYPE+slot*FX_PARAMS,n);
-    fx_post_pan(t,n);return active;
-}
-static inline int fx_process(track_t *t,int32_t *b,uint32_t n)
-{
-#if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
-    uint32_t ti=(uint32_t)(t-trk),on=!(fx_profile_control>>30u) && fx_profile_track(ti),start=0;
-    if(on){for(uint32_t i=0;i<n;i++)b[i]=((i&8u)?-8000:8000)+(int32_t)i*97;start=fm1_ticks();}
-#endif
-    int result=fx_process_impl(t,b,n);
-#if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
-    if(on){uint32_t elapsed=fm1_ticks()-start;fx_profile_ticks[ti]+=elapsed;if(elapsed>fx_profile_max[ti])fx_profile_max[ti]=elapsed;fx_profile_blocks[ti]++;}
-#endif
-    return result;
-}
-
 /* Shared send/return: one chain or three independent post-fader buses. CPU0 and CPU1 never
  * access this workspace concurrently; join before events or flash IO. */
 static int32_t fx_send_l[CTL],fx_send_r[CTL];
@@ -605,7 +535,7 @@ static void fx_bus_select(void)
     if(separate==fx_bus_separate || fx_bus_mix)return;
     fx_bus_separate=separate;
     memset(fx_bus_slot_mix,0,sizeof fx_bus_slot_mix);
-    for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_state[NPART*FX_SLOTS+slot].epoch=fx_epoch-1u;
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_state[slot].epoch=fx_epoch-1u;
 }
 static void fx_bus_kernel(void *unused)
 {
@@ -639,7 +569,7 @@ static void fx_bus_kernel(void *unused)
 }
 static int fx_bus_active(void)
 {
-    uint32_t base=NPART*FX_SLOTS;
+    uint32_t base=0;
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
     if(fx_profile_control>>30u)return 1;
 #endif
@@ -652,20 +582,21 @@ static void fx_bus_start(uint32_t n)
 #if MELODEE_AUDIO_PROFILE
     fx_audio_ready=0;fx_audio_ticks=0;
 #endif
+    shared_fx_normalize(song.g);
     fx_bus_select();
     fx_bus_result=fx_bus_pending=0;fx_bus_target=0;fx_bus_n=n;if(!fx_bus_active())return;
     AP_START(audio_start);
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
     uint32_t start=fm1_ticks();
 #endif
-    for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_slot_prepare(&fx_bus_plan[slot],NPART*FX_SLOTS+slot,song.g+G_MFXTYPE+slot*FX_PARAMS);
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_slot_prepare(&fx_bus_plan[slot],slot,song.g+G_MFXTYPE+slot*FX_PARAMS);
     for(uint32_t slot=0;slot<FX_SLOTS;slot++)if(fx_bus_plan[slot].active && fx_bus_plan[slot].target){
         int32_t amount=clamp(song.g[G_FXRETURN],0,127);fx_bus_target=(amount+(amount==127))*256;break;
     }
     if((song.g[G_FXMODE]!=0)!=fx_bus_separate)fx_bus_target=0;
     /* A later allocation may compact earlier handles; snapshot pointers only
      * after all three preparations have completed. */
-    for(uint32_t slot=0;slot<FX_SLOTS;slot++)if(fx_bus_plan[slot].active && fx_bus_plan[slot].f->type>=FX_ECHO)fx_bus_plan[slot].mem=resource[RES_FX0+NPART*FX_SLOTS+slot].ptr;
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++)if(fx_bus_plan[slot].active && fx_bus_plan[slot].f->type>=FX_ECHO)fx_bus_plan[slot].mem=resource[RES_FX0+slot].ptr;
     for(uint32_t i=0;i<n;i++){fx_left[i]=fx_send_l[i];fx_right[i]=fx_send_r[i];}
     AP_END(AP_FX,audio_start);
 #if defined(MELODEE_FX_PROFILE) && MELODEE_FX_PROFILE && defined(FM1_IRQ_TARGET)
@@ -679,7 +610,7 @@ static void fx_bus_start(uint32_t n)
 static void fx_bus_join(void)
 {
 #if MELODEE_DUAL_CORE
-    if(fx_bus_pending && !audio_worker_join()){fx_bus_result=0;fx_bus_mix=0;for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_state[NPART*FX_SLOTS+slot].epoch=fx_epoch-1u;}
+    if(fx_bus_pending && !audio_worker_join()){fx_bus_result=0;fx_bus_mix=0;for(uint32_t slot=0;slot<FX_SLOTS;slot++)fx_state[slot].epoch=fx_epoch-1u;}
 #endif
     fx_bus_pending=0;
 #if MELODEE_AUDIO_PROFILE

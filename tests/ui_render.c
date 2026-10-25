@@ -1230,20 +1230,20 @@ static void setup(int s)
                if (s == S_FX_MIDI_LIST) { TSEL->p[P_FX3TYPE] = FX_OFF; fx_rack_row[0] = 2; vlist_open(ui.page, 0); vl.sel = FX_MIDIDELAY; } }
         break;
     case S_FX_PHASER: case S_FX_WIDTH: case S_FX_FORMANT: case S_FX_TAPE: case S_FX_SPIT: case S_FX_ROOM: case S_FX_CHORUS: case S_FX_FULL:
-        TSEL->p[P_FXTYPE]=(int16_t)(s==S_FX_FULL?FX_ROOM:s==S_FX_ROOM?FX_ROOM:s==S_FX_CHORUS?FX_CHORUS:s-S_FX_PHASER+1);go_title("FX 1");
-        TSEL->p[P_FXMIX]=84;TSEL->p[P_FXRATE]=60;TSEL->p[P_FXCHAR]=72;
-        if(s==S_FX_FULL)fx_state[(song.sel%NPART)*FX_SLOTS].failed=1;
+        song.g[G_MFXTYPE]=(int16_t)(s==S_FX_FULL?FX_ROOM:s==S_FX_ROOM?FX_ROOM:s==S_FX_CHORUS?FX_CHORUS:s-S_FX_PHASER+1);go_title("SEND FX 1");
+        song.g[G_MFXMIX]=84;song.g[G_MFXRATE]=60;song.g[G_MFXCHAR]=72;
+        if(s==S_FX_FULL)fx_state[0].failed=1;
         break;
     case S_FX_RACK: case S_FX_RACK_SPLIT: case S_FX_RACK_PICK: case S_FX_RACK_LIST: case S_FX_SHARED: case S_FX_SHARED_SPLIT: case S_FX_SHARED_SHEET:
     case S_FX_TONE_DARK: case S_FX_TONE_THIN: {       /* the mock's chain: Echo, Room; shared Reverb, Echo */
-        static const int16_t ins[8]={FX_ROOM,84,60,72,FX_ROOM,51,70,64},bus[8]={FX_CHORUS,127,90,100,FX_ROOM,51,60,72};
+        static const int16_t ins[8]={FX_MIDIVERB,84,60,72,FX_MIDIDELAY,51,4,64},bus[8]={FX_CHORUS,127,90,100,FX_ROOM,51,60,72};
         memcpy(TSEL->p+P_FXTYPE,ins,sizeof ins);memcpy(song.g+G_MFXTYPE,bus,sizeof bus);
-        TSEL->p[P_FXSEND]=81;TSEL->p[P_FXSEND2]=40;TSEL->p[P_FXSEND3]=0;song.g[G_FXRETURN]=100;
+        song.g[G_MFXSEND]=81;song.g[G_MFXSEND2]=40;song.g[G_MFXSEND3]=0;song.g[G_FXRETURN]=100;
         song.g[G_FXMODE]=s==S_FX_RACK_SPLIT || s==S_FX_SHARED_SPLIT;
-        if(s==S_FX_TONE_DARK){TSEL->p[P_FXTONE]=-30;go_title("FX 1");ui.hot_col=3;ui.hot_t=30;break;}
+        if(s==S_FX_TONE_DARK){song.g[G_MFXTONE]=-30;go_title("SEND FX 1");ui.hot_col=3;ui.hot_t=30;break;}
         if(s==S_FX_TONE_THIN){song.g[G_MFXTONE]=40;go_title("SEND FX 1");break;}
-        go_title(s>=S_FX_SHARED?"SHARED":"FX");fx_rack_row[s>=S_FX_SHARED]=(uint8_t)(s==S_FX_RACK_PICK || s==S_FX_RACK_LIST?2:1);
-        if(s==S_FX_RACK_PICK){TSEL->p[P_FX3TYPE]=FX_TAPE;pick_touch(0);ui.hot_col=0;ui.hot_t=30;}
+        go_title("SHARED");fx_rack_row[1]=(uint8_t)(s==S_FX_RACK_PICK || s==S_FX_RACK_LIST?2:1);
+        if(s==S_FX_RACK_PICK){song.g[G_MFX3TYPE]=FX_TAPE;pick_touch(0);ui.hot_col=0;ui.hot_t=30;}
         if(s==S_FX_RACK_LIST)vlist_open(ui.page,0);
         if(s==S_FX_SHARED_SHEET)page_sheet_open();
         break;
@@ -1253,11 +1253,11 @@ static void setup(int s)
         go_title(s==S_FX_BUS1?"SEND FX 1":s==S_FX_BUS2?"SEND FX 2":"SEND FX 3");break;
     case S_FX_SLOT2: case S_FX_SLOT3:
         for(uint32_t slot=0;slot<FX_SLOTS;slot++){
-            uint32_t base=P_FXTYPE+slot*FX_PARAMS;
-            TSEL->p[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ROOM:FX_CHORUS);
-            TSEL->p[base+1]=84;TSEL->p[base+2]=60;TSEL->p[base+3]=72;
+            uint32_t base=G_MFXTYPE+slot*FX_PARAMS;
+            song.g[base]=(int16_t)(slot==0?FX_PHASER:slot==1?FX_ROOM:FX_CHORUS);
+            song.g[base+1]=84;song.g[base+2]=60;song.g[base+3]=72;
         }
-        go_title(s==S_FX_SLOT2?"FX 2":"FX 3");
+        go_title(s==S_FX_SLOT2?"SEND FX 2":"SEND FX 3");
         break;
     case S_ENV: go_title("ENV"); ui.hot_col = 2; ui.hot_t = 30; break;
     case S_ENVDEST: go_title("ENV DEST"); break;

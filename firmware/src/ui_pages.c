@@ -699,7 +699,7 @@ static void pv_fx(int32_t h)
     const page_t *pg = cur_page();
     uint32_t master = pg->scope == SC_GLOBAL, slot = (pg->id[0] - (master ? G_MFXMIX : P_FXMIX)) / FX_PARAMS, k;
     const int16_t *p = (master ? song.g : TSEL->p) + pg->id[0] - 1u;   /* TYPE MIX RATE CHAR */
-    uint32_t type = (uint32_t)clamp(p[0], 0, FX_COUNT - 1), failed = fx_state[(master ? NPART : song.sel % NPART) * FX_SLOTS + slot].failed;
+    uint32_t type = (uint32_t)clamp(p[0], 0, FX_COUNT - 1), failed = (master ? fx_state[slot].failed : 0u);
     int32_t mix = p[1], rate = p[2], cha = p[3], tone = master ? song.g[G_MFXTONE + slot] : TSEL->p[P_FXTONE + slot];
     int strip = (fx_has_tone((int32_t)type) || fx_drive((int32_t)type)) && !failed, i;
     int32_t ly = h - lf->h - 4, sy = ly - 9, top = 8 * 16;
@@ -770,7 +770,7 @@ static void pv_picture(void)
     if (pic == 9u) {                                    /* FX: the slot's effect (no column) and its buffer */
         uint32_t m = cur_page()->scope == SC_GLOBAL, id = cur_page()->id[0];
         sig ^= (uint32_t)(m ? song.g : TSEL->p)[id - 1u] * 7919u +
-               (uint32_t)fx_state[(m ? NPART : song.sel % NPART) * FX_SLOTS + (id - (m ? G_MFXMIX : P_FXMIX)) / FX_PARAMS].failed * 347u;
+               (uint32_t)(m ? fx_state[(id-G_MFXMIX)/FX_PARAMS].failed : 0u) * 347u;
     }
     if (pic >= 5u) {                                    /* ARP, PATTERN: the keys and steps */
         sig ^= steps_hash(TSEL) + (song.playing ? 1u + TSEL->seq_idx * 257u : 0u) * 2246822519u;

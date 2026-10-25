@@ -150,7 +150,7 @@ static void silent_and_saved(void)
     int32_t out[CTL * 2]; uint32_t lfo = t->lfo_ph;
     for (uint32_t k = 0; k < 10; k++) mix_block(out, CTL);
     for (uint32_t k = 0; k < NELEM(out); k++) assert(!out[k]);
-    assert(!gates() && !fx_active(t) && !midi_insert.pending && !midi_verb[0] && t->lfo_ph == lfo);
+    assert(!gates() && !midi_insert.pending && !midi_verb[0] && t->lfo_ph == lfo);
     assert(!resource[RES_ENGINE0].size);
     for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!resource[RES_FX0 + s].size);
     project_capture(&proj_scratch);

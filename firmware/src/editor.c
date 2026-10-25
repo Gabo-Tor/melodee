@@ -728,7 +728,10 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path */
                 set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
             } else if (d->max > d->min) {
-                *vp = (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
+                int32_t value=enum_orig(d,clamp(ed_rv(a+2),d->min,d->max));
+                if(a[0]==1 && a[1]>=G_MFXTYPE && a[1]<=G_MFX3TYPE && (a[1]-G_MFXTYPE)%FX_PARAMS==0u){
+                    uint32_t flags=motion_guard();shared_fx_select(song.g,(a[1]-G_MFXTYPE)/FX_PARAMS,value);motion_unguard(flags);
+                }else *vp=(int16_t)value;
                 if (a[0] == 1 && (a[1] == G_A4 || a[1] == G_BUDGET))
                     settings_save();
                 if (a[0] == 0) {

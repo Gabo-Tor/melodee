@@ -318,7 +318,7 @@ static void shared_bus_retire(void)
 {
     setup_case(7,0,4);fx_bus_mix=fx_bus_target=0;memset(fx_state,0,sizeof fx_state);for(uint32_t i=G_MFXTYPE;i<G_COUNT;i++)song.g[i]=GP[i].def;
     song.g[G_MFXTYPE]=FX_ROOM;audio_worker_online=1;serial_render=0;memset(fx_send_l,0,sizeof fx_send_l);memset(fx_send_r,0,sizeof fx_send_r);
-    fx_bus_start(CTL);fx_bus_join();uint32_t base=NPART*FX_SLOTS;assert(resource[RES_FX0+base].size==2048);void *ptr=resource[RES_FX0+base].ptr;
+    fx_bus_start(CTL);fx_bus_join();uint32_t base=0;assert(resource[RES_FX0+base].size==2048);void *ptr=resource[RES_FX0+base].ptr;
     atomic_store(&held_job_entered,0);atomic_store(&held_job_release,0);assert(audio_worker_submit(held_job,&held_job_release));while(!atomic_load(&held_job_entered))sched_yield();
     fx_bus_pending=fx_bus_result=1;injected_faults=1;pthread_t release;assert(!pthread_create(&release,0,release_stalled_job,0));fx_bus_join();assert(!pthread_join(release,0));
     assert(!fx_bus_result && !fx_bus_pending && !audio_worker_online && resource[RES_FX0+base].ptr==ptr && fx_state[base].epoch!=fx_epoch);

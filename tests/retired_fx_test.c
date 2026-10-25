@@ -45,7 +45,7 @@ static void storage(void)
     template_save(); template_load();
     for (uint32_t tr = 0; tr < NPART; tr++) for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!trk[tr].p[P_FXTYPE+s*FX_PARAMS]);
     for (uint32_t s = 0; s < FX_SLOTS; s++) assert(!song.g[G_MFXTYPE+s*FX_PARAMS]);
-    const uint32_t kept[] = {FX_ROOM,FX_REVERB,FX_CHORUS,FX_MIDIVERB,FX_MIDIDELAY};
+    const uint32_t kept[] = {FX_MIDIVERB,FX_MIDIDELAY};
     for (uint32_t k = 0; k < NELEM(kept); k++) {
         TSEL->p[P_FXTYPE] = (int16_t)kept[k]; project_capture(&q);
         assert(proj_pack(&p,&q) && proj_import(&proj_scratch,&p,sizeof p));
@@ -59,10 +59,10 @@ static void controls(void)
     assert(FX_ECHO == 6 && FX_ROOM == 7 && FX_REVERB == 8 && FX_CHORUS == 9 && FX_MIDIVERB == 10 && FX_MIDIDELAY == 11);
     assert(!N_FX[FX_ECHO][0] && str_eq(N_FX[FX_REVERB],"REVERB") && !N_AUDIO_FX[FX_ECHO][0] && str_eq(N_AUDIO_FX[FX_REVERB],"REVERB"));
     assert(enum_orig(&TP[P_FXTYPE],FX_ECHO)==FX_OFF && enum_orig(&GP[G_MFXTYPE],FX_REVERB)==FX_REVERB);
-    assert(enum_step(&TP[P_FXTYPE],FX_OFF,FX_OFF+1)==FX_ROOM);
-    assert(enum_step(&TP[P_FXTYPE],FX_SPIT,FX_SPIT+1)==FX_MIDIDELAY);
-    assert(enum_step(&TP[P_FXTYPE],FX_ROOM,FX_REVERB)==FX_REVERB);
-    assert(enum_rows(&TP[P_FXTYPE])==16 && enum_rows(&GP[G_MFXTYPE])==14);
+    assert(enum_step(&TP[P_FXTYPE],FX_OFF,FX_OFF+1)==FX_MIDIVERB);
+    assert(enum_step(&TP[P_FXTYPE],FX_MIDIVERB,FX_MIDIVERB+1)==FX_MIDIDELAY);
+    assert(enum_orig(&TP[P_FXTYPE],FX_REVERB)==FX_OFF);
+    assert(enum_rows(&TP[P_FXTYPE])==3 && enum_rows(&GP[G_MFXTYPE])==14);
     press(B_FX);assert(cur_page()->fam==FAM_FX);
     btn_down(B_FX);frames(800);assert(ui.layer==LAYER_FX);
     key_down(white(0));frame();assert(!gates() && kb_layer);key_up(white(0));frame();assert(!gates());

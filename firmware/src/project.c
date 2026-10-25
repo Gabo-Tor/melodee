@@ -918,7 +918,7 @@ static int project_restore_runtime(const project_t *input)
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE)
             song.g[i] = global_reserved(i) ? 0 : (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
-    for (i = 0; i < FX_SLOTS; i++) if (fx_retired(song.g[G_MFXTYPE+i*FX_PARAMS])) song.g[G_MFXTYPE+i*FX_PARAMS] = FX_OFF;
+    shared_fx_normalize(song.g);
     for (k = PROJ_TRK; k < NTRK; k++) {                 /* the MIDI-only tracks: as a new one starts (an FBKL record's
                                                          * tail: theirs, bank_restore_tail) */
         track_t *t = &trk[k];
@@ -941,7 +941,7 @@ static int project_restore_runtime(const project_t *input)
             const param_desc_t *d = param_desc_of(e, i);
             t->p[i] = param_reserved(i) ? 0 : eng_extra_retired(e) && i >= P_E0 ? s->p[i] : (int16_t)clamp(s->p[i], d->min, d->max);
         }
-        for (i = 0; i < FX_SLOTS; i++) if (fx_retired(t->p[P_FXTYPE+i*FX_PARAMS])) t->p[P_FXTYPE+i*FX_PARAMS] = FX_OFF;
+        track_fx_normalize(t->p);
         t->preset = eng_extra_retired(e) ? s->preset : (uint8_t)(ENGINES[e]->npresets ? (s->preset >= PROJ_DEF_KEEP ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
         t->pattern = p->pattern[k];
         memcpy(t->step, s->step, sizeof t->step);

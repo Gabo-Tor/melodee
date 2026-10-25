@@ -150,9 +150,14 @@ static int fx_sloop_type(int32_t t){return t>=FX_SOFT && t<=FX_PEDAL_CHORUS;}
 static int fx_sloop_swept(int32_t t){return t>=FX_FLANGER && t<=FX_PEDAL_CHORUS;}
 static int fx_third_control(int32_t t){return fx_sloop_swept(t) || t==FX_ROOM || t==FX_REVERB;}
 static int fx_is_midi(int32_t type) { return type == FX_MIDIVERB || type == FX_MIDIDELAY; }
-#define FX_CHAIN_COUNT (NPART+1u)
+#define FX_CHAIN_COUNT 1u /* the shared rack only; tracks retain note-effect controls */
 #define FX_STATE_COUNT (FX_CHAIN_COUNT*FX_SLOTS)
 #define FX_TONE_MAX 63
+static int fx_track_type(int32_t type) { return fx_is_midi(type) ? type : FX_OFF; }
+static void track_fx_normalize(int16_t *p)
+{
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++)p[P_FXTYPE+slot*FX_PARAMS]=(int16_t)fx_track_type(p[P_FXTYPE+slot*FX_PARAMS]);
+}
 static int param_fx_tone(uint32_t id) { return id>=P_FXTONE && id<=P_FX3TONE; }
 static int fx_has_tone(int32_t type) { return type==FX_ROOM || type==FX_REVERB; }   /* fx.c FX_ECHO, FX_ROOM, FX_REVERB */
 static int param_fx(uint32_t id) { return (id>=P_FXTYPE && id<=P_FX3CHAR) || param_fx_tone(id); }
@@ -199,6 +204,24 @@ enum {                          /* global parameters */
     G_MFXTONE, G_MFX2TONE, G_MFX3TONE, /* the shared slots' TONE */
     G_COUNT
 };
+/* First slot wins on import. Explicit edits move the single reverb to the
+ * selected slot. Values and parameter IDs keep their existing wire layout. */
+static void shared_fx_normalize(int16_t *g)
+{
+    uint32_t reverb=0;
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++){
+        int16_t *type=g+G_MFXTYPE+slot*FX_PARAMS;
+        if(fx_retired(*type) || fx_is_midi(*type)) *type=FX_OFF;
+        if(*type==FX_REVERB){if(reverb)*type=FX_OFF;else reverb=1;}
+    }
+}
+static void shared_fx_select(int16_t *g,uint32_t slot,int32_t type)
+{
+    if(type==FX_REVERB)for(uint32_t k=0;k<FX_SLOTS;k++)
+        if(k!=slot && g[G_MFXTYPE+k*FX_PARAMS]==FX_REVERB)g[G_MFXTYPE+k*FX_PARAMS]=FX_OFF;
+    g[G_MFXTYPE+slot*FX_PARAMS]=(int16_t)type;
+    shared_fx_normalize(g);
+}
 static int param_master_fx(uint32_t id){return id>=G_MFXTYPE && id<=G_MFX3CHAR;}
 #define G_DRLVL G_RESERVED25         /* (their meaning in a project from before 1.0: proj_drums_to_part) */
 /* GLO > WEIGHTS: device settings shown on unused ids (params.c page_desc). Never song.g, never in a project
@@ -228,7 +251,7 @@ static void params_by_count(int16_t *out, const int16_t *in, uint32_t np, const 
     for (i = 0; i < 8u; i++)
         out[P_E0 + i] = in[nc + i];
     for (i = 0; i < FX_SLOTS; i++)
-        if (fx_retired(out[P_FXTYPE + i * FX_PARAMS])) out[P_FXTYPE + i * FX_PARAMS] = FX_OFF;
+        out[P_FXTYPE + i * FX_PARAMS] = (int16_t)fx_track_type(out[P_FXTYPE + i * FX_PARAMS]);
 }
 
 /* engine indices the stores name (engines.c ENGINES[]: append-only) */

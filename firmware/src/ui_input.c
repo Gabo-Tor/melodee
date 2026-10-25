@@ -1134,7 +1134,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         if (!vp[1]) vp[1] = 64;
         if (v == FX_MIDIDELAY) { vp[2] = 1; vp[3] = 64; }
     }
-    *vp = (int16_t)v;
+    if(pg->scope==SC_GLOBAL && vp>=song.g+G_MFXTYPE && vp<=song.g+G_MFX3TYPE &&
+       ((uint32_t)(vp-song.g)-G_MFXTYPE)%FX_PARAMS==0u){
+        uint32_t flags=motion_guard();shared_fx_select(song.g,((uint32_t)(vp-song.g)-G_MFXTYPE)/FX_PARAMS,v);motion_unguard(flags);
+    }else *vp = (int16_t)v;
     if(pg->scope==SC_P5){
         uint8_t old[MO_NATIVE_N];uint32_t f=motion_guard();
         motion_native_peek(TSEL,old);p5_edit_value(TSEL,pg->id[slot],p5_panel_raw(TSEL,pg->id[slot],v));native_motion(old);

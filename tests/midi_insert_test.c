@@ -189,7 +189,7 @@ static void ui_storage(void)
     for (uint32_t k = P_FXTYPE; k <= P_FX3CHAR; k++) assert(proj_scratch.t[0].p[k] == TSEL->p[k]);
     template_save(); memset(TSEL->p + P_FXTYPE, 0, FX_SLOTS * FX_PARAMS * sizeof(int16_t)); template_load();
     assert(TSEL->p[P_FXTYPE] == FX_MIDIDELAY && TSEL->p[P_FX2TYPE] == FX_MIDIDELAY && TSEL->p[P_FX3TYPE] == FX_MIDIVERB);
-    int32_t b[CTL] = {10000}; assert(!fx_process(TSEL, b, CTL));
+    assert(FX_STATE_COUNT==FX_SLOTS); /* note processors have no audio insert state */
     for (uint32_t k = 0; k < FX_SLOTS; k++) assert(!resource[RES_FX0+k].size);
     puts("MIDI inserts: rack controls, shared exclusion, project/template round trips and no DSP allocation passed");
 }
