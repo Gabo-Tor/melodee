@@ -195,6 +195,7 @@ static void fx_chain_test(void)
     assert(!resource[RES_FX0].size && resource[RES_FX0+1].size==2048 && resource[RES_FX0+2].size==2048);
     apply_preset_to(t,2);set_engine_of(t,ENGI_FM6);apply_preset_to(t,8);assert(!memcmp(song.g+G_MFXTYPE,settings,sizeof settings));
     project_t q;project_store_t p;project_capture(&q);assert(proj_pack(&p,&q) && proj_import(&proj_scratch,&p,sizeof p));
+    for(uint32_t slot=0;slot<FX_SLOTS;slot++)assert(proj_scratch.t[0].p[P_FXTYPE+slot*FX_PARAMS]==FX_OFF);
     assert(!memcmp(proj_scratch.g+G_MFXTYPE,settings,sizeof settings));
     template_save();memset(song.g+G_MFXTYPE,0,sizeof settings);template_load();assert(!memcmp(song.g+G_MFXTYPE,settings,sizeof settings));
     song.g[G_MFX2MIX]=0;for(uint32_t k=0;k<24;k++){fx_bus_start(CTL);fx_bus_join();}
@@ -303,8 +304,8 @@ static void chorus_test(void)
     template_save();memset(trk[0].p+P_FXTYPE,0,FX_SLOTS*FX_PARAMS*sizeof(int16_t));memset(song.g+G_MFXTYPE,0,FX_SLOTS*FX_PARAMS*sizeof(int16_t));template_load();
     int32_t b[CTL]={0};fx_bus_start(CTL);fx_bus_join();assert(fx_bus_result);
     for(uint32_t slot=0;slot<FX_SLOTS;slot++){
-        assert(proj_scratch.t[0].p[P_FXTYPE+slot*FX_PARAMS]==FX_OFF && proj_scratch.g[G_MFXTYPE+slot*FX_PARAMS]==FX_CHORUS);
-        assert(resource[RES_FX0+slot].size==FX_CHORUS_BYTES && resource[RES_FX0+slot].size==FX_CHORUS_BYTES);
+        assert(trk[0].p[P_FXTYPE+slot*FX_PARAMS]==FX_OFF && song.g[G_MFXTYPE+slot*FX_PARAMS]==FX_CHORUS);
+        assert(resource[RES_FX0+slot].size==FX_CHORUS_BYTES);
         trk[0].p[P_FXTYPE+slot*FX_PARAMS]=song.g[G_MFXTYPE+slot*FX_PARAMS]=FX_OFF;
     }
     for(uint32_t k=0;k<24;k++){fx_bus_start(CTL);fx_bus_join();}
@@ -577,7 +578,7 @@ int main(int argc,char **argv)
     }
     for(uint32_t id=0;id<RES_COUNT;id++)resource_release(id);
     ui_power_on();press(B_FX);assert(!ui.home && cur_page()->fam==FAM_FX && !ui.layer);
-    fx_rack_row[0]=0;turn(EN_K1,3);assert(TSEL->p[P_FXTYPE]==FX_MIDIDELAY);turn(EN_K4,50);assert(TSEL->p[P_FXMIX]>0);
+    fx_rack_row[0]=0;turn(EN_K1,1);turn(EN_K1,1);assert(TSEL->p[P_FXTYPE]==FX_MIDIDELAY);turn(EN_K4,50);assert(TSEL->p[P_FXMIX]>0);
     project_t q;project_capture(&q);project_store_t p;assert(proj_pack(&p,&q));
     assert(proj_import(&proj_scratch,&p,sizeof p));assert(proj_scratch.t[0].p[P_FXTYPE]==FX_MIDIDELAY);
     frames(400);press(B_OCTUP);assert(cur_page()->id[0]==P_FXMIX);press(B_OCTUP);assert(pop.on==POP_SHEET);

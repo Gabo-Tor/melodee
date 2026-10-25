@@ -41,6 +41,14 @@ static int check(const char *what, int ok)
     return ok ? 0 : 1;
 }
 
+/* Synthetic map-by-count fixtures contain old audio effect IDs (or invalid
+ * values) in these slots. Only the note processors survive preset loading. */
+static int16_t mapped_value(uint32_t id, int16_t value)
+{
+    if(id==P_FXTYPE || id==P_FX2TYPE || id==P_FX3TYPE)return FX_OFF;
+    return value;
+}
+
 static uint32_t put_frame(uint8_t *a, uint32_t slot, uint32_t eng, const char *name, int32_t base)
 {
     uint32_t n = 0, i;
@@ -209,7 +217,7 @@ int main(void)
     up_params(&r, v, def);
     ok = 1;
     for (i = 0; i < P_E0; i++)
-        ok &= v[i] == (i < P_E0 - 2u ? (int16_t)i : def[i]);
+        ok &= v[i] == mapped_value(i, i < P_E0 - 2u ? (int16_t)i : def[i]);
     for (i = 0; i < 8u; i++)
         ok &= v[P_E0 + i] == (int16_t)(P_E0 - 2u + i);
     bad += check("np < P_COUNT: mapped by count", ok);
@@ -225,7 +233,7 @@ int main(void)
     for (i = 0; i < 45u; i++)
         ok &= v[i] == (int16_t)i;
     for (i = P_RESERVED45; i < P_E0; i++)
-        ok &= v[i] == def[i];
+        ok &= v[i] == mapped_value(i, def[i]);
     for (i = 0; i < 8u; i++)
         ok &= v[P_E0 + i] == (int16_t)(45 + i);
     bad += check("old record (np 53): SLICER and matrix defaults, E0..E7 kept", ok);
@@ -264,7 +272,7 @@ int main(void)
                 for (i = 0; i < np - 8u; i++)
                     ok &= v[i] == (int16_t)(i % 100u - 30);
                 for (i = np - 8u; i < P_E0; i++)
-                    ok &= v[i] == def[i];
+                    ok &= v[i] == mapped_value(i, def[i]);
                 for (i = 0; i < 8u; i++)
                     ok &= v[P_E0 + i] == (int16_t)((np - 8u + i) % 100u - 30);
             }
@@ -277,8 +285,11 @@ int main(void)
     up_params(&r, v, def);
     ok = 1;
     for (i = 0; i < P_COUNT; i++)
-        ok &= v[i] == (int16_t)i;
+        ok &= v[i] == mapped_value(i, (int16_t)i);
     bad += check("np == P_COUNT: as stored", ok);
+    up_set_value(&r,P_FXTYPE,FX_MIDIVERB);up_set_value(&r,P_FX2TYPE,FX_MIDIDELAY);up_set_value(&r,P_FX3TYPE,FX_CHORUS);
+    up_params(&r,v,def);
+    bad += check("note FX survive, historical audio insert loads OFF",v[P_FXTYPE]==FX_MIDIVERB && v[P_FX2TYPE]==FX_MIDIDELAY && v[P_FX3TYPE]==FX_OFF);
 
     {   /* steps -> pattern (UP_STORE) */
         step_t st[NSTEP];

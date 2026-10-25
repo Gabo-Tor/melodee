@@ -55,7 +55,8 @@ prepared before publication and remain read-only during jobs. The queue retains
 voice admission and sample addition order. MIDIVerb release rates update when
 the amount or native patch changes; stationary operator envelopes avoid an
 unnecessary indirect call without changing their timing.
-All builds retain a bit-identical dry bypass and support the bounded per-track FX inserts described in README.md.
+All builds retain a bit-identical dry bypass. Audio effects use the shared rack;
+tracks retain NOTE TAIL and NOTE ECHO, plus their sends to the shared rack.
 The optimized audio ISR, all enabled engine callbacks and their reachable helpers
 execute from ordinary SRAM; `tools/audio_ram.py` preserves existing low-SRAM DSP
 sections and uses volatile indirect calls across the XIP/SRAM boundary. Startup

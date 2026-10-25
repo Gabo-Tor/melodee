@@ -1238,7 +1238,7 @@ static void setup(int s)
     case S_FX_TONE_DARK: case S_FX_TONE_THIN: {       /* the mock's chain: Echo, Room; shared Reverb, Echo */
         static const int16_t ins[8]={FX_MIDIVERB,84,60,72,FX_MIDIDELAY,51,4,64},bus[8]={FX_CHORUS,127,90,100,FX_ROOM,51,60,72};
         memcpy(TSEL->p+P_FXTYPE,ins,sizeof ins);memcpy(song.g+G_MFXTYPE,bus,sizeof bus);
-        song.g[G_MFXSEND]=81;song.g[G_MFXSEND2]=40;song.g[G_MFXSEND3]=0;song.g[G_FXRETURN]=100;
+        TSEL->p[P_FXSEND]=81;TSEL->p[P_FXSEND2]=40;TSEL->p[P_FXSEND3]=0;song.g[G_FXRETURN]=100;
         song.g[G_FXMODE]=s==S_FX_RACK_SPLIT || s==S_FX_SHARED_SPLIT;
         if(s==S_FX_TONE_DARK){song.g[G_MFXTONE]=-30;go_title("SEND FX 1");ui.hot_col=3;ui.hot_t=30;break;}
         if(s==S_FX_TONE_THIN){song.g[G_MFXTONE]=40;go_title("SEND FX 1");break;}
@@ -2125,7 +2125,7 @@ static void fx_redesign_sweep(const char *out)
             }
         }
         for (uint32_t i = 1; i < NELEM(FX_ORDER); i++) {
-            state();pal(p);go_title("FX");fx_rack_row[0] = 0;vlist_open(ui.page, 0);vl.sel = FX_ORDER[i];
+            state();pal(p);uint32_t shared=!fx_is_midi(FX_ORDER[i]);go_title(shared?"SHARED":"FX");fx_rack_row[shared] = 0;vlist_open(ui.page, 0);vl.sel = FX_ORDER[i];
             snprintf(name, sizeof name, "%s%s/FX browser %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, i);
             cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
             if (p == 0) {
@@ -2139,7 +2139,8 @@ static void fx_redesign_sweep(const char *out)
                 state();pal(p);TSEL->p[P_FXTYPE] = (int16_t)type;TSEL->p[P_FXMIX] = 100;
                 TSEL->p[P_FXRATE] = type == FX_MIDIDELAY ? (end ? 9 : 0) : end ? 127 : 0;
                 TSEL->p[P_FXCHAR] = end ? 127 : 0;TSEL->p[P_FXTONE] = end ? 63 : -63;
-                go_title("FX 1");
+                if(type!=FX_MIDIDELAY){memcpy(song.g+G_MFXTYPE,TSEL->p+P_FXTYPE,FX_PARAMS*sizeof(int16_t));song.g[G_MFXTONE]=TSEL->p[P_FXTONE];}
+                go_title(type==FX_MIDIDELAY?"FX 1":"SEND FX 1");
                 snprintf(name, sizeof name, "%s%s/FX type %u endpoint %u", render_pixel ? "PIXEL " : "", UI_PALETTES[p].name, type, end);
                 cur_name = name;draw(-1);lint();if (p == UI_GRAY_INDEX) mono_check();
             }

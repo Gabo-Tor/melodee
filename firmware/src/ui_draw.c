@@ -882,7 +882,7 @@ static void draw_columns(void)
             else if (fx_names(d))                       /* a rack's KNOB 1: the effect's family (its row names it) */
                 str_cpy(val, FX_FAM_NAME[fx_family(*vp)], sizeof val);
         }
-        draw_column(c, d->label, val, unit, fx_names(d) && col_style != CS_CAPTURE ? fx_fam_col(fx_family(*vp)) :
+        draw_column(c, d->names == N_NOTE_FX ? "NOTE" : d->label, val, unit, fx_names(d) && col_style != CS_CAPTURE ? fx_fam_col(fx_family(*vp)) :
                     (cur_page()->scope == SC_CZ1 &&   /* CZ-1: no effect on the tone as it is */
                     !cz_ed_active(cz_patch_of(song.sel % NTRK)->raw, cur_page()->id[c])) ||
                     (cur_page()->scope == SC_P5 && !p5_ed_active(TSEL, cur_page()->id[c])) ||

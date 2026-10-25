@@ -1278,7 +1278,7 @@ function paramKeys(pdesc, pe0, pcount) {
   const seen = {}, out = [];
   for (let i = 0; i < pcount; i++) {
     if (i >= pe0) { out.push("E" + (i - pe0)); continue; }
-    if (pe0 >= 100 && pdesc[96]?.label === "FX" && i >= 96 && i < Math.min(pe0,109)) {
+    if (pe0 >= 100 && ["FX","NOTE FX"].includes(pdesc[96]?.label) && i >= 96 && i < Math.min(pe0,109)) {
       const slot=Math.floor((i-96)/4),field=["TYPE","MIX","RATE","CHAR"][(i-96)%4];
       out.push(`${slot ? `FX${slot+1}` : "FX"}.${field}`);continue;
     } /* New inserts must not inherit old FX / MIX / RATE labels. */
@@ -2150,7 +2150,7 @@ function makeMockDevice(opt = {}) {
     D("DEG", F.INT, 1, 12, 1));                      /* 83: QNT MPC, the degree of each bank's pad 02 */
   TP.push(...["KICK","SNARE","CLAP","HATCL","HATOP","TOM","RIM","BELL"].map(n=>D(n,F.PCT,0,127,127)));
   TP.push(E("SYNC", ["OFF","4BAR","2BAR","1/1","1/2","1/4","1/8","8T","1/16","16T","1/32"],0), E("TRIG",["NOTE","FREE"],0), E("POL",["BI","UNI"],0), D("SPRD",F.PCT,0,127,0));
-  for(let slot=0;slot<3;slot++)TP.push(E("FX", ["OFF","PHASER","WIDTH","FORMANT","TAPE","SPIT","","ROOM","REVERB","CHORUS","NOTE TAIL","NOTE ECHO","DRIVE", "DRIVE", "DRIVE", "DRIVE", "CRUSH", "FLANGER", "PEDAL PHASER", "PEDAL CHORUS"],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
+  for(let slot=0;slot<3;slot++)TP.push(E("NOTE FX", ["OFF","","","","","","","","","","NOTE TAIL","NOTE ECHO","","","","","","","",""],0),D("MIX",F.PCT,0,127,0),D("RATE",F.LFOHZ,0,127,60),D("CHAR",F.PCT,0,127,64));
   TP.push(D("SEND",F.PCT,0,127,0),D("SEND 2",F.PCT,0,127,0),D("SEND 3",F.PCT,0,127,0));
   for(let slot=0;slot<3;slot++)TP.push(D("TONE",F.TONE,-63,63,0));
   TP.push(E("STRUM",["OFF","1/8","1/16","1/32","1/64","1/128","16T","32T"],0),E("STROKE",["DOWN","UP","ALT"],0));

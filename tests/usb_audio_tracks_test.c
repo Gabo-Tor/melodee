@@ -207,10 +207,10 @@ int main(void)
     struct result insert = stereo_render(1, 0, 4096);
     struct result wet = stereo_render(1, 1, 4096);
     assert(dry.energy && dry.monitor && insert.energy && wet.energy);
-    assert(dry.hash != insert.hash && insert.hash != wet.hash);
+    assert(dry.hash == insert.hash && insert.hash != wet.hash); /* historical track audio FX are inert */
     assert(stereo_render(1, 1, 0).energy == 0);
     assert(stereo_render(1, 1, 2048).energy < wet.energy);
-    puts("USB stereo: exact post-insert/send/pan/master/limiter copy, no stem collection: OK");
+    puts("USB stereo: inert track audio FX, exact post-send/pan/master/limiter copy, no stem collection: OK");
     for (uint32_t ch = 0; ch < NPART; ch++) {
         struct result dry = render(ch, 0, 0);
         assert(dry.energy && dry.monitor);

@@ -645,7 +645,7 @@ async function trackEffects() {
   try {
     const info=E.parse[E.CMD.INFO](await rq(E.req.info()));
     await rq(E.req.preset(12,0));
-    const fx=[1,80,30,71,9,95,55,65,7,105,88,99];
+    const fx=[10,80,30,71,11,95,55,65,10,105,88,99];
     for(let i=0;i<fx.length;i++)await rq(E.req.set(0,96+i,fx[i]));
     for(let i=0;i<3;i++)await rq(E.req.set(0,111+i,i?-20-i:24));
     const cap=(await E.capturePatch(rq,info,"DRY PATCH")).patch;
@@ -658,14 +658,14 @@ async function trackEffects() {
     const dump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
     ok(eq(dump.p.slice(96,108),fx),"FX: factory, user and librarian sound loads preserve all three track slots");
     ok(eq(dump.p.slice(111,114),[24,-21,-22]),"FX: sound loads preserve TONE");
-    for (const retired of [6]) {
+    for (const retired of [1,6,7,8,9,12,13,14,15,16,17,18,19]) {
       for (const id of [96,100,104]) await rq(E.req.set(0,id,retired));
       const retiredDump=E.parse[E.CMD.DUMP](await rq(E.req.dump()),info);
       ok([96,100,104].every(id=>retiredDump.p[id]===0),`FX: retired type ${retired} maps to OFF in all track slots`);
     }
     ok(eq(E.fmtValue({fmt:E.F.TONE},0),["Full",""]) && eq(E.fmtValue({fmt:E.F.TONE},24),["Thin 313","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},-39),["Dark 516","Hz"]) &&
        eq(E.fmtValue({fmt:E.F.TONE},63),["Thin 1280","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},1),["Thin 150","Hz"]) && eq(E.fmtValue({fmt:E.F.TONE},-63),["Dark 120","Hz"]),"FX: TONE formats Full, Dark / Thin and the cut's frequency");
-    for (const scope of [0,1]) {
+    for (const scope of [1]) {
       const base=scope===0?96:27,third=scope===0?111:42;
       const typeDesc=E.parse[E.CMD.DESC](await rq(E.req.desc(scope,base)));
       ok(typeDesc.max===19 && (scope===0 || (!typeDesc.names[10] && !typeDesc.names[11])),"FX: new types retain MIDI-only slots in the shared rack enum");

@@ -167,7 +167,7 @@ static int page_and_local_controls(void)
     go_page(GR_FXRACK);
     knob_cc(1, 93, 64); knob_cc(1, 93, 127);
     d = page_desc(cur_page(), 0, &vp);
-    bad += check("absolute FX selection reaches the last effect in display order", d && *vp == FX_ORDER[fx_order_n(d) - 1u]);
+    bad += check("absolute note FX selection reaches NOTE ECHO", d && *vp == FX_MIDIDELAY && enum_rows(d) == 3);
     knob_cc(1, 93, 0); d = page_desc(cur_page(), 0, &vp);
     bad += check("absolute FX selection returns to OFF across nonnumeric effect IDs", d && !*vp);
     knob_reset(MK_OFF, MK_ABSOLUTE);
