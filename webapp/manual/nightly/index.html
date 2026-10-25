@@ -81,7 +81,7 @@
     </div>
   </nav>
   <h1>Manual</h1>
-  <p class="small">Firmware: <span data-firmware-version>next-05a05cf</span>. Use the guide shipped with your firmware; the <a href="https://keremimo.github.io/melodee/webapp/manual/nightly/">nightly manual</a> follows the latest development build.</p>
+  <p class="small">Firmware: <span data-firmware-version>next-44a311a</span>. Use the guide shipped with your firmware; the <a href="https://keremimo.github.io/melodee/webapp/manual/nightly/">nightly manual</a> follows the latest development build.</p>
   <p>How to use Melodee on the M-VAVE FM-1 after installing the custom firmware. This guide shows screenshots of each page and tables what each knob and control on that page does. Screens shown here use the NIGHT theme; your colors depend on the MENU Settings page (long hold HOME button) → COLOR. Type on the device is large. FONT in that same menu switches between Rubik and Melodee Pixel.</p>
 
   <div class="layout">
@@ -787,11 +787,11 @@
       <section id="recording">
         <h2>Recording</h2>
         <ul>
-          <li>Tap <kbd>REC</kbd> to arm or disarm the selected track. Transport stays put.</li>
+          <li>Tap <kbd>REC</kbd> to arm or disarm the selected track. Only one track can be armed at a time: arming another finishes the previous track’s take and disarms it. Transport stays put.</li>
           <li>Arm before <kbd>PLAY</kbd> to record from step zero. Arm during playback to record from that track’s next pattern start. Explicit <kbd>REC</kbd> arming stays on across loops until you tap REC again or stop. STOP finishes the take and leaves the track armed for the next start. <kbd>REC</kbd>+<kbd>PLAY</kbd> arms and starts in one gesture. Timing, velocity and held length are kept (including repeats and overlapping chord releases).</li>
           <li><strong>Undo a take:</strong> when you stop or disarm, or a one-pass shortcut finishes, hold <kbd>EDIT</kbd> to put that pattern back as it was (<strong>UNDO RECORDING</strong>). Motion recorded while armed is included, even when no notes were played. There is one such undo. Details are under <a href="#navigate">Sheets and undo</a>.</li>
           <li>While stopped and armed, the first key or MIDI note starts playback and records immediately, skipping count-in. A count-in you start with <kbd>PLAY</kbd> still runs (internal clock only; external clock skips it).</li>
-          <li><strong>Capture:</strong> sometimes referred to as "retroactive recording" - while the transport runs, Melodee keeps what you play on tracks that are not recording. Hold <kbd>REC</kbd> to write the selected track’s last bars into its pattern. An empty pattern takes 1, 2 or 4 bars and sets LEN (the pattern length on SEQ → Pattern); a pattern with notes takes its last LEN steps. Hold <kbd>EDIT</kbd> to undo. You cannot use the capture feature while a track is actively armed to be directly recorded.</li>
+          <li><strong>Capture (Take Taker):</strong> sometimes referred to as "retroactive recording" - while the transport runs, Melodee keeps only what you play on the selected track. Switching tracks clears the previous capture buffer; notes on other tracks are ignored. Hold <kbd>REC</kbd> to write the selected track’s last bars into its pattern. An empty pattern takes 1, 2 or 4 bars and sets LEN (the pattern length on SEQ → Pattern); a pattern with notes takes its last LEN steps. Hold <kbd>EDIT</kbd> to undo. Capture pauses while a track is actively recording.</li>
           <li><strong>SEQ → TEMPO → QNT</strong> quantizes the new take’s onsets when recording ends. <strong>OFF</strong> (default) keeps the timing you played. This is separate from scale QNT on SCL. Track GATE affects manually entered steps.</li>
           <li>A project shares <strong>1,024 timed notes</strong> across all 32 banks. <strong>RECORDING FULL</strong> leaves existing takes intact; clear or replace recorded steps to free space.</li>
         </ul>
