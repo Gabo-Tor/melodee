@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Charles Vestal */
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+ * Portions Copyright (C) 2026 Charles Vestal */
 /* boot_lzma.h against a stream Python's lzma made (tests/boot_audio_test.py): boot_lzma_test PACKED RAW SIZE */
 #include <stdio.h>
 #include <stdint.h>

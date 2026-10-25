@@ -68,6 +68,13 @@ be classified before the build passes. The hardware PC guard includes both SRAM
 code banks, using the linker-derived `_guard_ram_end`.
 `MELODEE_SIZE=0` cannot be combined with this profile.
 
+All five SRAM startup sections (`.ram_text`, `.dsp_text`, `.dsp_tables`,
+`.data`, and `.audio_text`) use LZMA compression by default in local,
+nightly and release builds. They expand once before SRAM code or CPU1 runs;
+the decoder borrows the unused audio working arena for its probability tables.
+`MELODEE_COMPRESS_AUDIO=0 ./build.sh` disables compression for all five sections
+to build the raw-copy reference image.
+
 The profile retains at least a 64 KiB contiguous resource arena for four engine
 states and off-record note history. Additional SRAM tails remain available.
 Factory banks and cold assets remain in flash; loaded patches and active engine

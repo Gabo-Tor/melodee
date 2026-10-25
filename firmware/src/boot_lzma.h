@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Copyright (C) 2026 Charles Vestal */
 /* Bounded raw-LZMA1 decoder for the boot load images (tools/boot_audio.py: lc 1, lp 1, pb 1, with the end marker),
  * after Igor Pavlov's LZMA specification (LzmaSpec.cpp, public domain). Boot only: no heap, globals, libc, or calls
