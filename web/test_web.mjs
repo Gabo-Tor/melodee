@@ -197,6 +197,11 @@ await czTests();
   const bank=E.readSysexLibrary(E.FM6.bankSysex(voices),"bank.syx",ctx);
   ok(bank.length===32&&bank.slice(0,voices.length).every((p,i)=>eq(p.fm6,E.FM6.FACTORY_PK[i])),
      "Library SysEx: Yamaha banks retain every packed voice");
+  const wrapped=Uint8Array.from([240,67,0,125,4,8,...voices[3],...Array(69).fill(0),247]);
+  const [recovered]=E.readSysexLibrary(wrapped,"extended.syx",ctx);
+  const recoveredJson=E.readLibraryFile(E.libraryFile("patch",[recovered],ctx),ctx).patches[0];
+  ok(recovered.engine===12&&eq(recovered.fm6,E.FM6.FACTORY_PK[3])&&eq(recoveredJson.fm6,recovered.fm6),
+     "Library SysEx: extended wrapper preserves the DX7 voice through JSON");
   const prophet=E.readSysexLibrary(readFileSync(join(HERE,"../assets/prophet5-factory/prophet5-v1.03.syx")),"prophet.syx",ctx);
   ok(prophet.length===200&&prophet.every(p=>p.engine===19&&E.P5.valid(p.p5)),
      "Library SysEx: real Prophet factory library keeps its native programs");
@@ -1151,6 +1156,22 @@ async function editorFm6() {
   ok(F6.parseSysex(bad).badSum === 1, "FM6: a wrong checksum is reported (the voice still read)");
   ok(F6.parseSysex(bank.subarray(6, 4102)).voices.length === 32 && F6.parseSysex(one.subarray(6, 161)).voices.length === 1,
     "FM6: raw 4096 / 155-byte files read too");
+  const wrapped=Uint8Array.from([240,67,15,125,4,8,...voices[3],...Array(69).fill(0),247]);
+  r=F6.parseSysex(wrapped);
+  ok(r.voices.length===1&&!r.badSum&&eq(r.voices[0].v,voices[3])&&
+     eq(F6.singleSysex(r.voices[0].v),one),
+     "FM6: 231-byte wrapper recovers every VCED byte and exports standard DX7");
+  ok(F6.parseSysex([...wrapped,...one]).voices.length===2,
+     "FM6: extended and standard voices import from the same file");
+  const invalidWrapped=[wrapped.slice(0,-1),Uint8Array.from([...wrapped.slice(0,-1),0,247])];
+  for(const [at,value] of [[1,68],[2,16],[3,124],[4,3],[5,9],[6,100],[151,31],[162,128]]) {
+    const b=wrapped.slice();b[at]=value;invalidWrapped.push(b);
+  }
+  ok(invalidWrapped.every(b=>F6.parseSysex(b).voices.length===0),
+     "FM6: wrapper recovery requires exact framing, header and valid VCED ranges");
+  const unterminated=one.slice();unterminated[162]=0;
+  ok(!F6.parseSysex(unterminated).voices.length,
+     "FM6: standard voice without F7 is rejected even at the expected length");
   ok(F6.carriers(0).join() === "1,3" && F6.carriers(31).length === 6 && F6.feedbackOp(0) === 6 && F6.feedbackOp(1) === 2,
     "FM6: carriers and the feedback operator of an algorithm");
 
