@@ -73,10 +73,10 @@ static uint32_t ty_pixel(void);
 /* Host oracle also renders with the former whole-canvas allocation. */
 _Static_assert(MELODEE_CANVAS_ROWS>=64u && MELODEE_CANVAS_ROWS<=124u,"canvas band and shared project scratch");
 #define CV_MAX (240u * MELODEE_CANVAS_ROWS)
-/* Most regions (cards, header, footer) fit the small second canvas. Draw
- * there while SPI reads the first; large graphs reuse the full canvas only
- * after its transfer finishes. No second full-screen-sized allocation. */
-#define CV_ALT_MAX (240u * 24u)                   /* (240 x 24: the diff's hashes took the rest, below) */
+/* Shuttle dirty columns through two scanline-sized DMA tiles. The next tile
+ * can be gathered while SPI reads the previous one. Tiny canvases also fit
+ * here; larger draws wait before reusing the primary canvas. */
+#define CV_ALT_MAX (240u * 2u)
 /* Decoded projects use this canvas between draws. A borrow waits for SPI;
  * multi-frame archive snapshots use independent wire RAM or flash staging. */
 static union {
@@ -354,12 +354,12 @@ static void df_keep(uint32_t x, uint32_t y)             /* the canvas just sent 
     for (i = 0; i < DF_SLOTS; i++)
         df_sum[at][i] = df_now[i];
 }
-/* canvas columns c0 .. c0+w-1 of rows r0 .. r0+h-1 to the screen: whole rows straight from the canvas, else gathered
- * into the small canvas (the canvas is it, or they do not fit: whole rows) */
+/* Whole rows go straight from the canvas. Dirty columns travel in bounded
+ * tiles, without widening a tall delta to the canvas's full row width. */
 static void df_send(uint32_t x, uint32_t y, uint32_t c0, uint32_t w, uint32_t r0, uint32_t h, uint32_t keep)
 {
-    uint32_t r, i;
-    if (w < cv_w && (cv_px == cv_alt || w * h > CV_ALT_MAX)) {
+    uint32_t r, i, top = 0, tile = 0;
+    if (w < cv_w && cv_px == cv_alt) {
         c0 = 0;
         w = cv_w;
     }
@@ -373,10 +373,18 @@ static void df_send(uint32_t x, uint32_t y, uint32_t c0, uint32_t w, uint32_t r0
         lcd_sync();
         cv_flight = 0;
     }
-    for (r = 0; r < h; r++)
-        for (i = 0; i < w; i++)
-            cv_alt[r * w + i] = cv_px[(r0 + r) * cv_w + c0 + i];
-    lcd_blit(x + c0, y + r0, w, h, cv_alt);
+    while (top < h) {
+        uint32_t rows = (CV_ALT_MAX / 2u) / w;
+        uint16_t *dst = cv_alt + tile * (CV_ALT_MAX / 2u);
+        if (rows > h - top)
+            rows = h - top;
+        for (r = 0; r < rows; r++)
+            for (i = 0; i < w; i++)
+                dst[r * w + i] = cv_px[(r0 + top + r) * cv_w + c0 + i];
+        lcd_blit(x + c0, y + r0 + top, w, rows, dst);
+        top += rows;
+        tile ^= 1u;
+    }
     cv_flight = cv_alt;
 }
 /* runs of the dirty marks d[0..n-1] (gaps up to gap joined), up to 6: run k from a[k] to b[k] */

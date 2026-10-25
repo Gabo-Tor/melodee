@@ -223,3 +223,27 @@ The complete host/web/UI/DSP suite with nightly's twelve optimization flags
 ends with `ALL HOST TESTS PASSED in 89 s` in
 `build/nightly-optimizations/host-verified.log`. Eight-pattern sequencing,
 eight-level undo/redo, legacy saved formats and golden audio all pass.
+
+## Delta transfer staging
+
+The secondary display canvas now shuttles dirty rectangles through two
+240-pixel DMA tiles: 960 bytes instead of 11,520. Tall deltas are split into
+bounded transfers without widening them to full canvas rows. Gathering the
+next tile overlaps the preceding transfer; neither tile is overwritten while
+DMA reads it. Larger canvas redraws wait before reusing the primary buffer.
+The primary remains 30,720 bytes because project save/load shares it and needs
+30,116 bytes for the decoded project and bank tail.
+
+The target build returns 10,560 bytes to the contiguous resource arena, now
+98,048 bytes; guaranteed resources across all banks total 100,976 bytes before
+live allocations. Optional cache RAM is excluded. The complete host suite
+passes in 103 seconds. All 1,304 saved UI/rolling images match the unchanged
+baseline byte for byte. Added notification tests cover wrapped toasts, queued
+short-message replacement and expiration on six screens in both fonts; each
+transition restores the same pixels as a full redraw. DMA ownership and exact
+delta areas also pass ASan/UBSan. Results are in `build/framebuffer-audit/`.
+
+Smaller transfers add panel-window commands and reduce the canvas sizes that
+can draw while a primary transfer runs. Host checks establish pixels and
+transfer ownership; physical display/input latency remains unmeasured. No
+device installation is included.

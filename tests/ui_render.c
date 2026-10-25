@@ -1516,10 +1516,16 @@ static void draw(int s)
     ui_draw();
 }
 
-/* Screens with their own header must still show a short status and restore the screen when it expires. */
+/* Header messages and wrapped popup notifications restore the covered page,
+ * including when a queued short message replaces a toast on its last frame. */
+static void notification_frame(void)
+{
+    nscr = npend = 0;
+    ui_draw();
+}
 static void sweep_screen_messages(void)
 {
-    static const int scenes[] = {S_PRESETS, S_SONG, S_PATGRID, S_SCALE_PICKER_EDO};
+    static const int scenes[] = {S_PRESETS, S_SONG, S_PATGRID, S_SCALE_PICKER_EDO, S_HOME, S_ROLL_PLAYING};
     static uint16_t expired[240 * 240];
     uint32_t s;
     for (s = 0; s < NELEM(scenes); s++) {
@@ -1534,13 +1540,48 @@ static void sweep_screen_messages(void)
         for (i = 0; i < nscr; i++) seen |= !strcmp(scr[i].s, "READY");
         if (!seen) { fprintf(rep, "MISSING %s: short status\n", name); nfind++; }
         ui.msg_t = 0;
-        nscr = npend = 0;
-        ui_draw();
+        notification_frame();
         memcpy(expired, host_screen, sizeof expired);
         ui.force = 1;
-        ui_draw();
+        notification_frame();
         if (memcmp(expired, host_screen, sizeof expired)) {
             fprintf(rep, "STALE %s: expired status differs from a full redraw\n", name);
+            nfind++;
+        }
+        ui_message("LOADED A VERY LONG PATTERN NAME");
+        draw(-1);
+        lint();
+        if (!toast_shown) { fprintf(rep, "MISSING %s: wrapped notification\n", name); nfind++; }
+        memcpy(expired, host_screen, sizeof expired);
+        ui.force = 1;
+        notification_frame();
+        if (memcmp(expired, host_screen, sizeof expired)) {
+            fprintf(rep, "STALE %s: notification differs from a full redraw\n", name);
+            nfind++;
+        }
+        ui.msg_t = 1;
+        str_cpy(ui.msg2, "READY", sizeof ui.msg2);
+        notification_frame();                  /* last toast frame queues READY */
+        notification_frame();                  /* the short message restores the page */
+        if (toast_shown || !ui.msg_t || strcmp(ui.msg, "READY")) {
+            fprintf(rep, "STALE %s: queued notification transition\n", name);
+            nfind++;
+        }
+        memcpy(expired, host_screen, sizeof expired);
+        ui.force = 1;
+        notification_frame();
+        if (memcmp(expired, host_screen, sizeof expired)) {
+            fprintf(rep, "STALE %s: departing notification left covered pixels\n", name);
+            nfind++;
+        }
+        ui.msg_t = 1;
+        notification_frame();                  /* let the queued status expire naturally */
+        notification_frame();
+        memcpy(expired, host_screen, sizeof expired);
+        ui.force = 1;
+        notification_frame();
+        if (memcmp(expired, host_screen, sizeof expired)) {
+            fprintf(rep, "STALE %s: expired queued status differs from a full redraw\n", name);
             nfind++;
         }
     }
