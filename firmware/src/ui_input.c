@@ -113,7 +113,7 @@ static uint32_t arp_led(void)
  * the first eight black keys select tracks 1..8. A white key tapped switches to its pattern (playing: at the bar);
  * an empty one arms REC with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
  * dialog (CF_PAT_KEY): the key again deletes it, another white key copies it there, the 4th and 5th black keys
- * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it. */
+ * (C# D#, blinking) halve and double it (repeat while the pattern key or SEQ is held; let go: closed), OCT- leaves it. */
 static const uint8_t PAT_KEY[NPAT] = {0, 2, 4, 6, 7, 9, 11, 12};
 static const uint8_t TRK_KEY[] = {1, 3, 5, 8, 10, 13, 15, 17};
 static const uint8_t LEN_KEY[2] = {8, 10};              /* (its dialog: half, double) */
@@ -123,7 +123,7 @@ static int pattern_keys_on(void)
 {
     return !ui.menu && !ui.confirm && !name_on() && !ui.ly && !ui.uboot &&
         ((fm1_in.buttons & (1u << panel.btn[B_SEQ])) ||
-         (!ui.home && cur_page()->graph == GR_PATGRID && !live_rec_sel()));
+         (!ui.home && cur_page()->graph == GR_PATGRID && !live_rec_sel() && !preset_pick_on()));
 }
 /* the pattern keys, as the keys show things everywhere: bright the pattern playing (and the one held to copy),
  * dim the others that hold something, breathing the one waiting for the bar; the empty ones dark. The track keys: the
@@ -301,7 +301,10 @@ static void pattern_keys(uint32_t notes)
     if (pattern_keys_on())
         for (b = 0; b < NELEM(TRK_KEY); b++) if (notes & (1u << TRK_KEY[b])) {   /* a track key: its absolute track */
             ui.seq_t0 |= 2u;
-            track_select(b);                          /* (one not in use: nothing) */
+            if (b >= trk_n() && !ui.home && cur_page()->graph == GR_PATGRID)
+                track_create_to(b);                   /* stay on Patterns, including when creating MIDI tracks */
+            else
+                track_select(b);
         }
     if (ui.pat_key && ui.pat_track != song.sel) ui.pat_key = ui.pat_copy = 0;
     pattern_key_release();
@@ -343,7 +346,7 @@ static void pattern_key_delete(uint32_t k, uint32_t b)
     ui.force = 1;
 }
 /* .. C# halves it, D# doubles it (motion.c pattern_double: its steps copied after themselves); the dialog stays,
- * saying the length, while SEQ is held (ui_input closes it as SEQ is let go). The pattern playing: undoable (EDIT
+ * saying the length, while the pattern key or SEQ is held. The pattern playing: undoable (EDIT
  * held) as a load, with recorded notes as a precise clear */
 static void pattern_key_len(uint32_t k, uint32_t b, int up)
 {
@@ -2051,6 +2054,7 @@ static void ui_input(void)
     if(ui.import_refresh){pop.on=0;brw.on=0;ui.import_refresh=0;ui.force=1;}
     if (scr_input(pressed, notes)) return;
     if (designer_on() && !name_on() && !ui.confirm && designer_input(pressed, notes)) return;
+    preset_pick_poll();                              /* restore key selection before handling new edges */
     if (notes)
         browse_commit();                              /* a key played while browsing: hear the sound shown */
     browse_poll();
@@ -2254,8 +2258,9 @@ static void ui_input(void)
             ui.confirm = 0;
             ui.force = 1;
         }
-        if (ui.confirm == CF_PAT_KEY && ui.pat_did && !(fm1_in.buttons & (1u << panel.btn[B_SEQ]))) {
-            ui.confirm = 0;                             /* (its length changed: closed as SEQ is let go) */
+        if (ui.confirm == CF_PAT_KEY && ui.pat_did && !(fm1_in.buttons & (1u << panel.btn[B_SEQ])) &&
+            !(fm1_in.notes & (1u << PAT_KEY[ui.pat_dlg % NPAT]))) {
+            ui.confirm = 0;                             /* resized: close once both the pattern key and SEQ are up */
             ui.force = 1;
         }
         song.grid = (uint8_t)keys_mode();               /* (closed: the keys play at once) */
@@ -2355,7 +2360,7 @@ static void ui_input(void)
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]), bit = b == B_OCTUP ? 2u : 1u;
             if (edit_oct & (1u << id))
                 break;
-            if (pop.on == POP_PICK) {                   /* a picker: either closes it (ui_popup.c) */
+            if (pop.on == POP_PICK || pop.on == POP_PRESET) { /* a picker: either closes it (ui_popup.c) */
                 pop_close();
                 oct_eat |= (uint8_t)bit;
                 break;
@@ -2475,12 +2480,18 @@ static void ui_input(void)
     if (s) step_edit_combo();
     if (s && !ui.home && cur_page()->graph == GR_SCALE_PICKER) {
         scale_picker_step(list_accel(EN_PRESET, s, scale_picker_count(), 0));
-    } else if (s && (ui.home || cur_page()->graph == GR_BROWSE)) {
+    } else if (s && (ui.home || cur_page()->graph == GR_BROWSE || cur_page()->graph == GR_PATGRID)) {
         /* PRESETS browses the selected part's sounds (all engines, then user presets) on HOME and the
-         * PRESETS page only (never the steps); elsewhere (TRACKS too, where one records) a stray turn
+         * PRESETS page and PATTERNS (never the steps); elsewhere (TRACKS too, where one records) a stray turn
          * would throw away the sound being edited. Tracks 5..8 are MIDI Tracks: no sounds to browse */
         if (trk_midi_slot(song.sel)) ui_message("MIDI TRACK");
-        else browse_turn(EN_PRESET, s);                  /* past the factory ones: user presets */
+        else {
+            browse_turn(EN_PRESET, s);                  /* past the factory ones: user presets */
+            uint32_t total;
+            preset_pos(&total);
+            if (!ui.home && cur_page()->graph == GR_PATGRID && total)
+                preset_pick_touch();
+        }
     } else if (s && !ui.home && cur_page()->graph == GR_ROLL && !grid_on()) {
         ui.note_zoom = (uint8_t)clamp((int32_t)ui.note_zoom + s, 0, 4);
         ui.force = 1;

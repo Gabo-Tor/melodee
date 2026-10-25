@@ -97,11 +97,25 @@ level for MIDI tracks. Partial groups leave unused places blank. Renders: `stage
 
 PATTERNS keyboard (2026-10-25): track/pattern selection is the default while the selected track is unarmed,
 with the same key map and lights as holding SEQ: the first eight black keys select tracks 1–8 directly,
-regardless of the displayed group. Unused track keys stay dark and do nothing. Keys are silent in selection mode.
+regardless of the displayed group. Unused track keys stay dark; pressing one creates the missing tracks through
+that slot and selects it immediately, staying on PATTERNS. Tracks 5–8 are always MIDI-only. Keys are silent in selection mode.
 Arming restores normal playing immediately, including while stopped, during count-in and while waiting for loop zero; disarming or
 finishing a single pass restores selection. First note starts an armed stopped take immediately; PLAY uses the
 configured count-in. SELECT alone still navigates to SONG; SEQ + SELECT chooses a pattern. Other SEQ pages keep
 their existing keyboard behavior.
+
+The pattern-key action dialog keeps half/double available after each resize while its original pattern key or SEQ
+is held, so repeated presses work without reopening it. After a resize it closes when both are released. Without a
+resize, releasing the pattern key leaves the dialog available for the existing delete/copy gesture or OCT- cancel.
+
+PATTERNS PRESET (2026-10-25): the PRESET knob browses the active audio track's sounds using its existing browser list
+and acceleration; tracks 5–8 report `MIDI TRACK` and keep their settings. An undimmed value-picker card shows
+`T1 PRESET`, the selected sound's name (including a pending fast turn), its engine and `PLAY KEYS TO TRY` immediately.
+This is a temporary edited value below the shared header; transport and REC keep their normal priority above it.
+While the card is open, unarmed keys audition instead of selecting tracks/patterns; holding SEQ explicitly restores
+selection. Each preset turn or held live input restarts its two-second idle timer; sequencer playback and release
+tails do not prolong it. On expiry, OCT-/OCT+, track or page change, the card closes and ordinary key ownership
+returns; sounding keys retain their original note-off ownership. Recording remains available as usual when armed.
 
 HOME's second page (2026-10-13, `firmware/src/ui_view.c`; HOME tapped on HOME, two page dots in the header; HOME
 from elsewhere returns to the page it was on; SELECT is not a page turn on HOME: it turns the menu's HOME SELECT, a

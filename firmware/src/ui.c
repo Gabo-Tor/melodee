@@ -135,6 +135,7 @@ static struct {
     uint32_t pat_ms, pat_tap_ms;                   /* .. when it went down, when the tapped one was let go */
     uint8_t ptc_on, ptc_trk, ptc_src, ptc_dst;     /* PATTERNS' Copy to: track ptc_trk's pattern src to dst
                                                     * (ui_patterns.c) */
+    uint8_t preset_audition;     /* Patterns' temporary preset picker; navigation cancels it */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint16_t note_pick;          /* NOTES: event index + 1; zero chooses the first hit */
     uint8_t erase_gesture, erase_owner; /* an EDIT press captures one track/bank until released */
@@ -369,6 +370,7 @@ static void seq_midi_reset(void)                    /* a new page/track ends MID
 static void undo_seal(void);
 static void page_entered(void)
 {
+    ui.preset_audition = 0;
     const page_t *pg = cur_page();
     if (pg->graph == GR_SCALE_PICKER && !ui.scale_picker_seen) {
         ui.scale_family = (uint8_t)(SCALE_FAMILY[clamp(TSEL->p[P_SCALE], 0, SCALE_TOTAL - 1u)] + 1u);
@@ -1152,6 +1154,7 @@ static void track_select(uint32_t i)
 {
     if (i >= trk_n() || i == song.sel)
         return;
+    ui.preset_audition = 0;
     browse_commit();                             /* (a sound still pending loads into the track it was meant for) */
     momentary_restore();
     fm1_irq_off();

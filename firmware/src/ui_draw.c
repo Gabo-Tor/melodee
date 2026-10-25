@@ -1266,7 +1266,7 @@ static void ui_draw_frame(void)
                                                          * over it as it is (it comes with every turn of a list knob:
                                                          * dimming sent the whole screen twice, ~150 ms on the SPI) */
         if (ui.force) {
-            cv_dim = pop.on != POP_PICK;
+            cv_dim = pop.on != POP_PICK && pop.on != POP_PRESET;
             cv_under = 1;
             draw_page();
             cv_dim = cv_under = 0;

@@ -18,7 +18,8 @@ typedef struct {
                                                          * SR_RED: no question, red (a destructive act) */
 } sheet_row_t;
 #define SR_RED 0xFFu
-enum { POP_NONE, POP_SHEET, POP_PICK, POP_LIST };
+enum { POP_NONE, POP_SHEET, POP_PICK, POP_LIST, POP_PRESET };
+#define PAT_AUDITION_MS 2000u
 #define POP_X BOX_X                                     /* a sheet (large type): 236 wide, its title row 34, its rows
                                                          * 32 px, 34 apart (ui_list.c row_draw), five at most shown */
 #define POP_W BOX_W
@@ -45,13 +46,41 @@ static int live_rec_sel(void);
 static void slot_save_sheet(void);
 static int track_remove(uint32_t k);                    /* tracks.c */
 static void track_add(void);
+static int track_create_to(uint32_t k);
 
 static void pop_close(void)
 {
     if (pop.on) {
+        if (pop.on == POP_PRESET) ui.preset_audition = 0;
         pop.on = POP_NONE;
         ui.force = 1;
     }
+}
+static int preset_pick_on(void)
+{
+    return ui.preset_audition && pop.on == POP_PRESET && pop.col == song.sel && !ui.home &&
+        cur_page()->graph == GR_PATGRID && !ui.menu && !ui.confirm && !ui.ly && !name_on();
+}
+static void preset_pick_touch(void)
+{
+    ui.preset_audition = 1;
+    pop.on = POP_PRESET;
+    pop.col = song.sel;
+    pop.t = fm1_ms;
+    ui.pat_key = ui.pat_copy = ui.pat_tap = 0;
+    ui.force = 1;
+}
+/* Live input holds the audition open; sequencer playback and release tails do not.
+ * Give two seconds after the last release as well as after each knob turn. */
+static void preset_pick_poll(void)
+{
+    if (pop.on != POP_PRESET) return;
+    if (!preset_pick_on()) { pop_close(); return; }
+    uint32_t *held = live_held[song.sel];
+    if ((fm1_in.notes & ~kb_layer) || held[0] || held[1] || held[2] || held[3])
+        pop.t = fm1_ms;
+    else if (fm1_ms - pop.t >= PAT_AUDITION_MS)
+        pop_close();
 }
 static void sheet_open(const char *title, const char *sub, const sheet_row_t *rows, uint32_t n)
 {
@@ -413,6 +442,7 @@ static void pick_touch(uint32_t c)
 }
 static void pick_poll(void)                             /* ST_KNOB_MS after the last turn: gone */
 {
+    preset_pick_poll();
     if (pop.on == POP_PICK && fm1_ms - pop.t > ST_KNOB_MS)
         pop_close();
 }
@@ -719,6 +749,32 @@ static void pick_draw(void)
     }
     }
 }
+/* The preset is an edited value: use the existing undimmed picker card and
+ * leave the shared transport/recording header visible above it. */
+static void preset_pick_draw(void)
+{
+    uint32_t k, src = browse_shown(&k), e = src_engine(src, k);
+    uint32_t sig = src * 7919u + k * 131u + song.sel * 31u + up_gen * 977u + ux.gen + ux.pal;
+    char tag[6], nm[16], title[] = "T1 PRESET";
+    if (!ui.force && sig == pop.sig) { draw_head(); return; }
+    pop.sig = sig;
+    draw_head();
+    entry_label(src, k, tag, nm);
+    if (src == ENGI_PROPHET)
+        str_cpy(nm, eng_preset(ENGINES[ENGI_PROPHET], k)->name, sizeof nm);
+    title[1] = (char)('1' + song.sel);
+    for (uint32_t band = 0; band < 104u; band += CV_MAX / POP_W) {
+        cv_begin_band(POP_W, 104u, T_BG, band);
+        cv_rrect(0, 0, POP_W, 104, 10, T_LINE, T_BG);
+        cv_rrect(1, 1, POP_W - 2, 102, 9, T_SURF, T_LINE);
+        cv_text_on(12, ty_y(16, TY_LB), TY_LB, title, T_THEME, T_SURF);
+        cv_free_text(12, ty_y(40, TY_TX), TY_TX, nm[0] ? nm : tag, T_TEXT, T_SURF, POP_W - 24);
+        cv_text_on(12, ty_y(64, TY_LB), TY_LB, ENGINES[eng_idx(e)]->name, T_THEME, T_SURF);
+        cv_text_on(12, ty_y(88, TY_LB), TY_LB, "PLAY KEYS TO TRY", T_MID, T_SURF);
+        GFX_HOOK_COVER(POP_X, Y_GRAPH, POP_X + POP_W, Y_GRAPH + 104);
+        cv_blit_band(POP_X, Y_GRAPH);
+    }
+}
 static void pop_draw(void)
 {
     if (pop.on == POP_SHEET)
@@ -727,4 +783,6 @@ static void pop_draw(void)
         pick_draw();
     else if (pop.on == POP_LIST)
         vlist_draw();
+    else if (pop.on == POP_PRESET)
+        preset_pick_draw();
 }

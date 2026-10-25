@@ -113,24 +113,34 @@ static void track_blank(uint32_t k)
     list_trk[k % NTRK] = 0;                             /* (the browser: the last LIST picked) */
 }
 
+/* Tracks are contiguous: create the missing places through k, then select it.
+ * Patterns uses this without leaving its page; Stage opens the new track's sound. */
+static int track_create_to(uint32_t k)
+{
+    if (k >= NTRK) {
+        ui_message("TRACKS FULL");
+        return 0;
+    }
+    browse_commit();
+    momentary_restore();
+    while (trk_n() <= k) {
+        uint32_t next = trk_n();
+        track_blank(next);
+        song.ntrk = (uint8_t)(next + 1u);
+    }
+    track_select(k);
+    track_say(k, "ADDED");
+    return 1;
+}
 /* the next track in use (Stage's sheet): a new one, selected, the browser open on it (OCT- keeps its power-on sound) */
 static void track_add(void)
 {
     uint32_t k = trk_n(), i;
-    if (k >= NTRK) {
-        ui_message("TRACKS FULL");
-        return;
-    }
-    browse_commit();
-    momentary_restore();
-    track_blank(k);
-    song.ntrk = (uint8_t)(k + 1u);
-    track_select(k);
+    if (!track_create_to(k)) return;
     for (i = 0; i < NPAGES; i++)                        /* the browser on it: its sound picked from there; a MIDI-only */
         if (trk_midi_slot(k) ? PAGES[i].scope == SC_ENGINE && PAGES[i].id[0] == P_E0 : PAGES[i].graph == GR_BROWSE)
             break;                                      /* track's sound is its channel */
     ui.home = 0;
     ui.page = (uint8_t)i;
     page_entered();
-    track_say(k, "ADDED");
 }

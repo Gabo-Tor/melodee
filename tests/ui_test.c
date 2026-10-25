@@ -5334,10 +5334,18 @@ static int test_pattern_page_keys(void)
     tap_key(key_at(1, 4));
     bad += check("PATTERNS fifth black key directly selects track 5", song.sel == 4u);
     lit = pattern_leds(&dim, &breath);
-    for (uint32_t k = 5; k < 11; k++) {
+    for (uint32_t k = 5; k < NTRK; k++) {
+        bad += check("PATTERNS missing track keys are dark before creation",
+                     !((lit | dim | breath) & (1u << key_at(1, k))));
         tap_key(key_at(1, k));
-        bad += check("PATTERNS unused track keys stay dark and cannot select or play",
-                     song.sel == 4u && !((lit | dim | breath) & (1u << key_at(1, k))) && !gates() && mo_w == midi);
+        bad += check("PATTERNS missing black track keys create and select silent MIDI tracks in place",
+                     song.sel == k && trk_n() == k + 1u && midi_track_only(TSEL) &&
+                     cur_page()->graph == GR_PATGRID && !gates() && mo_w == midi && seq_is_empty(TSEL));
+    }
+    for (uint32_t k = NTRK; k < 11u; k++) {
+        tap_key(key_at(1, k));
+        bad += check("PATTERNS black keys beyond track 8 remain silent and do nothing",
+                     song.sel == 7u && trk_n() == NTRK && !gates() && mo_w == midi);
     }
     tap_key(key_at(1, 0));
     key_down(26); frame(); key_up(26); frame();
@@ -5395,6 +5403,130 @@ static int test_pattern_page_keys(void)
     press(B_HOME);
     bad += check("leaving PATTERNS restores ordinary playing", ui.home && !song.grid && !pattern_keys_on());
     settings_countin = saved_countin;
+    ui_power_on();
+    return bad;
+}
+static int test_pattern_preset_audition(void)
+{
+    int bad = 0;
+    uint32_t total, first, wanted;
+    ui_power_on(); hold(B_SEQ);
+    track_select(1); my_steps(TSEL);
+    track_t before = *TSEL, other = trk[0];
+    first = list_cur(&total);
+    turn(EN_PRESET, 1);
+    bad += check("PATTERNS PRESET changes only the active audio track and opens the audition picker",
+                 list_cur(&total) == (first + 1u) % total && preset_pick_on() && !song.grid &&
+                 !memcmp(&other, &trk[0], sizeof other) &&
+                 !memcmp(before.step, TSEL->step, sizeof before.step) && !song.rec);
+    uint32_t key = TRK_KEY[3];
+    key_down(key); frame();
+    uint32_t note = kb_note[key];
+    bad += check("preset audition: a black track key plays without selecting or creating a track",
+                 song.sel == 1u && note < 128u && (live_held[1][note >> 5] & (1u << (note & 31u))) && !song.rec && !song.playing);
+    frames(2600);
+    bad += check("preset audition stays open beyond two seconds while a note is held",
+                 preset_pick_on() && !song.grid && (live_held[1][note >> 5] & (1u << (note & 31u))));
+    key_up(key); frame(); frames(1600);
+    bad += check("preset audition allows two idle seconds after release",
+                 preset_pick_on() && !(live_held[1][note >> 5] & (1u << (note & 31u))));
+    frames(500);
+    bad += check("preset audition expires into silent selection and removes its card",
+                 !pop.on && pattern_keys_on() && song.grid == 2u && !TSEL->nheld);
+    tap_key(TRK_KEY[0]);
+    bad += check("after audition a black key selects tracks again", song.sel == 0u && !song.rec);
+
+    turn(EN_PRESET, 1);
+    input_on(TSEL, 64, 100); frames(2300);
+    bad += check("held external live notes also prolong preset audition", preset_pick_on() && !song.grid);
+    input_off(TSEL, 64); frames(2100);
+    bad += check("external note release restores selection after two idle seconds", !pop.on && song.grid == 2u);
+    turn(EN_PRESET, 1);
+    key_down(26); frame();
+    note = kb_note[26];
+    turn(EN_ALGO, 1); key_up(26); frame();
+    bad += check("leaving audition with a held key releases its original track",
+                 !pop.on && kb_trk[26] == 0u && !(live_held[0][note >> 5] & (1u << (note & 31u))));
+    track_select(0);
+    spin(EN_PRESET, 1, 8);
+    wanted = preset_pos(&total);
+    bad += check("PATTERNS fast preset turns show the pending selection immediately", browse_pending() && preset_pick_on());
+    fm1_in.notes |= 1u << 26; host_notes |= 1u << 26; frame();
+    bad += check("audition key commits the shown pending sound without selecting a pattern",
+                 !browse_pending() && list_cur(&total) == wanted && !song.rec);
+    keyboard_block(); key_up(26); frame();
+    turn(EN_ALGO, 1);
+    bad += check("changing track cancels the audition in the same frame", !pop.on && song.grid == 2u && song.sel == 1u);
+    turn(EN_PRESET, 1); press(B_OCTDN);
+    bad += check("OCT- dismisses preset audition and keeps PATTERNS", !pop.on && cur_page()->graph == GR_PATGRID && song.grid == 2u);
+    turn(EN_PRESET, 1); turn(EN_SELECT, 1);
+    bad += check("leaving PATTERNS cancels the audition", !pop.on && cur_page()->graph == GR_SONG && !song.grid);
+
+    ui_power_on(); hold(B_SEQ); song.ntrk = NTRK;
+    for (uint32_t t = NPART; t < NTRK; t++) {
+        track_select(t); before = *TSEL;
+        turn(EN_PRESET, 1);
+        bad += check("PATTERNS MIDI tracks 5-8 ignore preset turns without enabling audition",
+                     !memcmp(&before, TSEL, sizeof before) && !pop.on && song.grid == 2u && msg_is("MIDI TRACK"));
+    }
+
+    ui_power_on(); song.ntrk = 1; hold(B_SEQ);
+    tap_key(TRK_KEY[3]);
+    bad += check("missing audio track key creates through its slot and stays on PATTERNS",
+                 trk_n() == 4u && song.sel == 3u && !midi_track_only(TSEL) && !song.rec &&
+                 cur_page()->graph == GR_PATGRID && song.grid == 2u);
+    int empty = 1;
+    for (uint32_t t = 1; t < 4u; t++) for (uint32_t p = 0; p < NPAT; p++)
+        empty &= pattern_empty(t, p);
+    bad += check("all newly created audio tracks have empty patterns", empty);
+    turn(EN_PRESET, 1);
+    bad += check("new audio track can audition presets immediately", preset_pick_on() && !song.grid);
+    frames(2100);
+    seq_start(); seq_advance(1);
+    tap_key(TRK_KEY[7]);
+    bad += check("a distant MIDI track key creates missing slots during playback without recording",
+                 trk_n() == NTRK && song.sel == 7u && midi_track_only(TSEL) && song.playing && !song.rec &&
+                 cur_page()->graph == GR_PATGRID && song.grid == 2u);
+    ui_power_on();
+    return bad;
+}
+static int test_pattern_resize_hold(void)
+{
+    int bad = 0;
+    for (uint32_t bank = 0; bank < 3u; bank += 2u) {
+        ui_power_on(); hold(B_SEQ);
+        pattern_switch(TSEL, bank); my_steps(TSEL); TSEL->p[P_SLEN] = 8;
+        pattern_switch(TSEL, 0);
+        key_down(PAT_KEY[bank]); frames(1100);
+        bad += check("held pattern opens its action dialog without holding SEQ",
+                     ui.confirm == CF_PAT_KEY && ui.pat_dlg == bank && !fm1_in.buttons);
+        for (uint32_t len = 16; len <= 64; len *= 2) {
+            tap_key(LEN_KEY[1]);
+            bad += check("double can be repeated while the original pattern key stays down",
+                         ui.confirm == CF_PAT_KEY && pattern_at(0, bank)->timing[0] == len && song.grid == 2u && !song.rec);
+        }
+        tap_key(LEN_KEY[1]);
+        bad += check("reaching the maximum length keeps the held pattern dialog open",
+                     ui.confirm == CF_PAT_KEY && pattern_at(0, bank)->timing[0] == 64 && msg_is("64 STEPS MAX"));
+        for (uint32_t len = 32; len >= 8; len /= 2) {
+            tap_key(LEN_KEY[0]);
+            bad += check("half can be repeated in the same held pattern dialog",
+                         ui.confirm == CF_PAT_KEY && pattern_at(0, bank)->timing[0] == len);
+        }
+        key_up(PAT_KEY[bank]); frame();
+        bad += check("releasing the original pattern key closes the resized dialog without arming",
+                     !ui.confirm && song.grid == 2u && !song.rec && TSEL->pattern == 0u);
+    }
+    ui_power_on(); hold(B_SEQ); my_steps(TSEL);
+    btn_down(B_SEQ); frame(); key_down(PAT_KEY[0]); frames(1100);
+    tap_key(LEN_KEY[0]);
+    btn_up(B_SEQ); frame();
+    bad += check("releasing SEQ after a resize leaves the dialog open while the pattern key is held",
+                 ui.confirm == CF_PAT_KEY && song.grid == 2u);
+    tap_key(LEN_KEY[1]);
+    bad += check("resize can continue after releasing SEQ", ui.confirm == CF_PAT_KEY && msg_is("PATTERN DOUBLED"));
+    key_up(PAT_KEY[0]); frame();
+    bad += check("releasing the last held pattern modifier closes its resized dialog", !ui.confirm && !song.rec);
     ui_power_on();
     return bad;
 }
@@ -5601,6 +5733,8 @@ int main(void)
     bad += test_home_select();
     bad += test_seq_keys();
     bad += test_pattern_page_keys();
+    bad += test_pattern_preset_audition();
+    bad += test_pattern_resize_hold();
     bad += test_pattern_key_handoff();
     bad += test_loop_end_edits();
     bad += test_grid();

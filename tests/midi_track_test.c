@@ -285,7 +285,8 @@ static void midi_track_navigation(void)
     ui.layer=LAYER_GLO; kb_layer=1u; layer_keys(1u);
     assert(track_solo==(1u<<4));
     kb_layer=0; layer_keys(0); assert(!track_solo); ui.layer=0;
-    /* A partial second group cannot select an unused track. */
+    /* Away from Patterns, SEQ still selects only existing tracks. */
+    go_home();
     song.ntrk=5; track_select(3); btn_down(B_SEQ);
     pattern_keys(1u << key_at(1, 4)); assert(song.sel == 4);
     for (uint32_t k = 5; k < 11; k++) {
@@ -293,6 +294,9 @@ static void midi_track_navigation(void)
     }
     pattern_keys(1u << key_at(1, 1)); assert(song.sel == 1);
     btn_up(B_SEQ);
+    go_page(GR_PATGRID);
+    pattern_keys(1u << key_at(1, 7));
+    assert(song.sel == 7 && trk_n() == NTRK && midi_track_only(TSEL) && cur_page()->graph == GR_PATGRID);
     puts("MIDI-only navigation: direct SEQ track keys, partial groups, PATTERNS knobs and GLO mute/solo passed");
 }
 static void midi_only_step_entry(void)
