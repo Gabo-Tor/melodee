@@ -74,6 +74,11 @@ class BootAudio(unittest.TestCase):
                     magic, packed, size, reserved = struct.unpack('<4I', data[:16])
                     self.assertEqual((packed, size, reserved), (len(data) - 16, len(raw), 0))
                     self.assertEqual(zlib.decompress(data[16:], -15), raw)
+                    # Exercise the firmware decoder against the chosen build
+                    # compressor for every payload, including small streams.
+                    (root / 'packed').write_bytes(data[16:])
+                    (root / 'raw').write_bytes(raw)
+                    subprocess.run([str(exe), str(root / 'packed'), str(root / 'raw'), str(len(raw))], check=True)
             # Check bytes actually emitted by the packager, not another compressor invocation.
             if resident.exists() and resident.stat().st_size:
                 image = Path('build/melodee.bin').read_bytes()

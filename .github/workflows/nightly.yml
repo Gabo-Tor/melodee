@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libharfbuzz-dev libfribidi-dev libraqm-dev
-          python -m pip install Pillow fonttools mido
+          python -m pip install -r tools/requirements-build.txt mido
           npm ci --prefix web
       - uses: actions/cache@v4
         with:

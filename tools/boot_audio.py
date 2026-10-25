@@ -5,13 +5,16 @@
 import re
 import struct
 import zlib
+import zopfli.zlib
 
 MAGIC = 0x31465A41
 
 
 def pack(raw):
-    compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
-    data = compressor.compress(raw) + compressor.flush()
+    # Zopfli produces the same DEFLATE format with a smaller load image.
+    # Strip only its zlib wrapper; the firmware decoder and RAM image stay
+    # unchanged. Pin the build dependency in requirements-build.txt.
+    data = zopfli.zlib.compress(raw, numiterations=15)[2:-4]
     if zlib.decompress(data, -15) != raw:
         raise ValueError('resident audio compression round trip failed')
     if len(data) + 16 < len(raw):

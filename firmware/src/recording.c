@@ -30,7 +30,17 @@ static struct { uint32_t period, key, ordered_period, ordered_key; uint16_t curs
 #if MELODEE_RECORD_CURSOR
 /* Only capture holds (or sounding events in countdown mode) are visited. Keep the extra index in
  * the pool, rather than taking the target's remaining data SRAM. */
+#if MELODEE_RECORD_QUEUE
+/* Only captures own live links; only sounding playback owns heap positions.
+ * A sealed capture can linger in the list until the next tick. Detach it
+ * before the release queue overwrites its link, preserving other captures. */
+static union {uint16_t live[RECORD_MAX],heap[RECORD_MAX];} recording_runtime_index __attribute__((section(".pool")));
+_Static_assert(sizeof recording_runtime_index==RECORD_MAX*2u,"shared capture/release indexes");
+#define recording_live_next recording_runtime_index.live
+#define recording_heap_pos recording_runtime_index.heap
+#else
 static uint16_t recording_live_next[RECORD_MAX] __attribute__((section(".pool")));
+#endif
 static uint16_t recording_live_head[NTRK] = {[0 ... NTRK - 1u] = RECORD_MAX};
 #endif
 static uint32_t recording_view(const track_t *t, const recorded_note_t *r);
@@ -64,7 +74,6 @@ static inline __attribute__((always_inline)) uint16_t *recording_heap_slot(uint1
     return deep ? &recording_heap_store[(uint32_t)(chunk[at >> 5] * 32) + at] : &row[at];
 }
 #define RQ(tr, at) (*recording_heap_slot(&recording_heap_store[(tr) * 32u], recording_heap_chunk[tr], at, (at) >= 32u))
-static uint16_t recording_heap_pos[RECORD_MAX] __attribute__((section(".pool")));
 /* bit 7 marks a pending note-off; only the low seven bits reach MIDI/synth. */
 static uint8_t recording_message[RECORD_MAX] __attribute__((section(".pool")));
 static uint16_t recording_watch[NTRK][NSTEP] __attribute__((section(".pool")));
@@ -184,6 +193,7 @@ static void recording_queue_remove(uint32_t i)
         recording_heap_free[k] = (uint8_t)((recording_heap_chunk[tr][last >> 5] + (last >> 5) - NTRK) ^ k);
     }
 }
+static void recording_live_detach(uint32_t i);
 static int recording_queue_add(track_t *t, uint32_t i, uint32_t remaining)
 {
     uint32_t tr = trk_index(t), was = recording_sounding(i);
@@ -194,6 +204,7 @@ static int recording_queue_add(track_t *t, uint32_t i, uint32_t remaining)
     /* An edit can change a sounding event's overview. Remove/reinsert also
      * cancels its old deadline rather than leaving a stale release behind. */
     if (was) recording_queue_remove(i);
+    if (recording_flags[i]&2u) recording_live_detach(i); /* before the shared index becomes a heap position */
     if (!recording_heap_room(tr)) return 0;
     uint32_t view = recording_view(t, &recording[i]);
     recording_run[i].left = recording_clock[tr] + remaining;

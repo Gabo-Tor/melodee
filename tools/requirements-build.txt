@@ -1,0 +1,3 @@
+Pillow
+fonttools
+zopfli==0.4.3

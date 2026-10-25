@@ -8,6 +8,27 @@
 #if !MELODEE_RECORD_QUEUE
 #error "This fixture exercises shared queued-recorder counters"
 #endif
+static int capture_index_handoff(void)
+{
+    raw_begin();seq_stop();song.rec=0;track_t *t=TSEL;
+    for(uint32_t i=0;i<3u;i++){
+        recorded_note_t r={.duration=1000,.note=(uint8_t)(60+i),.vel=100};
+        recording_restore_note(t,i,r);
+        recording_flags[i]=1;recording_run[i].held=1000u;
+    }
+    t->step[0].time=ST_NOTE;t->step[0].flags=SF_RECORDED;
+    recording_reindex();
+    int ok=recording_live_head[0]==0 && recording_live_next[0]==1 && recording_live_next[1]==2;
+    recording_finish(1); /* still in the capture list until cleanup or playback */
+    recording_fire(t,1,RECORD_UNIT,0);
+    ok &= recording_sounding(1) && !(recording_flags[1]&2u) &&
+        recording_live_head[0]==0 && recording_live_next[0]==2 && recording_live_next[2]==RECORD_MAX;
+    uint32_t first=recording_run[0].held,last=recording_run[2].held;
+    recording_tick(t,1);
+    ok &= recording_run[0].held>first && recording_run[2].held>last && recording_sounding(1);
+    int bad=check("playback detaches a sealed capture before reusing its link; neighboring holds keep advancing",ok);
+    seq_stop();return bad;
+}
 static int complete_store(void)
 {
     raw_begin();seq_stop();song.rec=0;track_t *t=TSEL;t->p[P_SLEN]=NSTEP;
@@ -143,7 +164,7 @@ static int single_track_capture(void)
 }
 int main(void)
 {
-    int bad=single_track_capture()+complete_store()+recapture_and_capture_pause()+take_taker_boundaries();
+    int bad=capture_index_handoff()+single_track_capture()+complete_store()+recapture_and_capture_pause()+take_taker_boundaries();
     if(!bad)puts("Recording shared runtime: 4096 bytes, capture/playback handoffs preserved");
     return bad!=0;
 }

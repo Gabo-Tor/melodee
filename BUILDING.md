@@ -10,8 +10,9 @@ The build makes three files in `build/`:
 
 ## Prerequisites (macOS)
 
-- Python 3 with Pillow and fontTools: `pip3 install Pillow fonttools` (the UI font and icons are
-  rasterised at build time). Pillow's Raqm layout needs FriBidi: `brew install fribidi` (build.sh and
+- Python 3 with the build dependencies: `pip3 install -r tools/requirements-build.txt`.
+  The UI font and icons are rasterised at build time; pinned Zopfli compresses resident code.
+  Pillow's Raqm layout needs FriBidi: `brew install fribidi` (build.sh and
   tests/run_tests.sh point `DYLD_FALLBACK_LIBRARY_PATH` at Homebrew's lib)
 - Docker Desktop. The JieLi toolchain is Linux x86-64 only; the build runs each tool in a
   `linux/amd64` `debian:bookworm-slim` container (Rosetta on Apple silicon). Keep the source

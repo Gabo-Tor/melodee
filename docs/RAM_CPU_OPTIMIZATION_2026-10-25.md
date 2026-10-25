@@ -225,3 +225,46 @@ First-pass sources, baselines and measurements remain in
 `build/ble-room-20261025/`: linked memory comparison, source/package hashes,
 stack paths, separate before/after CPU fixtures, SDK probe archives and logs.
 These ignored artifacts are local evidence, not release packages or hardware acceptance.
+
+## Follow-up: recorder indexes, snapshots and flash tables
+
+The follow-up audit uses `70fc020` as its baseline. Its isolated baseline rebuild
+reproduces the original application bytes. These measurements exclude concurrent
+USB-host changes in the main checkout.
+
+| Linked measure | Baseline | Combined follow-up |
+| --- | ---: | ---: |
+| Application, including unchanged stub | 540,908 B | 537,684 B |
+| Guaranteed resources across separate banks | 125,088 B | 127,760 B |
+| Main contiguous arena | 120,000 B | 121,888 B |
+| Data SRAM resource tail | 3,928 B | 4,712 B |
+
+This recovers **2,672 B usable RAM and 3,224 B application flash**. The fixed-size
+installable package and project/preset partition sizes do not change.
+
+- Capture-list links and queued playback positions share 2,048 B. A sealed
+  capture may linger in the list until the next tick; playback detaches it before
+  overwriting its link. Normal capture completion retains its existing cost.
+- Momentary UI snapshots store parameter IDs in place of pointers and one native
+  patch snapshot at a time. The target recovers 784 B without changing persistence.
+- Pinned Zopfli 0.4.3 compresses the existing boot-only resident-code image using
+  the same DEFLATE format. The baseline stream shrinks by 1,556 B; the decoder,
+  expanded instructions and audio-time work remain unchanged. Both nightly and
+  shared release builds install the same dependency file.
+- FM6 frequency points use coarse anchors and exact 16-bit residuals. The table
+  shrinks from 4,100 to 2,314 B. Added code costs 128 B usable RAM; linked flash
+  shrinks by 1,708 B in isolation. All 1,025 points and 16,777,216 interpolated
+  pitch fractions match the original integers. Four held-preset fixtures add
+  0.27–0.37% host FM6 instructions; no hardware cycle result is claimed.
+
+The combined audit passes target memory, placement, stack and CPU gates and all
+337 golden audio renders. Explicit handoff and native snapshot tests accompany
+the production changes; compressed streams exercise the existing decoder under
+ASan/UBSan. Physical deadline and stack-watermark validation remains open.
+
+Further project streaming could remove roughly 14–15 KiB of shared canvas
+reservation, but the current codec simultaneously holds a 15,432-byte decoded
+project and a 14,684-byte bank tail. Compressing the other four startup sections
+offers 10,394 B of payload savings before integration overhead. Neither larger
+redesign is implemented here. The bit-exact MODERN sine-folding probe is omitted:
+its approximately 28% host instruction penalty outweighs its small RAM saving.

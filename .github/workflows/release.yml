@@ -73,7 +73,7 @@ jobs:
         export MELODEE_AUDIO_PROFILE=0 MELODEE_AUDIO_BENCH=0
         sudo apt-get update
         sudo apt-get install -y libharfbuzz-dev libfribidi-dev libraqm-dev
-        python3 -m pip install fonttools mido
+        python3 -m pip install -r tools/requirements-build.txt mido
         npm ci --prefix web
         test "$(git -C "$AC79_SDK" rev-parse HEAD)" = d179b4484759423312073f5fbb232501aa491047
         version=$(python3 tools/fm1_recover.py --version | awk '{print $NF}')

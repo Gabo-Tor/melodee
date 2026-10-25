@@ -708,13 +708,18 @@ static uint32_t track_sig(const track_t *t)      /* the sound (an FM6 track's pa
 
 static const param_desc_t *home_param(uint32_t k,int16_t **vp);
 static int scale_shared(uint32_t id);
+/* Parameter IDs resolve against the captured track; native patch snapshots
+ * are mutually exclusive. This state is never serialized. */
 static struct {
     uint8_t active, track, count, native;
-    int16_t *ptr[P_COUNT+G_COUNT], value[P_COUNT+G_COUNT];
-    uint8_t fm[FP_SIZE+1u], fn[FM6_NFN], on;
-    cz_patch_t cz; p5_patch_t p5;
-    int16_t p5_voice,p5_prio,p5_detune,p5_alloc;
+    uint8_t id[P_COUNT+G_COUNT]; int16_t value[P_COUNT+G_COUNT];
+    union {
+        struct {uint8_t fm[FP_SIZE+1u], fn[FM6_NFN], on;};
+        cz_patch_t cz;
+        struct {p5_patch_t p5;int16_t p5_voice,p5_prio,p5_detune,p5_alloc;};
+    };
 } momentary;
+_Static_assert(P_COUNT+G_COUNT<=256u,"momentary IDs fit byte");
 static void momentary_restore(void)
 {
     if(!momentary.active)return;
@@ -722,7 +727,7 @@ static void momentary_restore(void)
     if(momentary.native==1){fm6_put_patch(tr,momentary.fm,0);memcpy(fm6_fn[tr],momentary.fn,FM6_NFN);fm6_on[tr]=momentary.on;}
     else if(momentary.native==2)(*cz_patch_of(tr))=momentary.cz;
     else if(momentary.native==3){p5_patch[tr]=momentary.p5;trk[tr].p[P_VOICE]=momentary.p5_voice;trk[tr].p[P_PRIO]=momentary.p5_prio;trk[tr].p[P_DETUNE]=momentary.p5_detune;trk[tr].p[P_ALLOC]=momentary.p5_alloc;}
-    for(uint32_t i=0;i<momentary.count;i++)*momentary.ptr[i]=momentary.value[i];
+    for(uint32_t i=0;i<momentary.count;i++){uint32_t id=momentary.id[i];*(id<P_COUNT?&trk[tr].p[id]:&song.g[id-P_COUNT])=momentary.value[i];}
     momentary.active=momentary.count=momentary.native=0;fm1_irq_on();ui.force=1;
 }
 static const page_t *stage_page(void);
@@ -739,12 +744,12 @@ static void momentary_take(uint32_t slot)
     if(!momentary.active){momentary.track=song.sel;momentary.active=1;}
     if(native && !momentary.native){
         uint32_t tr=song.sel;fm1_irq_off();momentary.native=(uint8_t)native;
-        memcpy(momentary.fm,fm6_patch_of(tr),sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];
-        momentary.cz=(*cz_patch_of(tr));momentary.p5=*p5_patch_of(TSEL);
-        momentary.p5_voice=TSEL->p[P_VOICE];momentary.p5_prio=TSEL->p[P_PRIO];momentary.p5_detune=TSEL->p[P_DETUNE];momentary.p5_alloc=TSEL->p[P_ALLOC];fm1_irq_on();
+        if(native==1){memcpy(momentary.fm,fm6_patch_of(tr),sizeof momentary.fm);memcpy(momentary.fn,fm6_fn[tr],FM6_NFN);momentary.on=fm6_on[tr];}
+        else if(native==2)momentary.cz=(*cz_patch_of(tr));
+        else{momentary.p5=*p5_patch_of(TSEL);momentary.p5_voice=TSEL->p[P_VOICE];momentary.p5_prio=TSEL->p[P_PRIO];momentary.p5_detune=TSEL->p[P_DETUNE];momentary.p5_alloc=TSEL->p[P_ALLOC];}fm1_irq_on();
     }
-    if(!native){uint32_t i;for(i=0;i<momentary.count && momentary.ptr[i]!=vp;i++);
-        if(i==momentary.count && i<P_COUNT+G_COUNT){momentary.ptr[i]=vp;momentary.value[i]=*vp;momentary.count++;}}
+    if(!native){uint32_t id=pg->scope==SC_GLOBAL?P_COUNT+(uint32_t)(vp-song.g):(uint32_t)(vp-trk[momentary.track].p); uint32_t i;for(i=0;i<momentary.count && momentary.id[i]!=id;i++);
+        if(i==momentary.count && i<P_COUNT+G_COUNT){momentary.id[i]=(uint8_t)id;momentary.value[i]=*vp;momentary.count++;}}
     ui.pg_down&=(uint16_t)~(1u<<panel.btn[B_LFO]);
 }
 static void load_begin_guarded(track_t *t, uint32_t what)
