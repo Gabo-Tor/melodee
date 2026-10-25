@@ -45,7 +45,7 @@ static void effects(void)
     for(int32_t fx=0;fx<(int32_t)PUNCH_NFX;fx++){
         reset();
         for(uint32_t b=0;b<1500;b++){test_signal(0);punch_process(l,r,CTL);}
-        assert(resource[RES_PUNCH].size==65536);
+        assert(resource[RES_PUNCH].size==32768);
         punch.req=(int8_t)fx;
         uint64_t changed=0,energy=0;
         for(uint32_t b=0;b<3000;b++){
@@ -116,10 +116,17 @@ static void tempo_memory(void)
 {
     reset();midi_sync_active=1;midi_beat_samples=FS;beat_pos=MIDI_BEAT_UNITS/2;
     assert(punch_clock_samples()==FS/2);song.playing=1;punch.req=PX_LOOP8;
-    test_signal(0);punch_process(l,r,CTL);assert(punch.len==FS/2);
+    test_signal(0);punch_process(l,r,CTL);assert(punch.len==PUNCH_N-1024u);
     reset();song.playing=1;beat_pos=beat_samples()/2-64;punch.req=PX_LOOP8;
     test_signal(0);punch_process(l,r,CTL);assert(punch.pre==32);
     test_signal(0);punch_process(l,r,CTL);assert(!punch.pre);
+    /* Shorter musical spans remain exact; long spans clamp before wrap. */
+    for(uint32_t bpm=30;bpm<=300;bpm+=30){
+        reset();song.g[G_BPM]=(int16_t)bpm;
+        for(int32_t fx=PX_LOOP4;fx<=PX_HALF;fx++){
+            punch_start(fx);assert(punch.len>=64u && punch.len<=PUNCH_N-1024u);
+        }
+    }
     reset();for(uint32_t id=0;id<RES_COUNT;id++)resource_release(id);
     assert(resource_get(RES_NOTE_HISTORY,RESOURCE_MAIN_CAPACITY));
     punch.req=PX_ECHO;test_signal(0);int32_t dry[CTL];memcpy(dry,l,sizeof l);punch_process(l,r,CTL);

@@ -6,6 +6,8 @@
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _dsp_start[], _dsp_end[], _dsp_load[], _dt_start[], _dt_end[], _dt_load[];
 extern uint32_t _audio_start[], _audio_end[], _audio_load[];
+extern uint8_t _cpu1_ustack_top[], _app_xip_end[];
+#include "boot_inflate.h"
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 extern uint32_t _ustack_top[];
 
@@ -20,11 +22,11 @@ static uint32_t stack_peak(const uint32_t *lo, const uint32_t *hi)   /* bytes us
     return (uint32_t)((uintptr_t)hi - (uintptr_t)p);
 }
 /* v[0..5]: CPU0's user stack used at most, its size, the system stack's, its size; CPU1's user and system stacks used
- * at most (4 KiB each) */
+ * at most (3 KiB user, 1 KiB supervisor; CPU1 keeps IRQs disabled) */
 static void stack_report(uint32_t *v)
 {
     const uint32_t *u = (const uint32_t *)_ustack_lo, *s = (const uint32_t *)_sstack_lo;
-    const uint32_t *c1 = (const uint32_t *)_cpu1_stacks_lo, *c2 = c1 + 1024;
+    const uint32_t *c1 = (const uint32_t *)_cpu1_stacks_lo, *c2 = (const uint32_t *)_cpu1_ustack_top;
     v[0] = stack_peak(u, _ustack_top); v[1] = (uint32_t)((uintptr_t)_ustack_top - (uintptr_t)u);
     v[2] = stack_peak(s, (const uint32_t *)_sstack_top); v[3] = (uint32_t)((uintptr_t)_sstack_top - (uintptr_t)s);
     v[4] = stack_peak(c1, c2); v[5] = stack_peak(c2, (const uint32_t *)_cpu1_stacks_hi);
@@ -422,8 +424,16 @@ void fm1_cstart(void)
         *d = *s;                                /* DSP code: audio is stopped while NOR is busy */
     for (s = _dt_load, d = _dt_start; d < _dt_end; s++, d++)
         *d = *s;                                /* the oscillator correction tables */
-    for (s = _audio_load, d = _audio_start; d < _audio_end; s++, d++)
-        *d = *s;                                /* resident audio profile: executable ordinary SRAM */
+    if(_audio_load[0]==BOOT_AUDIO_MAGIC){
+        uint32_t bytes=(uint32_t)((uintptr_t)_audio_end-(uintptr_t)_audio_start);
+        uint32_t packed=_audio_load[1];
+        if(_audio_load[2]!=bytes || _audio_load[3]!=0 ||
+           (uintptr_t)(_audio_load+4)>(uintptr_t)_app_xip_end ||
+           packed>(uintptr_t)_app_xip_end-(uintptr_t)(_audio_load+4) ||
+           !boot_inflate((uint8_t *)_audio_start,bytes,(const uint8_t *)(_audio_load+4),packed))
+            fm1_enter_uboot();
+    }else for(s=_audio_load,d=_audio_start;d<_audio_end;s++,d++)*d=*s;
+    fm1_code_sync();
     fm1_mailbox_clear();
     fm1_power_ready = (uint8_t)fm1_power_init(); /* stock V15 supplies before cache, peripherals or CPU1 */
 #if !MELODEE_CORE1_FALLBACK

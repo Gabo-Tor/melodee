@@ -7,11 +7,11 @@
 /* PUNCH-IN FX, pocket-operator style: hold FX, press a key (the 16 white ones, F3..G5, and,
  * 2.6, the 11 black ones) and the whole mix goes through that effect while the key is held;
  * release it and the mix comes back. Beat-synced to the tempo; loops start on the grid of the
- * running transport. A mono ring of the mix (PUNCH_N samples, 0.74 s) feeds the loops, reverse,
+ * running transport. A mono ring of the mix (PUNCH_N samples, 0.37 s) feeds the loops, reverse,
  * tape stop, half speed, wobble, echo, rewind, octave up and the flanger; the filters, kills,
  * crush and gate run in stereo. FREEZE holds its own four-line reverb. Every change crossfades over
  * 64 samples. Runs in the audio ISR after the master returns and before the limiter. */
-#define PUNCH_N 32768u                    /* power of two */
+#define PUNCH_N 16384u                    /* 32 KiB history: power of two */
 /* seq.c supplies the transport phase in samples, including external MIDI clock. */
 static uint32_t punch_clock_samples(void);
 #define PUNCH_NFX 27u                     /* 16 on the white keys, 11 on the black keys (2.6) */
@@ -178,7 +178,7 @@ static int32_t punch_ring_fx(int32_t fx)
 }
 
 /* the loops, STUTTER, HALF and REVERSE replay ring samples [start, start + len) (REVERSE: up to start,
- * backwards). The ring keeps recording the mix, and after PUNCH_N samples (0.74 s) the writer comes
+ * backwards). The ring keeps recording the mix, and after PUNCH_N samples (0.37 s) the writer comes
  * round into that span: it skips those slots once the loop is captured, so a held loop plays for as
  * long as the key is held. The rest of the ring keeps recording (the next effect has its past). */
 static int punch_owns(int32_t fx, uint32_t w)

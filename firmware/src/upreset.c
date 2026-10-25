@@ -116,22 +116,37 @@ static uint32_t up_obj(uint32_t b)
 typedef struct { uint8_t head[160], extra[46]; } up_disk_rec_t;
 typedef struct { uint32_t magic; uint16_t rsize,nslot; up_disk_rec_t r[UP_PER_BANK]; } up_disk_bank_t;
 _Static_assert(sizeof(up_disk_bank_t)<=3808u,"unified presets fit every A/B sector");
-static int up_save_bank(uint32_t b)
+/* The bank cache has one foreground owner; audio holds independent patches.
+ * Serialize it in place, saving only the omitted legacy phrase and old flags.
+ * Restore the decoded view on success AND failure before returning to callers.
+ * A per-record temporary makes overlapping bank compaction well-defined. */
+static __attribute__((noinline)) int up_save_bank(uint32_t b)
 {
-    up_disk_bank_t disk;memset(&disk,0,sizeof disk);
-    disk.magic=UP_DISK_MAGIC;disk.rsize=sizeof(up_disk_rec_t);disk.nslot=UP_PER_BANK;
     up_bank_t *bank=up_cache_bank(b);
+    struct {uint8_t phrase[32],used;} saved[UP_PER_BANK];
+    uint8_t header[8];memcpy(header,bank,sizeof header);
     for(uint32_t i=0;i<UP_PER_BANK;i++){
-        memcpy(disk.r[i].head,&bank->r[i],160u);memcpy(disk.r[i].extra,bank->r[i].cz_extra,46u);
+        memcpy(saved[i].phrase,bank->r[i].note,16u);memcpy(saved[i].phrase+16u,bank->r[i].flags,16u);saved[i].used=bank->r[i].used;
+    }
+    for(uint32_t i=0;i<UP_PER_BANK;i++){
+        up_disk_rec_t r;
+        memcpy(r.head,&bank->r[i],160u);memcpy(r.extra,bank->r[i].cz_extra,46u);
         uint32_t k=b*UP_PER_BANK+i;
-        if((up_fav_dirty>>b&1u) && k<UP_SLOTS && (bank->r[i].used&~UP_STAR)==UP_USED)disk.r[i].head[0]=(uint8_t)((disk.r[i].head[0]&~UP_STAR)|(up_meta[k].favorite?UP_STAR:0));
+        if((up_fav_dirty>>b&1u) && k<UP_SLOTS && (r.head[0]&~UP_STAR)==UP_USED)
+            r.head[0]=(uint8_t)((r.head[0]&~UP_STAR)|(up_meta[k].favorite?UP_STAR:0));
+        memcpy((uint8_t *)bank+8u+i*sizeof r,&r,sizeof r);
     }
-    int rc=st_save(up_obj(b),&disk,sizeof disk);
-    if(!rc){
-        up_migrate&=~(1u<<b);
-        for(uint32_t i=0;i<UP_PER_BANK;i++)bank->r[i].used=disk.r[i].head[0];
-        up_fav_dirty&=~(1u<<b);
+    struct {uint32_t magic;uint16_t size,count;} disk_head={UP_DISK_MAGIC,sizeof(up_disk_rec_t),UP_PER_BANK};
+    memcpy(bank,&disk_head,sizeof disk_head);
+    int rc=st_save(up_obj(b),bank,sizeof(up_disk_bank_t));
+    for(uint32_t i=UP_PER_BANK;i--;){
+        up_disk_rec_t r;memcpy(&r,(uint8_t *)bank+8u+i*sizeof r,sizeof r);
+        memcpy(&bank->r[i],r.head,160u);memcpy(bank->r[i].cz_extra,r.extra,46u);
+        memcpy(bank->r[i].note,saved[i].phrase,16u);memcpy(bank->r[i].flags,saved[i].phrase+16u,16u);
+        if(rc)bank->r[i].used=saved[i].used;
     }
+    memcpy(bank,header,sizeof header);
+    if(!rc){up_migrate&=~(1u<<b);up_fav_dirty&=~(1u<<b);}
     return rc;
 }
 #endif

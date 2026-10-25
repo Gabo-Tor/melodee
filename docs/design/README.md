@@ -356,7 +356,7 @@ the existing master DC blocker, limiter and clipper, including stereo USB
 capture. Individual USB track stems remain before the master effects. Loops,
 gate and modulation use song tempo, including measured external clock; a
 64-sample wet fade joins each change. Loops hold their captured samples across
-history wraps. Punch history requests one optional 64 KiB allocation while the
+history wraps. Punch history requests one optional 32 KiB allocation while the
 layer is in use, captures from layer entry, and releases after the layer and
 all effect keys close. Hold FX briefly before reverse/rewind to capture past
 audio. If allocation fails, buffered effects stay dry and the header says

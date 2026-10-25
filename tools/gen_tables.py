@@ -401,7 +401,7 @@ def fm6_tables():
           for i in range(1024)]
     ex = [int(round(f32((math.pow(2, f32(i / 1024.0)) - 1) * 4096))) for i in range(1024)]
     L += arr("FM6_MKI_LOG_H", "uint16_t", lg, 16)           # FM6_MKI_LOG: lg + reversed: half a cycle (the sign: the phase)
-    L += ["static uint16_t FM6_MKI_LOG[2048];"]
+    L += ["static uint16_t FM6_MKI_LOG[1024];"]
     L += arr("FM6_MKI_EXP_D", "uint8_t", nibbles([ex[i] - ex[i - 1] - 2 for i in range(1, 1024)], ex[0]), 16)
     L += ["static uint16_t FM6_MKI_EXP[1024];             /* 4096 + exp, reversed */"]
     # OPL (EngineOpl.cpp): the OPL's quarter-wave log sine and exponent ROMs
@@ -423,7 +423,7 @@ def fm6_tables():
         7, 7, 6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2,
         2, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
     L += arr("FM6_OPL_LOG_H", "uint16_t", opl_log, 16)      # FM6_OPL_LOG: half a cycle
-    L += ["static uint16_t FM6_OPL_LOG[512];"]
+    L += ["static uint16_t FM6_OPL_LOG[256];"]
     opl_exp = [
         0, 3, 6, 8, 11, 14, 17, 20, 22, 25, 28, 31, 34, 37, 40, 42,
         45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
@@ -458,8 +458,8 @@ def fm6_tables():
           "        u = x;",
           "    }",
           "    FM6_SIN[1024] = 0.0f;",
-          "    for (i = 0; i < 1024u; i++) FM6_MKI_LOG[i] = FM6_MKI_LOG[2047u - i] = FM6_MKI_LOG_H[i];",
-          "    for (i = 0; i < 256u; i++) FM6_OPL_LOG[i] = FM6_OPL_LOG[511u - i] = FM6_OPL_LOG_H[i];",
+          "    for (i = 0; i < 1024u; i++) FM6_MKI_LOG[i] = FM6_MKI_LOG_H[i];",
+          "    for (i = 0; i < 256u; i++) FM6_OPL_LOG[i] = FM6_OPL_LOG_H[i];",
           f"    for (i = 0, e = {ex[0]}u; i < 1024u; i++) {{",
           "        if (i) e += 2u + ((FM6_MKI_EXP_D[(i - 1u) >> 1] >> (((i - 1u) & 1u) * 4u)) & 15u);",
           "        FM6_MKI_EXP[i ^ 1023u] = (uint16_t)(4096u + e);",

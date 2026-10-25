@@ -29,10 +29,10 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 static void panel_setup(void) {}
 
 static uint8_t nor[0x100000], flash_ok = 1;
-static int erase_error, fail_after = -1;
+static int erase_error, fail_after = -1, inject_readback, readback_error;
 static uint32_t erases, preset_reads, maintenance_erases, hidden_maintenance;
 static uint8_t check_maintenance;
-static int st_read(uint32_t off, void *dst, uint32_t n) { preset_reads++; memcpy(dst, nor + off, n); return 0; }
+static int st_read(uint32_t off, void *dst, uint32_t n) { preset_reads++; if(readback_error)return -7; memcpy(dst, nor + off, n); return 0; }
 static int st_erase(uint32_t off)
 {
     erases++;
@@ -51,6 +51,7 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     if (fail_after == 0) return -9;
     if (fail_after > 0) fail_after--;
     for (i = 0; i < n; i++) nor[off + i] &= s[i];
+    if(inject_readback && !(off%4096u))readback_error=1;
     return 0;
 }
 static uint32_t irq_save(void) { return 0; }
@@ -91,7 +92,7 @@ static void reset(void)
     persist_old = tmpl_old = preset_old_write = 0;
     persist_retry_ms = 0;
     flash_ok = 1;
-    erase_error = 0;
+    erase_error = inject_readback = readback_error = 0;
     fail_after = -1;
     up_gen = erases = 0;
     irq_start_race = irq_races = 0;
@@ -209,9 +210,50 @@ static int wipe_recovery(void)
     bad+=check("power cuts during copy replacement/marker removal never resurrect presets",safe);
     return bad;
 }
+/* Independent original serializer, including every opaque legacy phrase byte
+ * in the cache. Every program page/commit, erase and readback error restores
+ * the complete decoded cache and keeps deferred dirty/migration ownership. */
+static int compact_save_parity(void)
+{
+    int bad=0;reset();up_boot();up_bank_t *cache=up_cache_bank(0);
+    up_bank_t original,success;
+    uint8_t *bytes=(uint8_t *)&original;
+    for(uint32_t i=0;i<sizeof original;i++)bytes[i]=(uint8_t)(i*73u+i/238u);
+    original.magic=UP_BANK_MAGIC;original.rsize=sizeof(up_rec_t);original.nslot=UP_PER_BANK;
+    up_disk_bank_t disk;disk.magic=UP_DISK_MAGIC;disk.rsize=206u;disk.nslot=18u;
+    for(uint32_t i=0;i<UP_PER_BANK;i++){
+        original.r[i].used=(uint8_t)(i%3u?UP_USED:0x33u);
+        up_meta[i].favorite=(uint8_t)(i&1u);
+        memcpy(disk.r[i].head,&original.r[i],160u);
+        memcpy(disk.r[i].extra,original.r[i].cz_extra,46u);
+        if((disk.r[i].head[0]&~UP_STAR)==UP_USED)
+            disk.r[i].head[0]=(uint8_t)(UP_USED|(i&1u?UP_STAR:0));
+    }
+    success=original;
+    for(uint32_t i=0;i<UP_PER_BANK;i++)success.r[i].used=disk.r[i].head[0];
+    static uint8_t flash_before[sizeof nor];memcpy(flash_before,nor,sizeof nor);
+    int safe=1;
+    for(int cut=-3;cut<=16;cut++){
+        memcpy(nor,flash_before,sizeof nor);*cache=original;
+        up_fav_dirty=up_migrate=1u;
+        erase_error=cut==-3;inject_readback=cut==-2;readback_error=0;
+        fail_after=cut>=0?cut:-1;
+        int rc=up_save_bank(0);readback_error=inject_readback=erase_error=0;fail_after=-1;
+        int expected_failure=cut==-3 || cut==-2 || (cut>=0 && cut<16);
+        safe &= !!rc==expected_failure;
+        safe &= !memcmp(cache,rc?&original:&success,sizeof original);
+        safe &= (up_fav_dirty==!!rc && up_migrate==!!rc);
+        if(!rc){
+            up_disk_bank_t actual;
+            safe &= st_load(up_obj(0),&actual,sizeof actual)==sizeof actual && !memcmp(&actual,&disk,sizeof disk);
+        }
+    }
+    bad+=check("in-place save matches original bytes; all page/erase/readback cuts restore cache",safe);
+    return bad;
+}
 int main(void)
 {
-    int bad=fill(ENGI_CZ)+fill(ENGI_PROPHET)+fill(ENGI_FM6)+legacy_conversion()+wipe_recovery();
+    int bad=compact_save_parity()+fill(ENGI_CZ)+fill(ENGI_PROPHET)+fill(ENGI_FM6)+legacy_conversion()+wipe_recovery();
     reset();up_boot();p5_patch_t p;p5_patch_init(&p);uint8_t cz[CZ_BYTES];cz_patch_init(cz);
     bad+=check("Prophet occupies a shared slot",!native_put(ENGI_PROPHET,383,(uint8_t *)&p));
     bad+=check("CZ replaces Prophet in the identical slot",!native_put(ENGI_CZ,383,cz)&&native_used(ENGI_CZ,383)&&!native_used(ENGI_PROPHET,383));

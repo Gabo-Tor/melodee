@@ -366,7 +366,9 @@ static float fm6_bus[2][CTL], fm6_sum[CTL];
  * As in Dexed the sum is 16 bits, the sign its top bit (a gain ramp that overshoots wraps it) */
 static inline __attribute__((always_inline)) int32_t fm6_mki(int32_t ph, int32_t env)
 {
-    uint32_t e = ((uint32_t)FM6_MKI_LOG[((uint32_t)ph >> 12) & 2047u] + (((uint32_t)ph >> 8) & 0x8000u) + (uint32_t)env) &
+    /* The ROM's other quarter is its exact reflection. */
+    uint32_t i=((uint32_t)ph>>12)&2047u;if(i&1024u)i^=2047u;
+    uint32_t e = ((uint32_t)FM6_MKI_LOG[i] + (((uint32_t)ph >> 8) & 0x8000u) + (uint32_t)env) &
                  0xFFFFu;
     int32_t y = (int32_t)(((uint32_t)FM6_MKI_EXP[e & 0x3FFu] >> ((e & 0x7FFFu) >> 10)) << 13);
     return e & 0x8000u ? -y - 8192 : y;
@@ -375,7 +377,8 @@ static inline __attribute__((always_inline)) int32_t fm6_mki(int32_t ph, int32_t
 /* OPL: the OPL's quarter-wave ROMs (oplSin); env: attenuation, 8 a step of 3/8 dB; 16 bits as above */
 static inline __attribute__((always_inline)) int32_t fm6_opl(int32_t ph, int32_t env)
 {
-    uint32_t e = ((uint32_t)FM6_OPL_LOG[((uint32_t)ph >> 14) & 511u] + (((uint32_t)ph >> 8) & 0x8000u) +
+    uint32_t i=((uint32_t)ph>>14)&511u;if(i&256u)i^=511u;
+    uint32_t e = ((uint32_t)FM6_OPL_LOG[i] + (((uint32_t)ph >> 8) & 0x8000u) +
                   ((uint32_t)env << 3)) & 0xFFFFu, sh = (e & 0x7FFFu) >> 8;
     int32_t y = sh > 31u ? 0 : (int32_t)((uint32_t)FM6_OPL_EXP[e & 0xFFu] >> sh);
     return (e & 0x8000u ? -y - 1 : y) * (1 << 14);

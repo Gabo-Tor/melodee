@@ -154,14 +154,29 @@ static __attribute__((noinline,section(".dsp_text"))) void MIX_MONO_GENERAL(trac
 }
 #undef MIX_MONO_GENERAL
 #if MELODEE_MIX_FAST
+/* Centered dry tracks need neither pan multiplications nor send-buffer
+ * reads/writes. Keep this loop separate from the centered-send path. */
+static __attribute__((noinline,section(".dsp_text"))) void mix_mono_dry(track_t *t,int32_t *b,uint32_t n,const mix_cache_t *mc)
+{
+    int32_t lvl=mc->lvl,pk=t->peak;
+    for(uint32_t i=0;i<n;i++){
+        int32_t x=clamp(((clamp(b[i],-884000,884000)>>2)*lvl)>>10,-524287,524287),a=x<0?-x:x;
+#if MELODEE_USB_AUDIO
+        if(track_capture_on)track_capture[i*NPART+(uint32_t)(t-trk)]=x;
+#endif
+        if(a>pk)pk=a;
+        mix_l[i]+=x;mix_r[i]+=x;
+    }
+    t->peak=pk;
+}
 static __attribute__((noinline,section(".dsp_text"))) void mix_mono_samples(track_t *t,int32_t *b,uint32_t n,const mix_cache_t *mc)
 {
     uint32_t send=fx_send_on?fx_send_gain(t):0u;
-    if(mc->pan || !send){mix_mono_general(t,b,n,mc);return;}
+    if(mc->pan){mix_mono_general(t,b,n,mc);return;}
+    if(!send){mix_mono_dry(t,b,n,mc);return;}
     /* x is clamped to +/-524287, so unity pan multiplication is exact and
      * cannot overflow. Equal channels also share the send's scaling work.
-     * Keep the original loop separate: duplicating it here hurts noncenter
-     * and dry host paths through register pressure and loop selection. */
+     * Keep each loop separate to avoid register pressure in the general path. */
     int32_t lvl=mc->lvl,pk=t->peak;
     for(uint32_t i=0;i<n;i++){
         int32_t x=clamp(((clamp(b[i],-884000,884000)>>2)*lvl)>>10,-524287,524287),a=x<0?-x:x;
@@ -309,10 +324,13 @@ static __attribute__((noinline)) void mix_part(track_t *t,uint32_t n)
 static __attribute__((noinline,section(".dsp_text"))) void master_samples(int32_t *out,uint32_t n)
 {
     int32_t gain=fx_bus_mix,target=fx_bus_target;
-    for(uint32_t i=0;i<n;i++){
+    /* With no wet result the sample pass only rewrites the dry mix. Advance
+     * its monotone return ramp once; keep per-sample rounding when audible. */
+    if(!fx_bus_result)gain+=clamp(target-gain,-(int32_t)n*128,(int32_t)n*128);
+    else for(uint32_t i=0;i<n;i++){
         if(gain!=target)gain+=clamp(target-gain,-128,128);
         int32_t l=mix_l[i],r=mix_r[i];
-        if(fx_bus_result){uint32_t ret=(uint32_t)gain*2u;
+        {uint32_t ret=(uint32_t)gain*2u;
             l+=((fx_scale(fx_left[i],ret)>>2)*(int32_t)song.master_q12)>>10;
             r+=((fx_scale(fx_right[i],ret)>>2)*(int32_t)song.master_q12)>>10;}
         mix_l[i]=l;mix_r[i]=r;

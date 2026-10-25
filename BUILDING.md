@@ -519,8 +519,10 @@ shedding remains active. Serial builds retain their original five-voice state.
 
 The startup sequence follows `EnableOtherCpu` in the tested AC79 SDK's
 `system.a/port.c.o` and `cpu.a/startup.S.o`: entry mailbox `0x01C7FFF8`, temporary
-clock-divider bit 3, and `C1_CON` release/hold bits 3/1. CPU1 has separate 4 KiB
-user and supervisor stacks and no enabled interrupts. It polls an internal SRAM
+clock-divider bit 3, and `C1_CON` release/hold bits 3/1. CPU1 has a private 4 KiB bank split into a 3 KiB user stack and 1 KiB
+supervisor stack, with no enabled interrupts. The build audits linked stack
+frames and callbacks against these reservations; hardware watermark and stress
+acceptance remain pending for the reduced layout. It polls an internal SRAM
 mailbox while idle; the effect on battery consumption still needs measurement. Startup has a 10 ms
 handshake; a failure retains serial rendering.
 The worker's idle loop is in internal RAM and publishes completion only after

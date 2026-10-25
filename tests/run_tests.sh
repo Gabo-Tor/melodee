@@ -236,6 +236,7 @@ dsp_tracks() {
 fx_dormancy() {
     build fx_dormant_test fx_dormant_test -O2 $FW -UMELODEE_FX_DORMANT -DMELODEE_FX_DORMANT=1 || return
     step "Chorus dormancy: independent kernel PCM/state/ring parity and cost" "$OUT/fx_dormant_test"
+    step "FX layout: frozen PCM/allocation trace across inserts, CHAIN/SPLIT and stereo changes" "$OUT/fx_dormant_test" --audio-trace
     build fx_dormant_reference fx_dormant_test -O2 $FW -UMELODEE_FX_DORMANT -DMELODEE_FX_DORMANT=0 || return
     "$OUT/fx_dormant_reference" --trace > "$OUT/fx-dormant-reference.trace" || fail "FX reference route trace"
     "$OUT/fx_dormant_test" --trace > "$OUT/fx-dormant-candidate.trace" || fail "FX candidate route trace"
@@ -317,6 +318,10 @@ if core; then
     t "USB audio: endpoint lifecycle and packet ownership" usb_audio_driver_test
     t "USB MIDI host: duplex I/O, enumeration, ACK ownership, back-pressure and recovery" usb_host_test -O1 -fsanitize=address,undefined
     run "USB descriptors: MIDI, CDC and audio configurations" python3 tests/usb_audio_desc_test.py
+    run "boot audio: packed image, decoder bounds, malformed streams and XIP dependencies" python3 tests/boot_audio_test.py
+    run "BLE HCI size probe: shared events preserved and SDK drift rejected" python3 tests/ble_hci_probe_test.py
+    run "size attributes: preserve hot loops and outline foreground transactions" python3 tests/size_fns_test.py
+    run "stack budgets: callbacks, re-entry, nested IRQs and overflow rejection" python3 tests/stack_budget_test.py
     run "resident audio: call graph and flash/RAM ABI boundaries" python3 tests/audio_ram_test.py
     run "performance defaults: local/compiler agreement and explicit reference overrides" python3 tests/performance_defaults_test.py
     t "removed effects: old songs and motion, MIDI, physical input and dry output" no_effects_test -O1 $FW
@@ -431,6 +436,7 @@ if sound && [ $TABLES = 1 ]; then
     t "modulation matrix: off = bit-identical, the math, MIDI CC1 / CC11 / aftertouch, cost, demos" mod_test \
         -DMELODEE_LEGACY_EXTRAS=1 -O2 $FW -- "$OUT/mod_test" build/mod_demo
     t "matrix S&H / SLEW / DEPTH, SPREAD: off = bit-identical, stereo sides and routing" mod_spread_test -O2 $FW
+    t "FM6 ROM symmetry: exact original operators and envelope wrap" fm6_table_test -O2 $FW
     t "modulation routing cache: independent reference parity and comparison cost" mod_route_test -O2 $FW
     t "CPU playback fixtures: exact full-bank serialization across densities/timing/engines" audio_cpu_fixture -O2 $FW
     t "CPU live takes: REC/overdub schedules, native simulation, jitter bounds, FBKK decoding" audio_cpu_take -O2 $FW
@@ -447,6 +453,7 @@ if sound && [ $TABLES = 1 ]; then
     t "centered bend fast path: full raw/range oracle and control cost" control_prepare_test -O2 $FW
     job fx_dormancy
     t "mono mixer fast path: output/send/peak/stem reference parity and cost" mix_fast_test -O2 $FW
+    t "master output: exact wet/dry ramps, limiter/DC state and dry-pass cost" master_output_test -O2 $FW
     t "CZ: oscillator boundaries, native rate/target envelopes and independent lines" phase_test \
         -DMELODEE_LEGACY_EXTRAS=1 -O2 $FW
     t "SID: oscillator/LFSR/register semantics, revisions and 32 factory presets" sid_test -O2 $FW

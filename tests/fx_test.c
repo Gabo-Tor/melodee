@@ -268,7 +268,7 @@ static void tape_smooth(void)
         assert(jump<=(hz?600u:2u));assert(!resource[RES_FX0].size);
         t->p[P_FXCHAR]=0;fx_process(t,b,CTL);t->p[P_FXCHAR]=127;fx_process(t,b,CTL);
         for(uint32_t k=0;k<4000;k++){memset(b,0,sizeof b);fx_process(t,b,CTL);}
-        for(uint32_t ch=0;ch<2;ch++)for(uint32_t k=0;k<3;k++)assert(!fx_state[0].q[ch][k].z1 && !fx_state[0].q[ch][k].z2);
+        for(uint32_t ch=0;ch<2;ch++)for(uint32_t k=0;k<3;k++)assert(!fx_state[0].history[ch][k].z1 && !fx_state[0].history[ch][k].z2);
     }
     puts("Tape: maximum jitter/rate have smooth phase/filter transitions, bounded stereo output, no allocation and no denormal tail: OK");
 }
@@ -382,7 +382,7 @@ static void tone_test(void)
             }
         }
         /* the high cut gone exactly; the low cut stays at the floor, so the constant input has died away */
-        assert(!plan.f->q[0][1].b1 && !plan.f->q[0][1].z1 && plan.f->q[0][0].a2==(float)fx_floor_hz(p[0]) && abs(previous)<100);
+        assert(!plan.f->time_tone[1].b1 && !plan.f->time_tone[1].z1 && plan.f->time_tone[0].a2==(float)fx_floor_hz(p[0]) && abs(previous)<100);
     }
     /* Each slot's TONE targets its own track/slot and section, shared slots too. */
     ui_power_on();reset_fx();fx_plan_t plan;
@@ -391,7 +391,7 @@ static void tone_test(void)
         uint32_t base=(ti==NPART?G_MFXTYPE:P_FXTYPE)+slot*FX_PARAMS,tone=(ti==NPART?G_MFXTONE:P_FXTONE)+slot;
         p[base]=FX_ROOM;p[base+1]=127;p[tone]=v;
         fx_slot_prepare(&plan,ti*FX_SLOTS+slot,p+base);
-        assert(plan.active && plan.f->q[0][0].a2==(float)fx_low_cut_hz(FX_ROOM,v) && plan.f->q[0][1].a2==(v<0?(float)fx_tone_hz(v):0.0f));
+        assert(plan.active && plan.f->time_tone[0].a2==(float)fx_low_cut_hz(FX_ROOM,v) && plan.f->time_tone[1].a2==(v<0?(float)fx_tone_hz(v):0.0f));
     }
     project_t q;project_store_t wire;project_capture(&q);assert(proj_pack(&wire,&q) && proj_import(&proj_scratch,&wire,sizeof wire));
     for(uint32_t ti=0;ti<=NPART;ti++)for(uint32_t slot=0;slot<FX_SLOTS;slot++){

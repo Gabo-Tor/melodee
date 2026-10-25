@@ -37,6 +37,8 @@ STB = OUT / "stub"
 sys.path.insert(0, str(SRC / "tools"))
 import fm1pkg_make  # noqa: E402
 import lz4blk  # noqa: E402
+import boot_audio  # noqa: E402
+import stack_budget  # noqa: E402
 
 STUB_XIP = 0x02000120
 STUB_LEN = fm1pkg_make.STUB_LEN
@@ -313,6 +315,10 @@ def build_app(stub):
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
         blob = (OUT / sect).read_bytes() if (OUT / sect).exists() else b""
+        if sect == "audiotext.bin" and blob and os.environ.get("MELODEE_COMPRESS_AUDIO", "1") != "0":
+            raw_size = len(blob)
+            blob = boot_audio.pack(blob)
+            print(f"audio image: {raw_size} -> {len(blob)} flash bytes; expands once before audio starts")
         if blob:
             if load - APP_XIP < len(img):
                 raise SystemExit(f"{lname} overlaps the image")
@@ -360,7 +366,7 @@ def check(img, syms, dis, rt):
             address = sym(name)
             if address:
                 live += 1
-                if not sym("_rt_start") <= address < sym("_guard_ram_end") <= 0x01C74000:
+                if not sym("_rt_start") <= address < sym("_guard_ram_end") <= sym("_resource_end"):
                     errors.append(f"audio function {name} escaped SRAM")
         current = None
         for line in dis.splitlines():
@@ -384,7 +390,7 @@ def check(img, syms, dis, rt):
             if (name == kernel or address) and not sym("_dsp_start") <= address < sym("_dsp_end"):
                 errors.append(f"{name} must remain in internal DSP RAM")
         notes.append("FM6: sample kernel and operator helpers in internal DSP RAM")
-    for name in ("fm6_output", "fm6_dc_samples", "fm6_eg_go", "fm6_eg_step", "fm6_peg_go", "p5_dc_samples", "mix_mono_samples", "master_samples", "master_out"):
+    for name in ("fm6_output", "fm6_dc_samples", "fm6_eg_go", "fm6_eg_step", "fm6_peg_go", "p5_dc_samples", "mix_mono_samples", "mix_mono_dry", "master_samples", "master_out"):
         address = sym(name)
         if address and not sym("_dsp_start") <= address < sym("_dsp_end"):
             errors.append(f"{name} must remain in internal DSP RAM")
@@ -399,17 +405,32 @@ def check(img, syms, dis, rt):
         for name in ("fm1_core1_main", "audio_worker_loop"):
             if not 0x01C00000 <= sym(name) < sym("_dsp_end"):
                 errors.append(f"{name} must remain in internal RAM for flash-safe idle")
-        if sym("_cpu1_stacks_hi") - sym("_cpu1_stacks_lo") != 8192:
-            errors.append("CPU1 requires separate 4 KiB user and supervisor stacks")
+        if sym("_cpu1_stacks_hi") - sym("_cpu1_stacks_lo") != 4096:
+            errors.append("CPU1 requires a private 4 KiB stack bank")
         # Idle may call only the job's register-held callback; a compiler
         # outlined XIP helper would break flash writes after completion.
         body = dis.split("\naudio_worker_loop:", 1)[-1].split("\n\n", 1)[0]
         if re.search(r"\bcall -?\d+", body):
             errors.append("CPU1 polling loop contains a direct call; helpers must be inlined")
-        notes.append("CPU1: RAM polling loop, private 8 KiB stacks, bounded startup/join")
+        notes.append("CPU1: RAM polling loop, private 4 KiB stacks, bounded startup/join")
+    errors += boot_audio.check_decoder(syms, dis, APP_XIP, sym("_app_xip_end"))
+    if os.environ.get("MELODEE_SIZE") == "0":
+        errors.append("reduced stack layout requires the optimized LLVM stack audit (MELODEE_SIZE=1)")
+    else:
+        ir_name = "melodee_audio.ll" if os.environ.get("MELODEE_RAM_AUDIO") == "1" else "melodee_size.ll"
+        try:
+            audit = stack_budget.analyze((OUT / ir_name).read_text(), dis, FW / "src")
+            errors += stack_budget.check(audit, sym("_ustack_top") - sym("_ustack_lo"),
+                                         sym("_sstack_top") - sym("_sstack_lo"),
+                                         sym("_cpu1_stacks_hi") - sym("_cpu1_stacks_lo"),
+                                         sym("_cpu1_ustack_top") - sym("_cpu1_stacks_lo"))
+            (OUT / "stack-budget.json").write_text(json.dumps(audit, indent=2) + "\n")
+            notes.append("stack audit: " + ", ".join(f"{n} {p[0]} B" for n, p in audit["paths"].items()))
+        except ValueError as error:
+            errors.append(f"stack audit: {error}")
     bss = sym("_bss_end") - 0x01C08000
     pool = sym("_pool_end") - sym("_pool_start")
-    notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of 98304; pool {pool} B of {0x54000}")
+    notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of 98304; pool {pool} B of {sym("_resource_end") - sym("_pool_start")}")
     arena = sym("_resource_end") - sym("_resource_start")
     if arena:
         minimum = sym("_resource_minimum")
@@ -439,8 +460,8 @@ def check(img, syms, dis, rt):
                                   (FW / "src" / "resources.c").read_text(), re.M)[1])
         cache_audio = 28672 - ui_reserve
         notes.append(f"cache RAM: optional 28672 B after boot self-test; UI {ui_reserve} B, audio {cache_audio} B; maximum audio resources {arena + tails + cache_audio} B")
-    if 0x54000 - pool < 8192:                     # keep >= 8 KiB of the pool spare
-        errors.append(f"pool headroom {0x54000 - pool} B < 8192 B")
+    if sym("_resource_end") - sym("_pool_start") - pool < 8192:                     # keep >= 8 KiB of the pool spare
+        errors.append(f"pool headroom {sym("_resource_end") - sym("_pool_start") - pool} B < 8192 B")
     return errors, notes
 
 

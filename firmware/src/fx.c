@@ -7,12 +7,15 @@
  * Only the audio owner mutates DSP state or the optional short-delay memory. */
 #include "../hal/fm1_eq.h"
 #define FX_RATE (FS/4u)
-typedef struct { float b0,b1,b2,a1,a2,z1,z2; } fx_bq_t;
+typedef struct { float b0,b1,b2,a1,a2; } fx_coeff_t;
+typedef struct { float z1,z2; } fx_history_t;
+typedef struct { float b0,b1,b2,a1,a2,z1,z2; } fx_bq_t; /* wet-input tone */
 typedef struct {
     /* ROOM's four comb cursors/spans reuse idle filter histories after its
      * two wet-input tone sections. No reverb tank state remains. */
     union {
-        fx_bq_t q[2][4];
+        /* Coefficients are identical on both sides; only histories differ. */
+        struct { fx_coeff_t q[4]; fx_history_t history[2][4]; };
         struct { fx_bq_t time_tone[2]; uint16_t comb[4], rev_span[4]; };
     };
 #if MELODEE_HW_EQ
@@ -63,7 +66,7 @@ static inline __attribute__((always_inline)) int32_t fx_sine(uint32_t phase)
     uint32_t i=phase>>22;int32_t a=SINE[i],b=SINE[(i+1u)&1023u];
     return a+(((b-a)*(int32_t)((phase>>7)&32767u))>>15);
 }
-static void fx_coeff(fx_bq_t *q,uint32_t type,int32_t hz,float resonance,float gain)
+static void fx_coeff(fx_coeff_t *q,uint32_t type,int32_t hz,float resonance,float gain)
 {
     uint32_t ph=(uint32_t)clamp(hz,60,(int32_t)FX_RATE*45/100)*(uint32_t)(0x100000000ull/FX_RATE);
     float s=(float)sine_i(ph)*(1.0f/32768.0f),c=(float)sine_i(ph+0x40000000u)*(1.0f/32768.0f);
@@ -78,14 +81,14 @@ static void fx_coeff(fx_bq_t *q,uint32_t type,int32_t hz,float resonance,float g
         q->b0=(1.0f+alpha*gain)*inv;q->b1=q->a1;q->b2=(1.0f-alpha*gain)*inv;
     }
 }
-static inline __attribute__((always_inline)) float fx_tick(fx_bq_t *q,float x)
+static inline __attribute__((always_inline)) float fx_tick(const fx_coeff_t *q,fx_history_t *h,float x)
 {
-    float y=q->b0*x+q->z1;
-    q->z1=fx_bound(q->b1*x-q->a1*y+q->z2,2000000.0f);
-    q->z2=fx_bound(q->b2*x-q->a2*y,2000000.0f);
+    float y=q->b0*x+h->z1;
+    h->z1=fx_bound(q->b1*x-q->a1*y+h->z2,2000000.0f);
+    h->z2=fx_bound(q->b2*x-q->a2*y,2000000.0f);
     return fx_bound(y,1000000.0f);
 }
-static void fx_identity(fx_bq_t *q) { q->b0=1;q->b1=q->b2=q->a1=q->a2=0; }
+static void fx_identity(fx_coeff_t *q) { q->b0=1;q->b1=q->b2=q->a1=q->a2=0; }
 static void fx_design(fx_state_t *f,uint32_t n)
 {
     static const uint16_t vowel[5][3]={{800,1150,2900},{400,1700,2600},{300,2200,3000},{500,800,2800},{350,650,2700}};
@@ -100,15 +103,11 @@ static void fx_design(fx_state_t *f,uint32_t n)
     if(!first && f->rev_char==cha && (moving?f->rev_rate==sweep:previous==f->random))return;
     f->rev_rate=(int16_t)sweep;f->rev_char=(int16_t)cha;
     for(uint32_t k=0;k<4u;k++){
-        fx_bq_t *q=&f->q[0][k];
+        fx_coeff_t *q=&f->q[k];
         if(moving)fx_coeff(q,0,180+(int32_t)k*310+sweep*(3+cha/8),0.65f,1);
         else if(f->type==FX_FORMANT && k<3u)fx_coeff(q,3,vowel[(uint32_t)f->random%5u][k]*(80+cha)/144,4.0f,1.8f);
         else if(f->type==FX_SPIT && k==0u)fx_coeff(q,2,180+f->random*45,1.0f+cha*0.15f,1);
         else fx_identity(q);
-        /* Both stereo sides use these coefficients and independent histories.
-         * Width's processed left side needs no right-side design. */
-        fx_bq_t *right=&f->q[1][k];
-        right->b0=q->b0;right->b1=q->b1;right->b2=q->b2;right->a1=q->a1;right->a2=q->a2;
 #if MELODEE_HW_EQ
         for(uint32_t ch=0;ch<2u;ch++){
             float *h=f->hw[ch][k];h[0]=q->b0;h[1]=-q->a2;h[2]=q->b2/q->b0;h[3]=-q->a1;h[4]=q->b1/q->b0;
@@ -123,14 +122,14 @@ static uint8_t fx_hw_status; /* 0 untried, 1 verified, 2 CPU */
 static void fx_probe(void)
 {
 #if MELODEE_HW_EQ && defined(FM1_IRQ_TARGET)
-    fx_bq_t q[4]={{0}};float row[4][8]={{0}},want[CTL];
+    fx_coeff_t q[4]={{0}};fx_history_t history[4]={{0}};float row[4][8]={{0}},want[CTL];
     for(uint32_t k=0;k<4u;k++){
         fx_coeff(&q[k],0,300+(int32_t)k*400,0.7f,1);
         row[k][0]=q[k].b0;row[k][1]=-q[k].a2;row[k][2]=q[k].b2/q[k].b0;row[k][3]=-q[k].a1;row[k][4]=q[k].b1/q[k].b0;
     }
     for(uint32_t i=0;i<CTL;i++){
         float x=i?0:8192;fx_in[i]=x;
-        for(uint32_t k=0;k<4u;k++)x=fx_tick(&q[k],x);want[i]=x;
+        for(uint32_t k=0;k<4u;k++)x=fx_tick(&q[k],&history[k],x);want[i]=x;
     }
     fx_hw_status=fm1_eq_run(row,fx_in,fx_out,CTL)?1:2;
     if(fx_hw_status==1)for(uint32_t i=0;i<CTL;i++)
@@ -141,11 +140,11 @@ static void fx_probe(void)
 }
 /* Tape uses three pairs of stable one-poles instead of staging six biquad
  * passes. The fourth unused section stores shared coefficient/polarity
- * controls; z1/z2 hold each channel's independent filter histories. */
+ * controls; the separate histories retain each channel's filter state. */
 static void fx_tape_design(fx_state_t *f,uint32_t n)
 {
     uint32_t first=!f->age,old_phase=f->phase;int32_t old_random=f->random;
-    fx_bq_t *control=&f->q[0][3];
+    fx_coeff_t *control=&f->q[3];
     f->phase+=LFO_INC[f->rate]*n/CTL;
     if(f->phase<old_phase || first)f->random=(int32_t)(noise32(&f->rng)&127u);
     f->age=1; /* initialization marker; it must not wrap during a long session */
@@ -154,13 +153,13 @@ static void fx_tape_design(fx_state_t *f,uint32_t n)
     int32_t hz[3]={low,clamp(1400+(f->random-64)*cha/4,low+150,8000),6500-cha*38};
     for(uint32_t k=0;k<3u;k++){
         float w=(float)clamp(hz[k],60,(int32_t)FX_RATE*45/100)*(6.28318530718f/FX_RATE);
-        f->q[0][k].b1=w/(1.0f+w);
-        if(first)f->q[0][k].b0=f->q[0][k].b1;
+        f->q[k].b1=w/(1.0f+w);
+        if(first)f->q[k].b0=f->q[k].b1;
     }
     control->b1=cha>32 && (f->random&64)?-1.0f:1.0f;control->b2=(float)cha;
     if(first)control->b0=1.0f;
 }
-static inline __attribute__((always_inline)) float fx_tape_lp(fx_bq_t *q,float x,float g)
+static inline __attribute__((always_inline)) float fx_tape_lp(fx_history_t *q,float x,float g)
 {
     q->z1+=(x-q->z1)*g;q->z2+=(q->z1-q->z2)*g;return q->z2;
 }
@@ -170,20 +169,20 @@ static __attribute__((noinline,section(".dsp_text"))) void fx_tape(fx_state_t *r
      * sign through zero; an instantaneous mid-band inversion makes a click. */
     const float slew=1.0f/(0.015f*FX_RATE);
     for(uint32_t i=0;i<n;i++){
-        for(uint32_t k=0;k<4u;k++)f->q[0][k].b0+=(f->q[0][k].b1-f->q[0][k].b0)*slew;
-        float blend=f->q[0][3].b0-1.0f;
+        for(uint32_t k=0;k<4u;k++)f->q[k].b0+=(f->q[k].b1-f->q[k].b0)*slew;
+        float blend=f->q[3].b0-1.0f;
         for(uint32_t ch=0;ch<(f->mono?1u:2u);ch++){
             int32_t *b=ch?right:left;float x=(float)b[i];
-            float low=fx_tape_lp(&f->q[ch][0],x,f->q[0][0].b0);
-            float upper=fx_tape_lp(&f->q[ch][1],x,f->q[0][1].b0);
+            float low=fx_tape_lp(&f->history[ch][0],x,f->q[0].b0);
+            float upper=fx_tape_lp(&f->history[ch][1],x,f->q[1].b0);
             x+=blend*(upper-low);
-            b[i]=(int32_t)fx_bound(fx_tape_lp(&f->q[ch][2],x,f->q[0][2].b0),1000000.0f);
+            b[i]=(int32_t)fx_bound(fx_tape_lp(&f->history[ch][2],x,f->q[2].b0),1000000.0f);
         }
     }
-    if(f->mono)for(uint32_t k=0;k<3u;k++){f->q[1][k].z1=f->q[0][k].z1;f->q[1][k].z2=f->q[0][k].z2;}
+    if(f->mono)for(uint32_t k=0;k<3u;k++){f->history[1][k]=f->history[0][k];}
     /* Clear inaudible tails before they can become costly denormals. */
     for(uint32_t ch=0;ch<2u;ch++)for(uint32_t k=0;k<3u;k++){
-        fx_bq_t *q=&f->q[ch][k];
+        fx_history_t *q=&f->history[ch][k];
         if(q->z1>-1e-9f && q->z1<1e-9f)q->z1=0;
         if(q->z2>-1e-9f && q->z2<1e-9f)q->z2=0;
     }
@@ -206,12 +205,17 @@ static __attribute__((noinline,section(FX_FILTER_SECTION))) void fx_filter(fx_st
     }
 #endif
     uint32_t sections=f->type==FX_SPIT?1u:f->type==FX_FORMANT?3u:4u;
+    const fx_coeff_t *end=f->q+sections;
+    fx_history_t *history=f->history[ch];
     for(uint32_t i=0;i<n;i++){
-        float x=(float)b[i];for(uint32_t k=0;k<sections;k++)x=fx_tick(&f->q[ch][k],x);b[i]=(int32_t)x;
+        const fx_coeff_t *q=f->q;fx_history_t *h=history;
+        float x=(float)b[i];
+        do{x=fx_tick(q++,h++,x);}while(q!=end);
+        b[i]=(int32_t)x;
     }
     /* Denormal tails must not turn a silent insert into a costly one. */
     for(uint32_t k=0;k<sections;k++){
-        fx_bq_t *q=&f->q[ch][k];if(q->z1>-1e-9f && q->z1<1e-9f)q->z1=0;if(q->z2>-1e-9f && q->z2<1e-9f)q->z2=0;
+        fx_history_t *q=&f->history[ch][k];if(q->z1>-1e-9f && q->z1<1e-9f)q->z1=0;if(q->z2>-1e-9f && q->z2<1e-9f)q->z2=0;
     }
 }
 /* Fuse interpolation/hold and the wet/dry return into one full-rate pass.
@@ -245,8 +249,8 @@ static inline __attribute__((always_inline)) float fx_tone_section(fx_bq_t *q,fl
 }
 static inline __attribute__((always_inline)) int32_t fx_tone_input(fx_state_t *f,int32_t input,float slew)
 {
-    float x=fx_tone_section(&f->q[0][0],(float)input,slew,1);
-    return (int32_t)fx_tone_section(&f->q[0][1],x,slew,0);
+    float x=fx_tone_section(&f->time_tone[0],(float)input,slew,1);
+    return (int32_t)fx_tone_section(&f->time_tone[1],x,slew,0);
 }
 #include "fx_sloop_reverb.h"
 #include "fx_sloop_insert.h"
@@ -401,7 +405,7 @@ static __attribute__((noinline,section(".dsp_text"))) void fx_copy(fx_state_t *f
     }
     /* Fold only equal signals AND equal histories. Panning/spread transitions
      * keep their stereo tails; returning to mono never resets a filter. */
-    for(uint32_t k=0;k<4u && mono;k++)if((f->type<FX_ECHO && (f->q[0][k].z1!=f->q[1][k].z1 || f->q[0][k].z2!=f->q[1][k].z2)) || f->rev_damp[k]!=f->rev_damp[4+k])mono=0;
+    for(uint32_t k=0;k<4u && mono;k++)if((f->type<FX_ECHO && (f->history[0][k].z1!=f->history[1][k].z1 || f->history[0][k].z2!=f->history[1][k].z2)) || f->rev_damp[k]!=f->rev_damp[4+k])mono=0;
     if(f->rev_bass[0]!=f->rev_bass[1] || f->rev_l!=f->rev_r || f->rev_prev_l!=f->rev_prev_r)mono=0;
 #if MELODEE_HW_EQ
     if(fx_hw_status==1)mono=0; /* hardware histories are held in its rows */
@@ -486,7 +490,7 @@ static void fx_slot_prepare(fx_plan_t *plan,uint32_t si,const int16_t *p)
         int32_t tone=clamp(master?song.g[G_MFXTONE+slot]:trk[si/FX_SLOTS].p[P_FXTONE+slot],-FX_TONE_MAX,FX_TONE_MAX);
         for(uint32_t k=0;k<2u;k++){   /* (a2: the cutoff now, Hz; 0 off) */
             int32_t hz=k?(tone<0?fx_tone_hz(tone):0):fx_low_cut_hz(f->type,tone);
-            fx_bq_t *q=&f->q[0][k];
+            fx_bq_t *q=&f->time_tone[k];
             if(q->a2!=(float)hz){
                 if(hz)q->a1=fx_cut_coefficient(hz,div);
                 q->a2=(float)hz;
@@ -533,7 +537,7 @@ static __attribute__((noinline,section(".audio_text"))) int fx_slot_run(const fx
         else {
             void (*volatile run)(fx_state_t *,uint32_t,int32_t *,uint32_t)=fx_filter;
             run(f,0,fx_low_l,count);
-            if(f->mono){for(uint32_t k=0;k<4u;k++){f->q[1][k].z1=f->q[0][k].z1;f->q[1][k].z2=f->q[0][k].z2;}}
+            if(f->mono){for(uint32_t k=0;k<4u;k++){f->history[1][k]=f->history[0][k];}}
             else if(f->type!=FX_WIDTH)run(f,1,fx_low_r,count);
         }
         void (*volatile up)(fx_state_t *,uint32_t,int32_t)=fx_up;up(f,n,target);

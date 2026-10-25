@@ -41,7 +41,7 @@ EXTRACTED = {
     "drum_render": ("drum_render_into",),
     "dr8_run": ("dr8_run_into",),
     "fm6_render": ("fm6_run", "fm6_run_into", "fm6_output", "fm6_join"),
-    "fm1_alnk0_irq": ("mix_block", "mix_part", "mix_prepare_batch", "audio_batch_flush", "mix_mono_samples", "master_samples", "master_out"),
+    "fm1_alnk0_irq": ("mix_block", "mix_part", "mix_prepare_batch", "audio_batch_flush", "mix_mono_samples", "mix_mono_dry", "mix_mono_general", "master_samples", "master_out"),
     "track_render_audio": ("fm6_dc_samples", "p5_dc_samples"),
 }
 KERNEL_NAMES = {n for names in EXTRACTED.values() for n in names}

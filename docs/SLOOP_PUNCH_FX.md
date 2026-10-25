@@ -45,7 +45,7 @@ mono PCM16 history, as upstream; filters/kills retain independent stereo state.
 Loops/gate align to local or externally clocked transport phase, and loop
 regions are protected from being overwritten while held.
 
-The 32,768-sample history (64 KiB) is optional working memory acquired when
+The 16,384-sample history (32 KiB) is optional working memory acquired when
 FX is armed, not a permanent reservation taken from voices at startup. It
 captures from layer entry: hold FX briefly before reverse/rewind to give them
 past audio. It is released when the layer, effect keys and wet fade have ended.
@@ -85,3 +85,12 @@ insert processors, mono/stereo transitions, wet-only returns and rack storage. U
 fonts, crowded recording headers, lock, memory status and SLOOP Reverb and inserts.
 Physical musical feel, output sound and stressed device deadlines require
 hardware listening/measurement; builds and simulated audio alone do not prove them.
+
+## Compact history budget
+
+The master history now uses 16,384 mono samples (32 KiB, 372 ms at 44.1 kHz),
+down from 32,768 samples (64 KiB). This recovers 32 KiB while PUNCH is armed;
+it does not change idle RAM. Replay spans clamp to 15,360 samples (348 ms)
+and echo delays to 16,320 samples (370 ms). Long beat divisions therefore use
+a shorter captured span at slower tempos. Shorter divisions, stereo filters,
+FREEZE's four-line layout and the 64-sample transition remain unchanged.

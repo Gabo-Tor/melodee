@@ -38,6 +38,7 @@ static __attribute__((noinline)) void reference(track_t *t,int32_t *b,uint32_t n
 /* hostsim drops target section attributes; restore only this function's
  * noinline contract so the fallback benchmark matches the firmware split. */
 static void mix_mono_general(track_t *,int32_t *,uint32_t,const mix_cache_t *) __attribute__((noinline));
+static void mix_mono_dry(track_t *,int32_t *,uint32_t,const mix_cache_t *) __attribute__((noinline));
 static __attribute__((noinline)) void candidate(track_t *t,int32_t *b,uint32_t n,const mix_cache_t *mc)
 { mix_mono_samples(t,b,n,mc); }
 static int32_t source[CTL];
@@ -89,7 +90,7 @@ static void benchmark(void)
             cost[fast]=(double)(instructions()-start)/(100000u*CTL);
         }
         printf("%u,%u,%.1f,%.1f\n",pan,send,cost[0],cost[1]);
-        if(cost[0]>0)assert(cost[1]<cost[0]*(!pan && send?.85:1.04));
+        if(cost[0]>0)assert(cost[1]<cost[0]*(!pan?(send?.85:.95):1.04));
     }
 }
 int main(int argc,char **argv)

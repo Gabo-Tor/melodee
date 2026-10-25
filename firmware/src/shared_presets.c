@@ -202,6 +202,80 @@ failed:
     BOOT_WORK_END(1);
     return 2;
 }
+/* Each conversion owns one bank. Separate calls keep the three exclusive
+ * bank snapshots out of a combined, permanently live caller stack frame. */
+static __attribute__((noinline)) int shared_repair_bank(uint32_t b)
+{
+    up_bank_t bank = *up_cache_bank(b);
+    int legacy = (up_bank_old >> b) & 1u;
+    if (bank.magic != UP_BANK_MAGIC || bank.rsize != sizeof(up_rec_t) || bank.nslot != UP_PER_BANK)
+        memset(&bank, 0, sizeof bank);
+    else for (uint32_t j = 0; j < UP_PER_BANK; j++)
+        if (bank.r[j].used && !up_valid(&bank.r[j])) memset(&bank.r[j], 0, sizeof bank.r[j]);
+    /* A partially readable legacy bank can still contain good FM6
+     * programs. Embed their sidecars before replacing its source. */
+    if (legacy && b < 4u) for (uint32_t j = 0; j < 16u; j++) {
+        up_rec_t *r = &bank.r[j];
+        if (!up_valid(r) || r->engine != ENGI_FM6 || up_native(r)) continue;
+        up_rec_t kept = *r; int16_t values[P_COUNT]; up_values(&kept, values);
+        uint8_t raw[FM6_PACKED];
+        memcpy(raw, legacy_native_used(ENGI_FM6,b*16u+j) ? legacy_native_raw(ENGI_FM6,b*16u+j) : FM6_INIT, sizeof raw);
+        shared_native_record(r, ENGI_FM6, raw); memcpy(r->name, kept.name, 12u); r->used |= kept.used & UP_STAR;
+        r->np = sizeof UP_NATIVE_PARAMS;
+        for (uint32_t i = 0; i < sizeof UP_NATIVE_PARAMS; i++) r->cz_extra[i] = (uint8_t)(values[UP_NATIVE_PARAMS[i]] + 64);
+    }
+    bank.magic = UP_BANK_MAGIC; bank.rsize = sizeof(up_rec_t); bank.nslot = UP_PER_BANK;
+    *up_cache_bank(b) = bank;             /* sidecar reads may have borrowed the shared cache */
+    if (up_save_bank(b)) {
+        up_cached = 255; (void)up_cache_bank(b);
+        return -1;
+    }
+    up_bank_old &= ~(1u << b); up_cache_index(b);
+    return 0;
+}
+
+static __attribute__((noinline)) int shared_migrate_general(uint32_t b)
+{
+    up_bank_t bank=*up_cache_bank(b);
+    if(!(up_migrate>>b&1u))return 0;
+    for(uint32_t j=0;j<16u;j++)if(up_valid(&bank.r[j]) && bank.r[j].engine==ENGI_FM6 && !up_native(&bank.r[j])){
+        int16_t values[P_COUNT];up_values(&bank.r[j],values);
+        uint8_t raw[FM6_PACKED];memcpy(raw,legacy_native_used(ENGI_FM6,b*16u+j)?legacy_native_raw(ENGI_FM6,b*16u+j):FM6_INIT,sizeof raw);
+        uint8_t star=bank.r[j].used&UP_STAR;char name[12];memcpy(name,bank.r[j].name,12u);shared_native_record(&bank.r[j],ENGI_FM6,raw);memcpy(bank.r[j].name,name,12u);bank.r[j].used|=star;
+        bank.r[j].np=sizeof UP_NATIVE_PARAMS;for(uint32_t i=0;i<sizeof UP_NATIVE_PARAMS;i++)bank.r[j].cz_extra[i]=(uint8_t)(values[UP_NATIVE_PARAMS[i]]+64);
+    }
+    *up_cache_bank(b)=bank;
+    if(up_save_bank(b))return -1;
+    return 1;
+}
+
+static __attribute__((noinline)) int shared_migrate_prophet(uint32_t b)
+{
+    p5_bank_t old;int n=st_load(up_obj(b),&old,sizeof old);
+    if(n==(int)sizeof old && p5_bank_valid(&old,b-16u)){
+        if(b==16u && (old.favorites&0x80000000u)){
+            if(!p5_favorite_has(0,1))p5_favorite_set(0,1,1);
+            if(shared_preferences_save())return -1;
+        }
+        for(uint32_t j=18u;j<26u && (b-16u)*26u+j<128u;j++)if(old.used>>j&1u){
+            uint32_t k=shared_p5_slot((b-16u)*26u+j);up_rec_t r;
+            shared_native_record(&r,ENGI_PROPHET,(const uint8_t *)&old.patch[j]);
+            if(old.favorites>>j&1u)r.used|=UP_STAR;
+            /* Refuse a foreign/unknown occupied destination. An interrupted
+             * conversion may already have committed this exact record. */
+            if(up_old(k) || (up_used(k) && memcmp(up_rec(k),&r,sizeof r)) || (!up_used(k) && up_put(k,&r)==2)){
+                return -1;
+            }
+        }
+    }
+    (void)up_cache_bank(b);
+    if(up_migrate>>b&1u){
+        if(up_save_bank(b)){return -1;}
+        return 1;
+    }
+    return 0;
+}
+
 static void shared_boot(void)
 {
     if (boot_work.state == 2u && !boot_work.presets) return; /* preserve a settings-repair error; preset errors retry */
@@ -222,31 +296,9 @@ static void shared_boot(void)
         up_converting = 1;
         for (uint32_t b = 0; b < UP_BANKS; b++) {
             if (!(repair >> b & 1u)) continue;
-            up_bank_t bank = *up_cache_bank(b);
-            int legacy = (up_bank_old >> b) & 1u;
-            if (bank.magic != UP_BANK_MAGIC || bank.rsize != sizeof(up_rec_t) || bank.nslot != UP_PER_BANK)
-                memset(&bank, 0, sizeof bank);
-            else for (uint32_t j = 0; j < UP_PER_BANK; j++)
-                if (bank.r[j].used && !up_valid(&bank.r[j])) memset(&bank.r[j], 0, sizeof bank.r[j]);
-            /* A partially readable legacy bank can still contain good FM6
-             * programs. Embed their sidecars before replacing its source. */
-            if (legacy && b < 4u) for (uint32_t j = 0; j < 16u; j++) {
-                up_rec_t *r = &bank.r[j];
-                if (!up_valid(r) || r->engine != ENGI_FM6 || up_native(r)) continue;
-                up_rec_t kept = *r; int16_t values[P_COUNT]; up_values(&kept, values);
-                uint8_t raw[FM6_PACKED];
-                memcpy(raw, legacy_native_used(ENGI_FM6,b*16u+j) ? legacy_native_raw(ENGI_FM6,b*16u+j) : FM6_INIT, sizeof raw);
-                shared_native_record(r, ENGI_FM6, raw); memcpy(r->name, kept.name, 12u); r->used |= kept.used & UP_STAR;
-                r->np = sizeof UP_NATIVE_PARAMS;
-                for (uint32_t i = 0; i < sizeof UP_NATIVE_PARAMS; i++) r->cz_extra[i] = (uint8_t)(values[UP_NATIVE_PARAMS[i]] + 64);
+            if(shared_repair_bank(b)){
+                up_converting=0;up_migration_error=1;BOOT_WORK_END(1);return;
             }
-            bank.magic = UP_BANK_MAGIC; bank.rsize = sizeof(up_rec_t); bank.nslot = UP_PER_BANK;
-            *up_cache_bank(b) = bank;             /* sidecar reads may have borrowed the shared cache */
-            if (up_save_bank(b)) {
-                up_cached = 255; (void)up_cache_bank(b);
-                up_converting = 0; up_migration_error = 1; BOOT_WORK_END(1); return;
-            }
-            up_bank_old &= ~(1u << b); up_cache_index(b);
             BOOT_WORK_PROGRESS(++repaired);
         }
         up_converting = 0; up_migration_error = 0; BOOT_WORK_END(0);
@@ -260,17 +312,9 @@ static void shared_boot(void)
     up_converting=1;
     /* FM sidecars must be embedded before their source objects are converted. */
     for(uint32_t b=0;b<4u;b++){
-        up_bank_t bank=*up_cache_bank(b);
-        if(!(up_migrate>>b&1u))continue;
-        for(uint32_t j=0;j<16u;j++)if(up_valid(&bank.r[j]) && bank.r[j].engine==ENGI_FM6 && !up_native(&bank.r[j])){
-            int16_t values[P_COUNT];up_values(&bank.r[j],values);
-            uint8_t raw[FM6_PACKED];memcpy(raw,legacy_native_used(ENGI_FM6,b*16u+j)?legacy_native_raw(ENGI_FM6,b*16u+j):FM6_INIT,sizeof raw);
-            uint8_t star=bank.r[j].used&UP_STAR;char name[12];memcpy(name,bank.r[j].name,12u);shared_native_record(&bank.r[j],ENGI_FM6,raw);memcpy(bank.r[j].name,name,12u);bank.r[j].used|=star;
-            bank.r[j].np=sizeof UP_NATIVE_PARAMS;for(uint32_t i=0;i<sizeof UP_NATIVE_PARAMS;i++)bank.r[j].cz_extra[i]=(uint8_t)(values[UP_NATIVE_PARAMS[i]]+64);
-        }
-        *up_cache_bank(b)=bank;
-        if(up_save_bank(b)){up_migration_error=1;goto done;}
-        BOOT_WORK_PROGRESS(++done_banks);
+        int rc=shared_migrate_general(b);
+        if(rc<0){up_migration_error=1;goto done;}
+        if(rc)BOOT_WORK_PROGRESS(++done_banks);
     }
     for(uint32_t b=4u;b<16u;b++){
         (void)up_cache_bank(b);
@@ -280,28 +324,9 @@ static void shared_boot(void)
         }
     }
     for(uint32_t b=16u;b<21u;b++){
-        p5_bank_t old;int n=st_load(up_obj(b),&old,sizeof old);
-        if(n==(int)sizeof old && p5_bank_valid(&old,b-16u)){
-            if(b==16u && (old.favorites&0x80000000u)){
-                if(!p5_favorite_has(0,1))p5_favorite_set(0,1,1);
-                if(shared_preferences_save()){up_migration_error=1;goto done;}
-            }
-            for(uint32_t j=18u;j<26u && (b-16u)*26u+j<128u;j++)if(old.used>>j&1u){
-                uint32_t k=shared_p5_slot((b-16u)*26u+j);up_rec_t r;
-                shared_native_record(&r,ENGI_PROPHET,(const uint8_t *)&old.patch[j]);
-                if(old.favorites>>j&1u)r.used|=UP_STAR;
-                /* Refuse a foreign/unknown occupied destination. An interrupted
-                 * conversion may already have committed this exact record. */
-                if(up_old(k) || (up_used(k) && memcmp(up_rec(k),&r,sizeof r)) || (!up_used(k) && up_put(k,&r)==2)){
-                    up_migration_error=1;goto done;
-                }
-            }
-        }
-        (void)up_cache_bank(b);
-        if(up_migrate>>b&1u){
-            if(up_save_bank(b)){up_migration_error=1;goto done;}
-            BOOT_WORK_PROGRESS(++done_banks);
-        }
+        int rc=shared_migrate_prophet(b);
+        if(rc<0){up_migration_error=1;goto done;}
+        if(rc)BOOT_WORK_PROGRESS(++done_banks);
     }
     for(uint32_t b=0;b<UP_BANKS;b++)(void)up_cache_bank(b);
 done:

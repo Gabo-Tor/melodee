@@ -17,7 +17,7 @@ MEMORY
     XIP    (rx)  : ORIGIN = 0x02001000, LENGTH = 0x8C000   /* body ends before commit-marker sector 0x91000 */
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x7F00
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 96K
-    POOL   (rwx) : ORIGIN = 0x01C20000, LENGTH = 0x54000
+    POOL   (rwx) : ORIGIN = 0x01C20000, LENGTH = 0x57600
     NOINIT (rw)  : ORIGIN = 0x01C7C020, LENGTH = 0x3D30
     CACHE  (rw)  : ORIGIN = 0x01F28000, LENGTH = 28K
 }
@@ -38,19 +38,23 @@ SECTIONS
     _resource_data_start = _bss_end;
     _resource_data_end = ORIGIN(RAM) + LENGTH(RAM);
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
-    .audio_text : { _audio_start = .; *(.audio_text*)
+    .audio_text : AT (ALIGN(LOADADDR(.data) + SIZEOF(.data), 4)) { _audio_start = .; *(.audio_text*)
         /* The backend can synthesize libc calls after IR relocation. Keep
          * these resident entry points at the high end, within XIP call range. */
-        *(.audio_libc*) . = ALIGN(4); _audio_end = .; } > POOL AT > XIP
+        *(.audio_libc*) . = ALIGN(4); _audio_end = .; } > POOL
+    /* Its load bytes are boot-compressed by the packager. An explicit LMA
+     * permits the final compressed size, rather than the ELF's raw section,
+     * to determine available flash. The packager enforces the image limit. */
     _audio_load = LOADADDR(.audio_text);
+    _app_xip_end = ORIGIN(XIP) + LENGTH(XIP);
     _guard_ram_end = SIZEOF(.audio_text) ? _audio_end : _dsp_end;
     .cpu1_stacks (NOLOAD) : {
         . = ALIGN(32); _cpu1_stacks_lo = .;
         KEEP(*(.cpu1_stacks))
         _cpu1_stacks_hi = .; _resource_start = .;
     } > POOL
-    _cpu1_ustack_top = _cpu1_stacks_lo + 4096;
-    _cpu1_sstack_top = _cpu1_stacks_lo + 8192;
+    _cpu1_ustack_top = _cpu1_stacks_lo + 3072;
+    _cpu1_sstack_top = _cpu1_stacks_lo + 4096;
     _resource_end = ORIGIN(POOL) + LENGTH(POOL);
     /* Complete resident interrupt/input graph trades arena capacity for code.
      * Four largest engine states must fit 48 KiB (ram_audio_test); effect
@@ -69,7 +73,9 @@ SECTIONS
     ASSERT(_resource_low_start <= _resource_low_end, "RAM code overlaps startup STATUS")
     ASSERT(_resource_data_start <= _resource_data_end, "data overlaps resource pool")
     ASSERT(_resource_retained_start <= _resource_retained_end, "retained state overlaps boot records")
-    _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
-    _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
+    /* Bounded target stack estimates are checked by the build. CPU0 keeps
+     * 12 KiB foreground + 6 KiB interrupt stacks and both 256-byte guards. */
+    _guard0 = 0x01C77600; _ustack_lo = 0x01C77700; _ustack_top = 0x01C7A700;
+    _guard1 = 0x01C7A700; _sstack_lo = 0x01C7A800; _sstack_top = 0x01C7C000;
     /DISCARD/ : { *(.comment) *(.note*) }
 }

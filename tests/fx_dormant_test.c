@@ -80,7 +80,7 @@ static void parity(void)
 static uint64_t hash=14695981039346656037ull;
 static void digest(const void *data,size_t n)
 {const uint8_t *p=data;while(n--){hash^=*p++;hash*=1099511628211ull;}}
-static void trace(void)
+static void trace(int audio_only)
 {
     host_tracks_init();
     int32_t input[CTL],out[CTL*2];
@@ -118,7 +118,9 @@ static void trace(void)
             else {fx_bus_start(CTL);fx_bus_join();digest(&fx_bus_result,sizeof fx_bus_result);}
             digest(fx_left,sizeof fx_left);digest(fx_right,sizeof fx_right);
             for(uint32_t si=0;si<FX_STATE_COUNT;si++){
-                fx_state_t f=fx_state[si];if(f.type==FX_CHORUS)f.echo=0;digest(&f,sizeof f);
+                /* The PCM/allocation trace also compares different state
+                 * layouts; the ordinary trace checks full dormant state. */
+                if(!audio_only){fx_state_t f=fx_state[si];if(f.type==FX_CHORUS)f.echo=0;digest(&f,sizeof f);}
                 digest(&resource[RES_FX0+si].size,sizeof resource[RES_FX0+si].size);
                 if(resource[RES_FX0+si].size)digest(resource[RES_FX0+si].ptr,resource[RES_FX0+si].size);
             }
@@ -126,6 +128,10 @@ static void trace(void)
             if(block==1100u)fx_clear_all();
         }
     }
+    /* Frozen PCM and allocation bytes from 1e4476e before coefficient sharing.
+     * State layout is intentionally omitted; all routed audio and delay
+     * contents still participate, including stereo-to-mono transitions. */
+    if(audio_only)assert(hash==0xd63b453a1469d794ull);
     printf("%016llx\n",(unsigned long long)hash);
 }
 static volatile uint32_t checksum;
@@ -154,6 +160,7 @@ static void benchmark(void)
 }
 int main(int argc,char **argv)
 {
-    if(argc==2 && !strcmp(argv[1],"--trace")){trace();return 0;}
+    if(argc==2 && !strcmp(argv[1],"--trace")){trace(0);return 0;}
+    if(argc==2 && !strcmp(argv[1],"--audio-trace")){trace(1);return 0;}
     parity();if(argc==1)benchmark();return 0;
 }
