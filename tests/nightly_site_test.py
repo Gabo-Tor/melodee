@@ -66,6 +66,15 @@ class NightlySite(unittest.TestCase):
     def nightly(self):
         publish(self.site, self.normal, "next-abcdef0", "b" * 40, "2026-10-15T16:00:00Z")
 
+    def test_nightly_workflow_is_runnable_and_reusable(self):
+        workflow = (ROOT / '.github/workflows/nightly.yml').read_text()
+        self.assertIn('    branches: [nightly]', workflow)
+        self.assertIn('  workflow_call:', workflow)
+        self.assertIn('    runs-on: ubuntu-22.04', workflow)
+        self.assertIn('          ref: nightly', workflow)
+        self.assertIn('          tests/run_tests.sh', workflow)
+        self.assertNotIn('uses: keremimo/melodee/.github/workflows/nightly.yml@nightly', workflow)
+
     def test_history_preserves_dual_core_releases_without_requiring_pairs(self):
         old = package(self.site / "firmware/melodee-1.2.1.fwsc", "FM-1_91021", 2)
         original = old.read_bytes()
