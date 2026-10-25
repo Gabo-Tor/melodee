@@ -201,9 +201,10 @@ def analyze(ir, dis, src):
             starts_note = name == 'input_on' and target == 'seq_advance'
             if starts_note and note_started:
                 continue
-            # Only one hub level is supported. The recursive call in the
-            # inlined hub scanner uses depth=1; that probe rejects hubs.
-            probes_child = name == 'uh_probe' and target == 'uh_probe'
+            # Only one hub level is supported. The port helper calls the
+            # child probe with depth=1, which rejects hubs. Depending on
+            # inlining, that call can also appear inside uh_probe itself.
+            probes_child = name in {'uh_probe', 'uh_hub_port_probe'} and target == 'uh_probe'
             if probes_child and hub_depth:
                 continue
             children.append(depth(target, note_started or starts_note,

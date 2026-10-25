@@ -172,6 +172,10 @@ Switch it OFF to give the port back to the computer; the FM-1 never boots as a h
 - **Supported:** full-speed devices with a MIDI 1.0 streaming interface (bulk or interrupt IN and/or OUT), alone or behind
   one hub (the hub's ports are powered and each device is tried until one has MIDI). Channel messages and
   clock / start / continue / stop are passed on; SysEx from the controller is ignored by design.
+- **Idle detection:** an unsupported or unresponsive direct device is probed once per attachment; unplug/replug
+  or toggle HOST to try again. An idle hub stays configured and checks one port's connection-change status
+  every 100 ms, probing only changed connections. Empty hubs and non-MIDI devices do not cause periodic bus
+  resets or power-good waits. An unresponsive hub waits for root unplug/replug or a HOST toggle.
 - **Output:** MIDI tracks send their notes, releases and channel controls on their selected channels to cable 0
   of the selected interface's OUT endpoint. Output-only synths and simultaneous IN/OUT work. A packet remains
   queued until ACK; NAKs/transient errors retain its data and toggle. Stalls, repeated errors or 500 ms without
@@ -190,7 +194,8 @@ sequences were taken from the AC79 SDK (`usb_h_sie_init`, `usb_h_chirp_and_reset
 `usb0_h_ep_read`). The PR contributor reports an FM-1 input test with a powered hub and controller; this
 branch's new OUT path has model coverage but still needs physical MIDI/audio and sustained-timing validation.
 The model also covers OUT-only devices, small endpoint packets, duplex traffic, delayed ACKs, NAK/error/stall
-recovery and device-mode audio preferences while hosting. `tests/midi_track_test.c` checks the real track
+recovery, idle hubs and unsupported devices without repeated resets/waits, downstream hot-plug/replug,
+unresponsive probes, and device-mode audio preferences while hosting. `tests/midi_track_test.c` checks the real track
 output admission and reconnect cleanup. Build with `MELODEE_USB_HOST=0 ./build.sh` to leave the feature out.
 
 ## Samples

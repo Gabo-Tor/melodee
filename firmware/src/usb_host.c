@@ -9,7 +9,8 @@
  *
  *   main loop (uh_task)   waits for a device, resets the bus, and enumerates it with blocking EP0 transfers
  *                         (hub: powers the ports, resets those with something on them, and tries each device
- *                         until one has a USB-MIDI streaming interface). The ISR does nothing until uh.run.
+ *                         until one has a USB-MIDI streaming interface). Failed direct probes wait for unplug;
+ *                         idle hubs are polled for downstream connection changes. The ISR does nothing until uh.run.
  *   TIMER5 (uh_poll)      once uh.run is 1 the SIE is the ISR's alone: optional IN and OUT endpoints share host
  *                         EP1 in separate directions. IN is asked for a packet (ReqPkt), read when RxPktRdy, and its channel / clock events
  *                         go to the same ring as USB and TRS MIDI (source 1). A stall or a run of errors sets
@@ -37,11 +38,12 @@ static struct {
     volatile uint8_t run;                               /* TIMER5 owns the active MIDI endpoints */
     volatile uint8_t fault;                             /* TIMER5 -> main loop: reset the bus and look again */
     uint8_t seen, next_addr, dev, tried;
+    uint8_t hub_addr, hub_mps, hub_ports, hub_poll_port;
     uint8_t in_ep, out_mps, tx_count, tx_errors, line_idle;
     uint8_t msg;                                        /* one UH_MSG_* for main.c to show */
     volatile uint8_t errors;
     uint32_t t_ms, retry_ms;
-    uint32_t tx_ms;
+    uint32_t tx_ms, hub_poll_ms;
     volatile uint32_t pkts, events;
 } uh;
 
@@ -169,12 +171,49 @@ static int uh_probe(uint8_t depth, uh_midi_t *m)
     return 1;
 }
 
-/* The hub at `addr`: power its ports, then reset each one that has a full-speed device on it and probe that,
- * until a USB-MIDI device is found. */
+/* Probe only this downstream port; keep the hub and the other devices configured. Each port reuses its
+ * address on reconnect, so repeated hot-plugs cannot exhaust the USB address space. */
+static int uh_hub_port_probe(uint8_t p, uint32_t st, uh_midi_t *m)
+{
+    uint8_t b[4], addr = uh.hub_addr, mps = uh.hub_mps;
+    uint32_t t;
+    if (!(st & 0x0001u) || (st & 0x0200u))              /* nothing there, or low speed */
+        return 0;
+    if (uh_ctl(addr, 0x23, 3, 4, p, 0, 0, mps) < 0)    /* SET_FEATURE(PORT_RESET) */
+        return 0;
+    t = fm1_ms;
+    for (;;) {
+        if (uh_ctl(addr, 0xA3, 0, 0, p, 4, b, mps) >= 4 && (b[2] & 0x10u))   /* C_PORT_RESET */
+            break;
+        if (fm1_ms - t > 500u)
+            return 0;
+        uh_wait(10);
+    }
+    uh_ctl(addr, 0x23, 1, 20, p, 0, 0, mps);            /* CLEAR_FEATURE(C_PORT_RESET) */
+    if (uh_ctl(addr, 0xA3, 0, 0, p, 4, b, mps) < 4 || !(b[0] & 0x02u))   /* enabled? */
+        return 0;
+    uh_wait(20);                                        /* reset recovery */
+    uh.next_addr = (uint8_t)(UH_FIRST_ADDR + p);
+    return uh_probe(1, m);
+}
+
+/* Read and acknowledge connection changes, including disconnects and unsupported devices. An unresponsive
+ * hub is left alone until root unplug/replug, rather than repeating a blocking control timeout forever. */
+static int uh_hub_status(uint8_t p, uint8_t *b)
+{
+    if (uh_ctl(uh.hub_addr, 0xA3, 0, 0, p, 4, b, uh.hub_mps) < 4 ||
+        ((b[2] & 1u) && uh_ctl(uh.hub_addr, 0x23, 1, 16, p, 0, 0, uh.hub_mps) < 0)) {
+        uh.hub_addr = 0;
+        return 0;
+    }
+    return 1;
+}
+
+/* Configure and power the root hub once. After the initial scan, idle polling uses connection-change bits. */
 static int uh_hub_probe(uint8_t addr, uint8_t mps, uint8_t cfgval, uh_midi_t *m)
 {
     uint8_t b[16], ports, p;                            /* (the hub descriptor is 9 bytes with <= 7 ports) */
-    uint32_t good, t;
+    uint32_t good;
     if (uh_ctl(addr, 0x00, 9, cfgval, 0, 0, 0, mps) < 0)
         return 0;
     if (uh_ctl(addr, 0xA0, 6, 0x2900, 0, 9, b, mps) < 7)   /* hub descriptor */
@@ -184,27 +223,15 @@ static int uh_hub_probe(uint8_t addr, uint8_t mps, uint8_t cfgval, uh_midi_t *m)
     for (p = 1; p <= ports; p++)
         uh_ctl(addr, 0x23, 3, 8, p, 0, 0, mps);         /* SET_FEATURE(PORT_POWER) */
     uh_wait((good < 100u ? 100u : good) + 100u);        /* power good, then the devices announce themselves */
+    uh.hub_addr = addr;
+    uh.hub_mps = mps;
+    uh.hub_ports = ports;
+    uh.hub_poll_port = 1;
+    uh.hub_poll_ms = fm1_ms;
     for (p = 1; p <= ports; p++) {
-        uint32_t st;
-        if (uh_ctl(addr, 0xA3, 0, 0, p, 4, b, mps) < 4)
-            continue;
-        st = (uint32_t)(b[0] | b[1] << 8);
-        if (!(st & 0x0001u) || (st & 0x0200u))          /* nothing there, or low speed */
-            continue;
-        uh_ctl(addr, 0x23, 3, 4, p, 0, 0, mps);         /* SET_FEATURE(PORT_RESET) */
-        t = fm1_ms;
-        for (;;) {
-            if (uh_ctl(addr, 0xA3, 0, 0, p, 4, b, mps) >= 4 && (b[2] & 0x10u))   /* C_PORT_RESET */
-                break;
-            if (fm1_ms - t > 500u)
-                break;
-            uh_wait(10);
-        }
-        uh_ctl(addr, 0x23, 1, 20, p, 0, 0, mps);        /* CLEAR_FEATURE(C_PORT_RESET) */
-        if (uh_ctl(addr, 0xA3, 0, 0, p, 4, b, mps) < 4 || !(b[0] & 0x02u))   /* enabled? */
-            continue;
-        uh_wait(20);                                    /* reset recovery */
-        if (uh_probe(1, m))
+        if (!uh_hub_status(p, b))
+            return 0;
+        if (uh_hub_port_probe(p, (uint32_t)(b[0] | b[1] << 8), m))
             return 1;
     }
     return 0;
@@ -272,17 +299,18 @@ static void uh_host_up(void)
     sie_wr(S_FADDR, 0);
     sie_wr(S_DEVCTL, 0x03u);                            /* session + host request */
     uh.seen = 0;
+    uh.line_idle = 0;
+    uh.hub_addr = 0;
 }
 
 /* a device is on the line: reset the bus and find the MIDI endpoint */
-static void uh_connect(uint32_t now)
+static void uh_connect(void)
 {
     uh_midi_t m;
     if (sie_rd(S_DEVCTL) & 0x20u) {                     /* low speed (FSDev is bit 6, LSDev bit 5) */
         if (!uh.tried)
             uh.msg = UH_MSG_LOW;                        /* said once per attach, as NO MIDI is */
         uh.tried = 1;
-        uh.retry_ms = now + 3000u;
         return;
     }
     sie_wr(S_POWER, 0x08u);                             /* bus reset */
@@ -295,11 +323,9 @@ static void uh_connect(uint32_t now)
         uh.msg = UH_MSG_MIDI;
         uh.tried = 0;
     } else {
-        uh_host_up();                                   /* a clean bus for the next attempt */
         if (!uh.tried)
             uh.msg = UH_MSG_NOMIDI;                     /* said once per attach */
         uh.tried = 1;
-        uh.retry_ms = now + 3000u;
     }
 }
 
@@ -349,15 +375,37 @@ static void uh_task(uint32_t now)
     uh.t_ms = now;
     if (!fm1_usb_line()) {
         uh.seen = 0;
-        uh.tried = 0;
+        if (uh.line_idle < 5u) uh.line_idle++;
+        if (uh.line_idle >= 5u) {                       /* debounce root disconnect while idle too */
+            uh.tried = 0;
+            uh.hub_addr = 0;
+        }
         return;
+    }
+    uh.line_idle = 0;
+    if (uh.tried) {
+        if (uh.hub_addr && uh.hub_ports && (uint32_t)(now - uh.hub_poll_ms) >= 100u) {
+            uint8_t b[4], p = uh.hub_poll_port;
+            uh_midi_t m;
+            uh.hub_poll_ms = now;
+            uh.hub_poll_port = p == uh.hub_ports ? 1u : (uint8_t)(p + 1u);
+            if (uh_hub_status(p, b) && (b[2] & 1u) && (b[0] & 1u) && !(b[1] & 2u)) {
+                uh_wait(100);                          /* newly attached device settles before port reset */
+                if (uh_hub_status(p, b) && uh_hub_port_probe(p, (uint32_t)(b[0] | b[1] << 8), &m)) {
+                    uh_start_ep(&m);
+                    uh.msg = UH_MSG_MIDI;
+                    uh.tried = 0;
+                }
+            }
+        }
+        return;                                        /* direct failures wait for root unplug/replug */
     }
     if (uh.seen < 5u) {                                 /* 100 ms of a steady line before the bus reset */
         uh.seen++;
         return;
     }
     uh.seen = 0;
-    uh_connect(now);
+    uh_connect();
 }
 
 /* ------------------------------------------------------ TIMER5 ISR --- */

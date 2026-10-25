@@ -23,7 +23,7 @@ typedef struct {
     uint16_t cfglen;
     uint8_t ports;                      /* hub: downstream devices by port (1-based), 0 = empty */
     uint8_t port_dev[8], port_pow[8], port_en[8], port_chg[8];
-    uint32_t seen_set_cfg, seen_set_if;
+    uint32_t seen_set_cfg, seen_set_if, seen_probe;
 } dev_t_;
 static dev_t_ dev[NDEV];
 static uint8_t kbd_cfg[128], stick_cfg[64], hub_cfg[32];
@@ -83,9 +83,11 @@ static void *ep_radr[4];
 static void *ep_tadr[4];
 static uint32_t USB_CON0, line_state;
 static uint8_t bus_dead;                /* nothing answers (cable pulled) */
+static uint8_t ep0_timeout;             /* SETUP stays busy until the driver's deadline */
 static uint8_t devctl_ls;               /* the device is low speed */
-static uint32_t ctl_requests, rx_toggle_clears;
+static uint32_t ctl_requests, setup_requests, rx_toggle_clears;
 static uint32_t tx_toggle_clears, off_count;
+static uint32_t root_resets, host_attaches, port_resets[8];
 static uint32_t wire[512], wire_n;
 static dev_t_ *pend_dev;
 static uint8_t pend_addr;
@@ -107,6 +109,7 @@ static dev_t_ *by_addr(uint8_t a)
 static void bus_reset(void)
 {
     int i;
+    root_resets++;
     for (i = 0; i < NDEV; i++) {
         dev[i].addr = 0;
         dev[i].cfg = 0;
@@ -131,6 +134,7 @@ static int answer(dev_t_ *d, const uint8_t *s)
     rsp_len = rsp_pos = 0;
     ctl_requests++;
     if (rt == 0x80 && rq == 6 && (val >> 8) == 1) {
+        d->seen_probe++;
         uint8_t dd[18] = {18, 1, 0x00, 0x02, d->cls, 0, 0, d->mps0, 0x09, 0x12, 1, 0, 0, 1, 1, 2, 0, 1};
         memcpy(rsp, dd, 18);
         n = 18;
@@ -155,6 +159,7 @@ static int answer(dev_t_ *d, const uint8_t *s)
         if (val == 8)
             d->port_pow[idx] = 1;
         if (val == 4 && d->port_pow[idx]) {
+            port_resets[idx]++;
             d->port_en[idx] = 1;
             d->port_chg[idx] |= 0x10;
             if (c >= 0) {
@@ -164,6 +169,8 @@ static int answer(dev_t_ *d, const uint8_t *s)
             }
         }
     } else if (rt == 0x23 && rq == 1 && d->ports) {
+        if (val == 16)
+            d->port_chg[idx] &= (uint8_t)~1u;
         if (val == 20)
             d->port_chg[idx] &= (uint8_t)~0x10u;
     } else if (rt == 0xA3 && rq == 0 && d->ports) {
@@ -212,9 +219,12 @@ static void mock_write(uint32_t r, uint32_t v)
     } else if (index_reg == 0 && r == 17) {             /* EP0 CSR, host */
         dev_t_ *d = by_addr(common[0]);
         if (v == 0x0A) {
+            setup_requests++;
             uint8_t s[8];
             memcpy(s, ep_radr[0], 8);
-            if (bus_dead || !d || !answer(d, s))
+            if (ep0_timeout)
+                regs[0][17] = 2;
+            else if (bus_dead || !d || !answer(d, s))
                 regs[0][17] = 0x10;                     /* no answer */
             else
                 regs[0][17] = 0;
@@ -278,7 +288,7 @@ static void mock_ep0_buf(void *p) { ep_radr[0] = p; }
 static void mock_nop(void) {}
 static void mock_off(void) { off_count++; USB_CON0 = 0; }
 static void mock_attach(void *p) { (void)p; }
-static void mock_host_attach(void *p) { ep_radr[0] = p; USB_CON0 = 0x25; }
+static void mock_host_attach(void *p) { host_attaches++; ep_radr[0] = p; USB_CON0 = 0x25; }
 static uint32_t mock_one(void) { return 1; }
 static uint32_t mock_zero(void) { return 0; }
 static uint32_t mock_line(void) { return line_state; }
@@ -316,7 +326,7 @@ static void connect(int which)
 {
     devices_init();
     root = which;
-    bus_dead = devctl_ls = 0;
+    bus_dead = devctl_ls = ep0_timeout = 0;
     memset(common, 0, sizeof common);
     memset(regs, 0, sizeof regs);
     dflt = 0;
@@ -324,6 +334,8 @@ static void connect(int which)
     mi_r = mi_w = 0;
     mo_r = mo_w = 0;
     wire_n = 0;
+    root_resets = host_attaches = 0;
+    memset(port_resets, 0, sizeof port_resets);
     midi_in_overflow = 0;
     if (which == HUB) {
         dev[HUB].port_dev[1] = STICK + 1;               /* port 1: a mass-storage stick, port 3: the keyboard */
@@ -405,7 +417,7 @@ static void test_keyboard(int via_hub)
     if (via_hub) {
         assert(dev[HUB].cfg == 1 && dev[HUB].addr == 1);
         assert(dev[STICK].addr != 0 && dev[STICK].addr != dev[KBD].addr);   /* the stick was addressed, then passed over */
-        assert(dev[KBD].addr == 3);
+        assert(dev[KBD].addr == 4);                    /* stable address per hub port */
     } else {
         assert(dev[KBD].addr == 1);
     }
@@ -480,6 +492,7 @@ static void test_no_midi(void)
     host_on();
     assert(!enumerate());
     assert(uh.msg == UH_MSG_NOMIDI);                    /* said once, then quiet */
+    assert(root_resets == 1 && host_attaches == 1 && dev[STICK].seen_probe == 1);
     uh.msg = 0;
     {
         int k;
@@ -489,6 +502,12 @@ static void test_no_midi(void)
         }
     }
     assert(uh.msg == 0 && !uh.run);
+    assert(root_resets == 1 && host_attaches == 1 && dev[STICK].seen_probe == 1);
+    /* A real root unplug rearms detection, even after an unsupported device. */
+    line_state = 0;
+    for (int k = 0; k < 5; k++) { fm1_ms += 20; uh_task(fm1_ms); }
+    root = KBD; line_state = 2;
+    assert(enumerate() && uh.msg == UH_MSG_MIDI && root_resets == 2);
     uh.want = 0;
     uh_task(fm1_ms);
     uh.msg = 0;
@@ -497,16 +516,132 @@ static void test_no_midi(void)
     devctl_ls = 1;
     host_on();
     assert(!enumerate() && uh.msg == UH_MSG_LOW);
+    assert(!root_resets && host_attaches == 1);
     uh.msg = 0;
     for (int k = 0; k < 600; k++) {                     /* 12 s with the device still attached: said once */
         fm1_ms += 20;
         uh_task(fm1_ms);
     }
     assert(uh.msg == 0 && !uh.run);
+    assert(!root_resets && host_attaches == 1);
     uh.want = 0;
     uh_task(fm1_ms);
     uh.msg = 0;
     puts("USB host: a stick without MIDI, a low-speed device: reported, no endpoint started: OK");
+}
+
+/* Idle hub polls may use EP0, but must never reset/reconfigure devices or enter any timed waits. */
+static void idle_hub(int ticks)
+{
+    uint32_t resets = root_resets, attaches = host_attaches, probes = dev[STICK].seen_probe;
+    uint32_t configs = dev[HUB].seen_set_cfg;
+    uint32_t ports[8];
+    memcpy(ports, port_resets, sizeof ports);
+    while (ticks--) {
+        fm1_ms += 20;
+        uint32_t now = fm1_ms;
+        uh_task(now);
+        assert(fm1_ms == now && !uh.run && !uh.msg);
+    }
+    assert(root_resets == resets && host_attaches == attaches && dev[STICK].seen_probe == probes);
+    assert(!memcmp(ports, port_resets, sizeof ports));
+    assert(dev[HUB].cfg == 1 && dev[HUB].seen_set_cfg == configs);
+}
+
+static void test_idle_hub(int with_stick)
+{
+    connect(HUB);
+    dev[HUB].port_dev[3] = 0;
+    if (!with_stick) dev[HUB].port_dev[1] = 0;
+    host_on();
+    assert(!enumerate() && uh.msg == UH_MSG_NOMIDI);
+    assert(root_resets == 1 && host_attaches == 1);
+    assert(dev[STICK].seen_probe == (uint32_t)with_stick);
+    uh.msg = 0;
+    idle_hub(3000);                                    /* one minute: no reset, power-good or reset waits */
+
+    /* An unsupported downstream attachment is tried once, and its change is acknowledged. */
+    dev[HUB].port_dev[1] = STICK + 1;
+    dev[HUB].port_chg[1] |= 1;
+    uint32_t probes = dev[STICK].seen_probe;
+    assert(!enumerate() && dev[STICK].seen_probe == probes + 1 && !dev[HUB].port_chg[1]);
+    idle_hub(600);
+    dev[HUB].port_dev[1] = 0;
+    dev[HUB].port_en[1] = 0;
+    dev[HUB].port_chg[1] |= 1;                         /* disconnects are acknowledged without port reset */
+    idle_hub(100);
+    assert(!dev[HUB].port_chg[1]);
+
+    /* An idle MIDI hot-plug resets only its port, preserving the powered hub and the stick. */
+    uint32_t stick_resets = port_resets[1];
+    dev[HUB].port_dev[3] = KBD + 1;
+    dev[HUB].port_chg[3] |= 1;
+    assert(enumerate() && uh.msg == UH_MSG_MIDI);
+    assert(root_resets == 1 && host_attaches == 1 && port_resets[1] == stick_resets);
+    assert(dev[KBD].addr == 4 && port_resets[3] == 1 && !dev[HUB].port_chg[3]);
+    uh.want = 0; uh_task(fm1_ms); uh.msg = 0;
+    printf("USB host: idle hub %s: no repeated resets/waits, downstream hot-plug: OK\n",
+           with_stick ? "with a stick" : "empty");
+}
+
+static void test_failed_probe(void)
+{
+    connect(-1);                                      /* a powered line with nothing answering EP0 */
+    ep0_timeout = 1;
+    host_on();
+    assert(!enumerate() && uh.msg == UH_MSG_NOMIDI);
+    uh.msg = 0;
+    uint32_t requests = setup_requests;
+    for (int k = 0; k < 3000; k++) {
+        fm1_ms += 20;
+        uint32_t now = fm1_ms;
+        uh_task(now);
+        assert(fm1_ms == now && !uh.run && !uh.msg);
+    }
+    assert(root_resets == 1 && host_attaches == 1 && setup_requests == requests);
+    uh.want = 0; uh_task(fm1_ms); uh.msg = 0;
+
+    connect(HUB);
+    memset(dev[HUB].port_dev, 0, sizeof dev[HUB].port_dev);
+    host_on(); assert(!enumerate()); uh.msg = 0;
+    ep0_timeout = 1;                                  /* configured hub stops answering without line drop */
+    for (int k = 0; k < 30; k++) { fm1_ms += 20; uh_task(fm1_ms); }
+    assert(!uh.hub_addr && root_resets == 1);
+    requests = setup_requests;
+    idle_hub(600);
+    assert(setup_requests == requests);
+    uh.want = 0; uh_task(fm1_ms); uh.msg = 0;
+    puts("USB host: failed EP0 probe and unresponsive idle hub wait for unplug/replug: OK");
+}
+
+static void test_hub_synth_unplug(void)
+{
+    static const uint8_t synth[] = {9,2,25,0,1,1,0,0x80,50, 9,4,1,0,1,1,3,0,0, 7,5,2,2,8,0,0};
+    connect(HUB);
+    memcpy(kbd_cfg, synth, sizeof synth);
+    dev[KBD].cfglen = sizeof synth;
+    host_on(); assert(enumerate() && !uh.in_ep && uh.out_mps);
+    assert(midi_track_emit(0x643c9009u)); usb_poll();
+    dev[HUB].port_dev[3] = 0;
+    dev[HUB].port_en[3] = 0;
+    dev[HUB].port_chg[3] |= 1;
+    dev[KBD].present = 0;
+    /* OUT errors while the root hub remains on the line. */
+    for (uint32_t k = 0; k < UH_MAX_ERRORS; k++) { regs[1][17] = 4; usb_poll(); }
+    assert(uh.fault && !uh.run && line_state == 2);
+    uh_task(fm1_ms); assert(!uh.fault && uh.msg == UH_MSG_LOST && mo_r == mo_w);
+    uh.msg = 0;
+    assert(!enumerate() && uh.msg == UH_MSG_NOMIDI);
+    uh.msg = 0;
+    assert(root_resets == 2 && host_attaches == 2);
+    idle_hub(3000);
+    dev[KBD].present = 1;
+    dev[HUB].port_dev[3] = KBD + 1;
+    dev[HUB].port_chg[3] |= 1;
+    assert(enumerate() && !uh.in_ep && uh.out_mps && uh.msg == UH_MSG_MIDI);
+    assert(root_resets == 2 && host_attaches == 2 && dev[KBD].addr == 4);
+    uh.want = 0; uh_task(fm1_ms); uh.msg = 0;
+    puts("USB host: unplugged OUT-only synth leaves hub idle without retry resets; replug works: OK");
 }
 
 static void ack_tx(void)
@@ -633,6 +768,10 @@ int main(void)
     test_keyboard(0);
     test_keyboard(1);
     test_no_midi();
+    test_idle_hub(0);
+    test_idle_hub(1);
+    test_failed_probe();
+    test_hub_synth_unplug();
     test_host_output(0);
     test_host_output(1);
     test_endpoint_selection();
