@@ -90,7 +90,7 @@ static void glo_select_set(uint32_t v) { GLO_SELECT = (uint8_t)((GLO_SELECT & ~0
 /* UNUSED TRACKS (the menu): HIDE in bit 5 of the same byte. SHOW (0): Stage and MIXER keep a greyed row for each
  * place not in use, saying "Add track"; HIDE: the tracks in use share the rows (one track: the wide card) */
 #define TRACKS_HIDE 32u
-/* the four tracks Stage, MIXER, PATTERNS, SONG and SEQ's track keys show: the selected one's (1..4, or the MIDI-only
+/* the four tracks Stage, MIXER, PATTERNS and SONG show: the selected one's (1..4, or the MIDI-only
  * 5..8); a row k of them is track trk_group() + k */
 static uint32_t trk_group(void) { return song.sel / NPART * NPART; }
 static uint32_t stage_rows(void)

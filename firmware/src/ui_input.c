@@ -110,16 +110,13 @@ static uint32_t arp_led(void)
 }
 
 /* PATTERNS while unarmed, or SEQ held: the white keys F3 .. F4 are the selected track's eight patterns,
- * the first four black keys (F# G# A# C#,
- * as GLO's mutes) the tracks. A white key tapped switches to its pattern (playing: at the bar); an empty one arms REC
- * with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
+ * the first eight black keys select tracks 1..8. A white key tapped switches to its pattern (playing: at the bar);
+ * an empty one arms REC with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
  * dialog (CF_PAT_KEY): the key again deletes it, another white key copies it there, the 4th and 5th black keys
- * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it. The track keys are
- * the selected track's four (1..4, or the MIDI-only 5..8); D# (GRP_KEY) selects the other four's */
+ * (C# D#, blinking) halve and double it (again while SEQ is held; let go: closed), OCT- leaves it. */
 static const uint8_t PAT_KEY[NPAT] = {0, 2, 4, 6, 7, 9, 11, 12};
-static const uint8_t TRK_KEY[NPART] = {1, 3, 5, 8};
+static const uint8_t TRK_KEY[] = {1, 3, 5, 8, 10, 13, 15, 17};
 static const uint8_t LEN_KEY[2] = {8, 10};              /* (its dialog: half, double) */
-#define GRP_KEY 10u                                     /* D#: tracks 5..8 / 1..4 (none in use there: nothing) */
 #define PAT_HOLD_MS 1000u
 #define PAT_DTAP_MS 300u
 static int pattern_keys_on(void)
@@ -141,12 +138,10 @@ static uint32_t pattern_leds(uint32_t *dim, uint32_t *breath)
             *dim |= 1u << PAT_KEY[b];
     if (dlg && ((fm1_ms / 250u) & 1u) == 0u)
         m |= 1u << LEN_KEY[0] | 1u << LEN_KEY[1];
-    for (b = 0; !dlg && b < NPART && trk_group() + b < trk_n(); b++)
-        if ((song.rec >> (trk_group() + b)) & 1u) *breath |= 1u << TRK_KEY[b];
+    for (b = 0; !dlg && b < NELEM(TRK_KEY) && b < trk_n(); b++)
+        if ((song.rec >> b) & 1u) *breath |= 1u << TRK_KEY[b];
         else *dim |= 1u << TRK_KEY[b];
-    if (!dlg) m |= 1u << TRK_KEY[song.sel % NPART];
-    if (!dlg && trk_n() > NPART)                        /* the other four: lit while 5..8 show, else dim */
-        *(trk_group() ? &m : dim) |= 1u << GRP_KEY;
+    if (!dlg) m |= 1u << TRK_KEY[song.sel];
     if (TSEL->pattern_next < NPAT) *breath |= 1u << PAT_KEY[TSEL->pattern_next];
     for (b = 0; b < NPAT; b++)                          /* (an edit waiting for the loop end: waiting too) */
         if ((seq_pend[song.sel % NTRK] >> b) & 1u) *breath |= 1u << PAT_KEY[b];
@@ -304,15 +299,10 @@ static void pattern_keys(uint32_t notes)
 {
     uint32_t b;
     if (pattern_keys_on())
-        for (b = 0; b < NPART; b++) if (notes & (1u << TRK_KEY[b])) {   /* a track key: that track of the four */
+        for (b = 0; b < NELEM(TRK_KEY); b++) if (notes & (1u << TRK_KEY[b])) {   /* a track key: its absolute track */
             ui.seq_t0 |= 2u;
-            track_select(trk_group() + b);              /* (one not in use: nothing) */
+            track_select(b);                          /* (one not in use: nothing) */
         }
-    if (pattern_keys_on() && (notes & (1u << GRP_KEY))) {   /* the other four: the same place there, else their first */
-        uint32_t other = (trk_group() + NPART) % NTRK;
-        ui.seq_t0 |= 2u;
-        track_select(other + song.sel % NPART < trk_n() ? other + song.sel % NPART : other);
-    }
     if (ui.pat_key && ui.pat_track != song.sel) ui.pat_key = ui.pat_copy = 0;
     pattern_key_release();
     if (pattern_keys_on()) {

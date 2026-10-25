@@ -270,10 +270,11 @@ static void midi_track_navigation(void)
     reset_midi(0); project_new_blank();
     for(uint32_t k=NPART;k<NTRK;k++)track_add();
     go_home(); track_select(1); btn_down(B_SEQ);
-    pattern_keys(1u<<GRP_KEY); assert(song.sel==5&&trk_group()==NPART);
-    pattern_keys(1u<<TRK_KEY[3]); assert(song.sel==7);
-    pattern_keys(1u<<GRP_KEY); assert(song.sel==3&&!trk_group());
-    pattern_keys(1u<<GRP_KEY); assert(song.sel==7);
+    for (uint32_t k = NTRK; k-- > 0;) {
+        pattern_keys(1u << key_at(1, k));
+        assert(song.sel == k && trk_group() == k / NPART * NPART);
+    }
+    pattern_keys(1u << key_at(1, 7)); assert(song.sel == 7);
     btn_up(B_SEQ); stop_transport();
     go_page(GR_PATGRID); patgrid_edit(0,1);
     assert(trk[4].pattern==1&&trk[0].pattern==0&&song.sel==7);
@@ -286,10 +287,13 @@ static void midi_track_navigation(void)
     kb_layer=0; layer_keys(0); assert(!track_solo); ui.layer=0;
     /* A partial second group cannot select an unused track. */
     song.ntrk=5; track_select(3); btn_down(B_SEQ);
-    pattern_keys(1u<<GRP_KEY); assert(song.sel==4);
-    pattern_keys(1u<<TRK_KEY[3]); assert(song.sel==4);
+    pattern_keys(1u << key_at(1, 4)); assert(song.sel == 4);
+    for (uint32_t k = 5; k < 11; k++) {
+        pattern_keys(1u << key_at(1, k)); assert(song.sel == 4);
+    }
+    pattern_keys(1u << key_at(1, 1)); assert(song.sel == 1);
     btn_up(B_SEQ);
-    puts("MIDI-only navigation: SEQ groups, partial groups, PATTERNS knobs and GLO mute/solo passed");
+    puts("MIDI-only navigation: direct SEQ track keys, partial groups, PATTERNS knobs and GLO mute/solo passed");
 }
 static void midi_only_step_entry(void)
 {

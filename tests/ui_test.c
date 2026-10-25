@@ -5311,9 +5311,31 @@ static int test_pattern_page_keys(void)
     key_down(TRK_KEY[1]); frame(); key_up(TRK_KEY[1]); frame();
     bad += check("PATTERNS black keys select silently without holding SEQ",
                  song.sel == 1u && !gates() && mo_w == midi && !song.playing && !song.rec);
-    tap_key(GRP_KEY);
-    bad += check("PATTERNS D# switches to the MIDI track group", song.sel == 5u && pattern_keys_on());
-    tap_key(GRP_KEY); tap_key(TRK_KEY[0]);
+    for (uint32_t k = NTRK; k-- > 0;) {
+        tap_key(key_at(1, k));
+        bad += check("PATTERNS first eight black keys directly select tracks silently",
+                     song.sel == k && pattern_keys_on() && !gates() && mo_w == midi && !song.playing && !song.rec);
+    }
+    track_select(7);
+    song.rec = (1u << 1) | (1u << 5);
+    uint32_t dim, breath, lit = pattern_leds(&dim, &breath);
+    for (uint32_t k = 0; k < NTRK; k++) {
+        uint32_t mask = 1u << key_at(1, k);
+        bad += check("PATTERNS track lights use absolute tracks across both screen groups",
+                     !!(lit & mask) == (k == 7u) && !!(breath & mask) == (k == 1u || k == 5u) &&
+                     !!(dim & mask) == (k != 7u && k != 1u && k != 5u));
+    }
+    song.rec = 0;
+    song.ntrk = 5;
+    tap_key(key_at(1, 4));
+    bad += check("PATTERNS fifth black key directly selects track 5", song.sel == 4u);
+    lit = pattern_leds(&dim, &breath);
+    for (uint32_t k = 5; k < 11; k++) {
+        tap_key(key_at(1, k));
+        bad += check("PATTERNS unused track keys stay dark and cannot select or play",
+                     song.sel == 4u && !((lit | dim | breath) & (1u << key_at(1, k))) && !gates() && mo_w == midi);
+    }
+    tap_key(key_at(1, 0));
     key_down(26); frame(); key_up(26); frame();
     bad += check("unused selection keys cannot play notes", !gates() && mo_w == midi && !song.playing);
     key_down(PAT_KEY[0]); frame(); key_up(PAT_KEY[0]); frame();

@@ -91,13 +91,14 @@ track). Renders: `stage_1track*` (`_synth`: no pattern), `stage_2tracks`, `stage
 Tracks 5–8 (2026-10-24): Stage’s Add track continues to eight; these extra tracks are always MIDI Track and open
 on CH/TRS instead of the sound browser. ALGORITHM cycles all tracks. Stage, MIXER, PATTERNS, SONG and GLO show the
 selected track’s group (1–4 or 5–8), reusing the four colours and displaying the actual track numerals. With SEQ held,
-D# switches groups; its track keys select within the group. GLO keeps mute/solo and shows CH in place of an audio
+the first eight black keys select tracks 1–8 directly. GLO keeps mute/solo and shows CH in place of an audio
 level for MIDI tracks. Partial groups leave unused places blank. Renders: `stage_midi`, `stage_midi_partial`,
 `mixer_midi`, `patterns_midi`, `song_midi`, `layer_glo_midi`.
 
 PATTERNS keyboard (2026-10-25): track/pattern selection is the default while the selected track is unarmed,
-with the same key map and lights as holding SEQ. Keys are silent in selection mode. Arming restores normal
-playing immediately, including while stopped, during count-in and while waiting for loop zero; disarming or
+with the same key map and lights as holding SEQ: the first eight black keys select tracks 1–8 directly,
+regardless of the displayed group. Unused track keys stay dark and do nothing. Keys are silent in selection mode.
+Arming restores normal playing immediately, including while stopped, during count-in and while waiting for loop zero; disarming or
 finishing a single pass restores selection. First note starts an armed stopped take immediately; PLAY uses the
 configured count-in. SELECT alone still navigates to SONG; SEQ + SELECT chooses a pattern. Other SEQ pages keep
 their existing keyboard behavior.

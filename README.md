@@ -597,7 +597,7 @@ Thanks to [@aroum](https://github.com/aroum) for the detailed feedback in
   sound); tracks 5–8 open their MIDI channel controls, initially channels 5–8. **Remove track** removes the selected track after a question, stopped only: the tracks after
   it move down a place with their sounds, patterns, song sections, motion and recordings. Stage, MIXER, PATTERNS,
   SONG and GLO show the group of four containing the selected track. ALGORITHM cycles through every track; with
-  SEQ held, **D#** switches between groups and the four track keys select within that group. With one track, Stage
+  SEQ held, the first eight black keys select tracks 1–8 directly. With one track, Stage
   shows its sound across the screen in large type. Projects keep every track’s settings and patterns. Templates
   keep the track count and the first four parts’ settings; extra MIDI tracks start with their default settings
 - PLAY starts and stops all tracks; REC arms or disarms the selected track without starting the
@@ -669,8 +669,8 @@ Hold a pattern key alone for a second: a small dialog asks what next: press it a
 pattern key to copy it there, OCT- to leave it. In the dialog the 4th and 5th black keys (C#, D#) blink: C# halves the
 pattern (LEN /2, the steps past it kept hidden), D# doubles it (LEN x2, its steps, recorded notes and motion copied
 after themselves; 64 steps at most). While SEQ is held the dialog stays, its title saying the length, so either can
-be pressed again; letting go of SEQ closes it. On the pattern playing EDIT held undoes them. The first four black keys (F#, G#, A#, C#) select
-tracks 1–4 (the selected one lit, an armed one breathing). **SEQ + SELECT** also chooses a pattern. While playing,
+be pressed again; letting go of SEQ closes it. On the pattern playing EDIT held undoes them. The first eight black keys select
+tracks 1–8 directly (the selected one lit, an armed one breathing). **SEQ + SELECT** also chooses a pattern. While playing,
 destructive edits wait for the track's loop end, as a pattern change does: deleting or clearing a pattern, clearing
 its motion, copying over a pattern in use or the one playing (the header says **… AT LOOP END**, the pattern's key
 breathes); STOP does them at once. Live edits (a note, a hit, ERASE, a motion lane) stay immediate. While playing, each
