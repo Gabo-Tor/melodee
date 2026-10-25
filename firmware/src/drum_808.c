@@ -248,7 +248,9 @@ static inline __attribute__((always_inline)) void dr_off(dr8_t *d) /* silent: th
 #define DR_SIGHS 1                               /* by (swing - DR_SIGH0) >> DR_SIGHS (Q15) */
 #define DR_LEAK 7                                /* the shaped pulse past the network (the click) >> */
 
-static __attribute__((noinline, section(".dsp_text"))) void dr_bd(dr8_t *d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+/* Circuit state is disjoint from the raw output, patch and scratch buffers
+ * supplied by dr8_run_into. Retain its coefficients and histories locally. */
+static __attribute__((noinline, section(".dsp_text"))) void dr_bd(dr8_t *restrict d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t f0, q, g, c, tune = (p[P_E1] - 64) * 3 + d->pitch, pk = 0, round = p[P_E6] > 0;
     uint32_t i;
@@ -289,7 +291,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_bd(dr8_t *d, cons
 
 #define DR_SD_G 1950                             /* tone */
 #define DR_SD_N 18000                            /* noise at SNAP 64, Q15 */
-static __attribute__((noinline, section(".dsp_text"))) void dr_sd(dr8_t *d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_sd(dr8_t *restrict d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t m = p[P_E2] * 256, sn = p[P_E4] * DR_SD_N / 64;              /* TONE: 173 -> 336 Hz; SNAP */
     int32_t gl = (int32_t)(((int64_t)DR_SD_G * 2 * (32768 - m)) >> 15), gh = (int32_t)(((int64_t)DR_SD_G * m) >> 15);
@@ -320,7 +322,7 @@ static const struct { uint16_t hz, ms; uint8_t nz, g; } DR_TOM[6] = {   /* g: le
 #define DR_TOM_G 5700                            /* at 100 Hz (Q16; congas 0.8 of it), the same level at any pitch */
 #define DR_TOM_N 2400                            /* toms' noise, Q15 */
 #define DR_TOM_DROP 3932                         /* pitch at the hit: + 12 %, falling with the level */
-static __attribute__((noinline, section(".dsp_text"))) void dr_tom(dr8_t *d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_tom(dr8_t *restrict d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     uint32_t k = (uint32_t)(d->ins - DR_LT), i;
     int32_t tune = (p[P_E1] - 64) * 3 + d->pitch, f0, f, q, g, e0, n0, dn, pk = 0;
@@ -357,7 +359,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_tom(dr8_t *d, con
 #define DR_RS_G 5000
 #define DR_RS_V 24                               /* into the swing VCA (Q4) */
 #define DR_RS_O 15200                            /* out, Q15 */
-static __attribute__((noinline, section(".dsp_text"))) void dr_rs(dr8_t *d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_rs(dr8_t *restrict d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t e0, de = dre_next(&d->e[0], &e0), pk = 0;
     uint32_t i;
@@ -378,7 +380,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_rs(dr8_t *d, int3
 }
 
 #define DR_CL_G 414
-static __attribute__((noinline, section(".dsp_text"))) void dr_cl(dr8_t *d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_cl(dr8_t *restrict d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t pk = 0;
     uint32_t i;
@@ -401,7 +403,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_cl(dr8_t *d, int3
 #define DR_CP_N 3u                               /* this many fast ones, then a slower last one */
 #define DR_CP_REV 9000                           /* the reverb envelope, Q15 */
 #define DR_CP_G 10445                            /* out, Q12 */
-static __attribute__((noinline, section(".dsp_text"))) void dr_cp(dr8_t *d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_cp(dr8_t *restrict d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t e0, de = dre_next(&d->e[0], &e0), pk = 0;
     const drf_t filter={(int16_t)d->f,(int16_t)d->f2,(int16_t)d->q,DRF_CP.k};
@@ -426,7 +428,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_cp(dr8_t *d, int3
 
 #define DR_MA_RISE 662u                          /* 15 ms */
 #define DR_MA_G 23900                            /* out, Q15 */
-static __attribute__((noinline, section(".dsp_text"))) void dr_ma(dr8_t *d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_ma(dr8_t *restrict d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t step = ((d->v * 151) >> 10) / (int32_t)DR_MA_RISE, pk = 0;
     uint32_t i;
@@ -470,7 +472,7 @@ static __attribute__((noinline)) void dr_metal_tune(const dr8_t *d,dr_scratch_t 
 #define DR_MV 6                                  /* the swing VCAs' input gain (x) */
 /* the oscillators and what the lane's voice takes from them: the cowbell's two, band 1 (3.44 kHz, the cymbal)
  * and band 2 (7.1 kHz, cymbal and hats) through the clipping of its swing VCAs */
-static __attribute__((noinline, section(".dsp_text"))) void dr_metal(dr8_t *d, uint32_t n,dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_metal(dr8_t *restrict d, uint32_t n,dr_scratch_t *scratch)
 {
     uint32_t i, k, ph[6];
     for (k = 0; k < 6u; k++)
@@ -496,7 +498,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_metal(dr8_t *d, u
 
 #define DR_CB_G 26000
 #define DR_CB_FAST 24576                         /* the two envelopes: 50 ms and 500 ms, Q15 */
-static __attribute__((noinline, section(".dsp_text"))) void dr_cb(dr8_t *d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_cb(dr8_t *restrict d, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t e0, de = dre_next(&d->e[0], &e0), t0, dt = dre_next(&d->e[1], &t0);
     uint32_t i;
@@ -511,7 +513,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_cb(dr8_t *d, int3
 }
 
 #define DR_CY_G 50000
-static __attribute__((noinline, section(".dsp_text"))) void dr_cy(dr8_t *d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
+static __attribute__((noinline, section(".dsp_text"))) void dr_cy(dr8_t *restrict d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)
 {
     int32_t a0, da, b0, db;
     int32_t *s = d->x;
@@ -534,7 +536,7 @@ static __attribute__((noinline, section(".dsp_text"))) void dr_cy(dr8_t *d, cons
 }
 
 #define DR_HAT_G 27000
-static __attribute__((noinline, section(".dsp_text"))) void dr_hat(dr8_t *d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)   /* open or closed: band 2, a VCA, a high-pass */
+static __attribute__((noinline, section(".dsp_text"))) void dr_hat(dr8_t *restrict d, const int16_t *p, int32_t *acc, uint32_t n, dr_scratch_t *scratch)   /* open or closed: band 2, a VCA, a high-pass */
 {
     int32_t e0, de;
     uint32_t i;

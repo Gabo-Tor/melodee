@@ -733,12 +733,27 @@ static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n)
         for (int k = 0; k < 6; k++) inc[k] = d9_inc(hz[k] * s->pitch * (s->kind == 3 ? 1.48f : 1.0f));
     s->mute -= m;
     d9_env_anchor(&s->out);
+#if MELODEE_DRUM_FAST
+    /* The six pulse phases are independent of the filters and envelope.
+     * Generate their ordered float sums while the phases stay local. */
+    float metal_samples[CTL];uint32_t ph[6];
+    for(int k=0;k<6;k++)ph[k]=s->ph[k];
+    for(int i=0;i<m;i++){
+        float metal=0.0f;
+        for(int k=0;k<6;k++){ph[k]+=inc[k];metal+=ph[k]&0x80000000u?0.16f:-0.16f;}
+        metal_samples[i]=metal;
+    }
+    for(int k=0;k<6;k++)s->ph[k]=ph[k];
+    for(int i=0;i<m;i++){
+        float metal=metal_samples[i];
+#else
     for (int i = 0; i < m; i++) {
         float metal = 0.0f;
         for (int k = 0; k < 6; k++) {
             s->ph[k] += inc[k];
             metal += s->ph[k] & 0x80000000u ? 0.16f : -0.16f;
         }
+#endif
         float nz = d9_noise(&s->noise);
         float exc = s->kind == 2 ? metal * 0.6f + nz * 0.4f : metal;
         float y = d9_biquad_tick(&s->hp, d9_biquad_tick(&s->bp, exc));

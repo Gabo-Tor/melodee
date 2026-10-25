@@ -657,6 +657,7 @@ static void capture_take(void)
     if (chain_busy()) { ui_message("STOP SONG TO CAPTURE"); return; }
     if (rec_any() || ((song.rec >> k) & 1u)) { ui_message("RECORDING"); return; }
     fm1_irq_off();                                      /* the selected track's events of this run: the newest, the oldest */
+    cap_select(k);
     now = cap_now(t);
     from = cap_w - cap_from > CAP_N ? cap_w - CAP_N : cap_from;
     until = cap_w;

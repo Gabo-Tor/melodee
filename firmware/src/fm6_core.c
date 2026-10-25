@@ -401,6 +401,45 @@ static inline __attribute__((always_inline)) int32_t fm6_opl(int32_t ph, int32_t
             }                                                                                      \
     } while (0)
 #define FM6_SIN_G(x) (fm6_sin(x) * g)
+#if MELODEE_FM6_FAST
+/* A settled MODERN gain needs no recurrence. Preserve the first addition
+ * (including signed zero) and vectorize the independent phase evaluations. */
+static __attribute__((noinline,section(".dsp_text"))) void fm6_op_modern_flat(fm6_voice_t *s,uint32_t k,float *out,const float *in,int add,uint32_t n)
+{
+    uint32_t ph=s->ph[k],fq=(uint32_t)s->fq[k];
+    float g=n?s->g[k]+s->dg[k]:s->g[k];
+#define FM6_FLAT(Y) do { \
+    if(add)for(uint32_t i=0;i<n;i++){out[i]+=(Y);ph+=fq;} \
+    else for(uint32_t i=0;i<n;i++){out[i]=(Y);ph+=fq;} \
+}while(0)
+    if(in)FM6_FLAT(fm6_sin(fm6_phase(ph,in[i]))*g);
+    else FM6_FLAT(fm6_sin(ph&0xffffffu)*g);
+#undef FM6_FLAT
+    s->ph[k]=ph;s->g[k]=g;
+}
+/* The MARK I plan produces integral attenuation and steps, including wrapped
+ * overshoots. Keep its register allocation separate from the other modes. */
+static __attribute__((noinline,section(".dsp_text"))) void fm6_op_mark1(fm6_voice_t *s,uint32_t k,float *out,const float *in,int add,uint32_t n)
+{
+    uint32_t ph=s->ph[k],fq=(uint32_t)s->fq[k],i;
+    int32_t g=(int32_t)s->g[k],dg=(int32_t)s->dg[k];
+    /* Above 13 octaves of attenuation, every exponent ROM value shifts
+     * to zero. Preserve the negative half's -1 code, rather than replacing
+     * this with silence. Bound the whole ramp to exclude envelope wrap. */
+    int32_t first=g+dg,last=g+(int32_t)n*dg;
+    int32_t lo=first<last?first:last,hi=first>last?first:last;
+    if(lo>=13*1024 && hi<32768-(int32_t)FM6_MKI_LOG[0]){
+        if(in)
+            FM6_LOOP((fm6_phase(ph,in[i])&0x800000u)?-1.0f/2048.0f:0.0f);
+        else
+            FM6_LOOP((ph&0x800000u)?-1.0f/2048.0f:0.0f);
+    }else if(in)
+        FM6_LOOP((1.0f/16777216.0f)*fm6_mki((int32_t)fm6_phase(ph,in[i]),g));
+    else
+        FM6_LOOP((1.0f/16777216.0f)*fm6_mki((int32_t)(ph&0xffffffu),g));
+    s->ph[k]=ph;s->g[k]=(float)g;
+}
+#endif
 static __attribute__((section(".dsp_text"))) void fm6_op(fm6_voice_t *s, uint32_t k, float *out, const float *in, int add, uint32_t eng, uint32_t n)
 {
     uint32_t ph = s->ph[k], i, fq = (uint32_t)s->fq[k];
@@ -584,6 +623,16 @@ static __attribute__((noinline, section(".dsp_text"))) void fm6_run(fm6_voice_t 
             fm6_op_loop(s, out, n);
         else if (pl & FM6_P_FB)
             fm6_op_fb(s, k, out, pl & FM6_P_ADD, eng, n);
+#if MELODEE_FM6_FAST
+        else if(eng==FM6_MODERN && s->dg[k]==0.0f){
+            void (*volatile run)(fm6_voice_t *,uint32_t,float *,const float *,int,uint32_t)=fm6_op_modern_flat;
+            run(s,k,out,in?bus[in-1u]:0,pl&FM6_P_ADD,n);
+        }
+        else if(eng==FM6_MARK1){
+            void (*volatile run)(fm6_voice_t *,uint32_t,float *,const float *,int,uint32_t)=fm6_op_mark1;
+            run(s,k,out,in?bus[in-1u]:0,pl&FM6_P_ADD,n);
+        }
+#endif
         else
             fm6_op(s, k, out, in ? bus[in - 1u] : 0, pl & FM6_P_ADD, eng, n);
     }

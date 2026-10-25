@@ -1191,18 +1191,19 @@ no state, persistence or audio-tick work. Request `[op, mask]`, exactly two byte
 | 0 | Query | 0 |
 | 1 | Queue internal-clock Start (count-in applies as on the panel) | 0 |
 | 2 | Queue Stop; also cancels a pending Start or count-in | 0 |
-| 3 | Arm latched REC | tracks, 1–15 |
-| 4 | Arm one-pass REC | tracks, 1–15 |
-| 5 | Disarm (seal, finish and quantize the take as a REC tap does) | tracks, 1–15 |
+| 3 | Arm latched REC | one track bit |
+| 4 | Arm one-pass REC | one track bit |
+| 5 | Disarm (seal, finish and quantize the take as a REC tap does) | nonzero track mask |
 
 The reply is always ten bytes: `rc, schema=1, playing, counting, rec, rec_wait,
 rec_pass, rec_latch, pending, clock`. The fields are one snapshot taken after the
-operation with audio interrupts paused. `rec*` are four-track masks, `pending` is
+operation with audio interrupts paused. `rec*` are NTRK-bit track masks, `pending` is
 the queued transport request (0 none, 1 Start, 2 Stop, 3 restart) and `clock` is
 CLK (0 INT, 1 USB, 2 TRS).
 
 `rc` 0 means accepted. `rc` 1 is a malformed request: wrong length, op above 5,
-a mask of 16 or more, or a mask present for ops 0–2 or missing for ops 3–5.
+a mask beyond NTRK, a mask present for ops 0–2 or missing for ops 3–5, or
+more than one track bit for ops 3–4.
 `rc` 3 is refused: no persistence guard (every op, including query); Start or
 arming while a song chain is armed or running, a momentary snapshot is active or
 the template is old; Start with external clock, while playing or counting in, or
@@ -1213,7 +1214,8 @@ Start acknowledges a queued request, not a running transport: the audio interrup
 applies it at its next block. Poll query until `pending=0` and `playing=1` (or
 `counting=1`). Never resend Start after a lost reply; query, then Stop if needed.
 Query, Stop and disarm are idempotent. Arming follows native REC: during playback
-a newly armed track waits for loop zero (`rec_wait`), and a one-pass take disarms
+a newly armed track finishes and disarms any previous track, waits for loop zero
+(`rec_wait`), and a one-pass take disarms
 after its pass. Arming an already armed track leaves it, including its latch mode,
 unchanged, so a retried arm cannot alter the take. Recorded notes change only the
 live project, exactly as panel recording would.

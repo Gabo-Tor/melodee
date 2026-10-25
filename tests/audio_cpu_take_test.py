@@ -45,7 +45,7 @@ class TakeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.single = take.build_take(take.take_spec(120, 16, 'single', 'latched', 'free', 0, '0124'), manifest())
-        cls.overdub = take.build_take(take.take_spec(120, 64, 'all', 'one-pass', 'grid', 64, '0124'), manifest())
+        cls.overdub = take.build_take(take.take_spec(120, 64, 'single', 'one-pass', 'grid', 64, '0124'), manifest())
 
     def observe(self, plan, seed, jitter):
         s = plan['spec']
@@ -98,13 +98,14 @@ class TakeTest(unittest.TestCase):
             take.parse_take('E 1 2 3')
 
     def test_specs_rejected_before_construction(self):
-        for args in ((59, 16, 'all', 'latched', 'free', 0), (120, 256, 'single', 'latched', 'free', 0),
-                     (120, 16, 'single', 'latched', 'free', 256), (120, 32, 'all', 'latched', 'free', 0),
-                     (120.5, 16, 'all', 'latched', 'free', 0), (120, 16, 'all', 'held', 'free', 0)):
+        for args in ((59, 16, 'single', 'latched', 'free', 0), (120, 256, 'single', 'latched', 'free', 0),
+                     (120, 16, 'single', 'latched', 'free', 256), (120, 32, 'single', 'latched', 'free', 0),
+                     (120.5, 16, 'single', 'latched', 'free', 0), (120, 16, 'single', 'held', 'free', 0),
+                     (120, 16, 'all', 'latched', 'free', 0)):
             with self.assertRaises(ValueError):
                 take.take_spec(*args, '0124')
         with patch.object(take.subprocess, 'run') as run, self.assertRaisesRegex(RuntimeError, 'source'):
-            take.build_take(take.take_spec(120, 16, 'all', 'latched', 'free', 0, '0124'),
+            take.build_take(take.take_spec(120, 16, 'single', 'latched', 'free', 0, '0124'),
                             dict(firmware_sha256={str(take.ROOT/'firmware/src/core.h'): 'mismatch'}))
         run.assert_not_called()
 
@@ -164,13 +165,13 @@ class TakeTest(unittest.TestCase):
 
     def test_latched_and_one_pass_takes_disarm_stop_and_validate(self):
         for latch in (1, 0):
-            plan = quick_plan(latch=latch, mask=15)
+            plan = quick_plan(latch=latch)
             control, calls = self.native(plan)
             row = self.run_native(plan, control)
             self.assertTrue(row['passed'], row['live_take'])
-            self.assertEqual(calls[1], (3 if latch else 4, 15))
+            self.assertEqual(calls[1], (3 if latch else 4, 1))
             self.assertIn((2, 0), calls)
-            self.assertEqual((5, 15) in calls, bool(latch))
+            self.assertEqual((5, 1) in calls, bool(latch))
             self.assertEqual(row['live_take']['take_sha256'], hashlib.sha256(b'FBKK take').hexdigest())
             self.assertIsNone(row['voices'])
 

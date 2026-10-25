@@ -353,10 +353,13 @@ static inline __attribute__((always_inline)) uint32_t p5_wheel_inc(uint32_t base
 static __attribute__((section(".dsp_text"))) void p5_samples(p5_voice_t *restrict s,const uint8_t *restrict p,int32_t *restrict out,uint32_t n,const vmod_t *m,const p5_render_params_t *c)
 {
     int32_t last=0;
-    uint32_t fixed_pw_b=p5_pw(c->pwm_b);
+    /* Oscillators do not depend on filter state. Separate the passes to
+     * reduce register pressure while retaining each sample's arithmetic. */
+    float inputs[CTL*P5_OVERSAMPLE],cuts[CTL*P5_OVERSAMPLE];
+    uint32_t fixed_pw_b=p5_pw(c->pwm_b),fixed_pw_a=p5_pw(c->pwm_a);
     for(uint32_t i=0;i<n;i++){
         float time=(float)i*(1.0f/CTL);
-        float fe=c->f0+(c->f1-c->f0)*time,ae=c->a0+(c->a1-c->a0)*time,sum=0.0f;
+        float fe=c->f0+(c->f1-c->f0)*time;
         for(uint32_t os=0;os<P5_OVERSAMPLE;os++){
             float noise=(float)(noise32(&s->noise)>>8)*(1.0f/16777216.0f)-0.5f;
             float lfo=c->wheel[i*P5_OVERSAMPLE+os],wheel_pitch=c->wheel_pitch[i*P5_OVERSAMPLE+os];
@@ -365,7 +368,7 @@ static __attribute__((section(".dsp_text"))) void p5_samples(p5_voice_t *restric
             float bn=b*2.0f;
             uint32_t da=p[P5_POLY_FREQ]?p5_inc(c->ia,fe*c->pa_env+bn*c->pa_b):c->ia;
             if(p[P5_WHEEL_FREQ_A])da=p5_wheel_inc(da,wheel_pitch);
-            uint32_t pw=p5_pw(c->pwm_a+(p[P5_POLY_PW]?fe*c->pw_env+b*c->pw_b:0.0f)+(p[P5_WHEEL_PW_A]?lfo:0.0f));
+            uint32_t pw=!(p[P5_POLY_PW] || p[P5_WHEEL_PW_A])?fixed_pw_a:p5_pw(c->pwm_a+(p[P5_POLY_PW]?fe*c->pw_env+b*c->pw_b:0.0f)+(p[P5_WHEEL_PW_A]?lfo:0.0f));
             float unused=0.0f;
             float a=p5_wave(s->phase[0],da,pw,p[P5_SAW_A],p[P5_PULSE_A],0,&unused)+s->sync_tail;
             s->sync_tail=0.0f;
@@ -384,8 +387,15 @@ static __attribute__((section(".dsp_text"))) void p5_samples(p5_voice_t *restric
             float fc=c->cut+fe*c->filter_velocity*c->env_amount;
             if(p[P5_POLY_FILTER])fc+=fe*c->pf_env+bn*c->pf_b;
             if(p[P5_WHEEL_FILTER])fc+=lfo*112.0f;
-            sum+=p5_filter_core(s,p5_fast_softclip(x),fc,c->k,c->filter_gain,!!p[P5_FILTER_REV]);
+            inputs[i*P5_OVERSAMPLE+os]=p5_fast_softclip(x);
+            cuts[i*P5_OVERSAMPLE+os]=fc;
         }
+    }
+    for(uint32_t i=0;i<n;i++){
+        float time=(float)i*(1.0f/CTL);
+        float ae=c->a0+(c->a1-c->a0)*time,sum=0.0f;
+        for(uint32_t os=0;os<P5_OVERSAMPLE;os++)
+            sum+=p5_filter_core(s,inputs[i*P5_OVERSAMPLE+os],cuts[i*P5_OVERSAMPLE+os],c->k,c->filter_gain,!!p[P5_FILTER_REV]);
         sum*=1.0f/P5_OVERSAMPLE;
         float gain=ae*c->amp_velocity*(1.0f+(float)s->amp_drift/32768.0f);
         float amp=((float)m->amp0+(float)(m->amp1-m->amp0)*time)*(1.0f/32768.0f);

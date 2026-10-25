@@ -358,7 +358,7 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 #include "note_history.c"
 #include "recording_undo.c"
 
-/* Capture: every note played (keys, MIDI, a chord's notes) while the transport runs and no track is recording,
+/* Capture: the selected track's notes (keys, MIDI, a chord's notes) while the transport runs and no track is recording,
  * with its place: the steps the track has entered since PLAY (cap_step) and the 1/256 of the step, as recording.c
  * keeps them. A ring of 8-byte events (RAM is the audio arena's: kept small); REC held writes the selected track's last
  * bars into its pattern (ui_input.c capture_take). Durations in 1/256 of a step; tr bit 7: still held */
@@ -366,7 +366,15 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 typedef struct { uint16_t step, dur; uint8_t on, note, vel, tr; } cap_ev_t;
 static cap_ev_t cap_ev[CAP_N];
 static uint32_t cap_w, cap_from;                /* events written; the first of this run of the transport */
+static uint8_t cap_track = 255u;               /* one buffer owner; selecting another track discards the old take */
 static uint16_t cap_step[NTRK];                 /* the step playing, counted from PLAY (65535 before the first) */
+/* Called in the audio ISR or with audio interrupts paused. */
+static void cap_select(uint32_t k)
+{
+    if (cap_track == k) return;
+    cap_from = cap_w;
+    cap_track = (uint8_t)k;
+}
 static uint32_t cap_frac(const track_t *t)      /* RECORD_UNIT fraction of the step playing */
 {
     uint32_t span = step_samples(t, seq_div_samples((uint32_t)t->p[P_SDIV]), t->seq_idx);
@@ -385,12 +393,17 @@ static uint32_t cap_len(const cap_ev_t *e, uint32_t now)   /* its length (held: 
 }
 static void cap_on(const track_t *t, uint32_t note, uint32_t vel)
 {
-    uint32_t k = trk_index(t);
-    cap_ev_t *e = &cap_ev[cap_w % CAP_N];
-    /* Queued takes have not punched in yet: collect until the first starts,
-     * then pause all tracks until the last active take finishes. */
-    if (!song.playing || chain.running || rec_any())
+    uint32_t k = trk_index(t), selected = song.sel, hint = midi_hint;
+    /* MPC pads select their track in the next UI frame. Retain their first
+     * onset too, using the pending selection published before MIDI playback. */
+    if (trk[0].p[P_QUANT] == Q_MPC && (hint & MIDI_TRACK_FOLLOW))
+        selected = (hint & ~MIDI_TRACK_FOLLOW) - 1u;
+    /* Queued takes have not punched in yet: collect until recording starts,
+     * then pause until the active take finishes. Other tracks cost no capture work. */
+    if (k != selected || !song.playing || chain.running || rec_any())
         return;
+    cap_select(k);
+    cap_ev_t *e = &cap_ev[cap_w % CAP_N];
     e->step = t->seq_pos >= 0x7FFFFFFFu ? (uint16_t)(cap_step[k] + 1u) : cap_step[k];
     e->on = (uint8_t)(cap_frac(t) >> 8);
     e->dur = 0;
@@ -402,7 +415,8 @@ static void cap_on(const track_t *t, uint32_t note, uint32_t vel)
 static void cap_off(const track_t *t, uint32_t note)
 {
     uint32_t i, k = trk_index(t);
-    /* A dense four-track jam can put more than 32 onsets between a note's
+    if (k != cap_track) return;
+    /* A dense jam can put more than 32 onsets between a note's
      * press and release. Close all matching retained onsets, as input_off's
      * source ownership already waits for the final release of this pitch. */
     for (i = 0; i < cap_w - cap_from && i < CAP_N; i++) {
@@ -625,29 +639,35 @@ static void rec_release(track_t *t, uint32_t note)
         return;                                     /* not one of them, or others still held */
 }
 
-/* The UI calls this with audio interrupts paused. Arm during playback for the
+/* The UI calls this with audio interrupts paused. Only one track can be armed:
+ * finish the previous take before arming another. Arm during playback for the
  * next pattern start; cancelling or finishing seals held durations immediately
  * while physical keys remain available for monitoring. */
 static void recording_quantize(track_t *t);
+static void rec_disarm(track_t *t)
+{
+    uint8_t bit = (uint8_t)(1u << trk_index(t));
+    recording_seal(t);
+    rec_finish(t);
+    if (song.playing && (song.rec & ~song.rec_wait & bit)) recording_quantize(t);
+    t->rh_n = t->rh_ties = t->rskip_n = 0;
+    song.rec &= (uint8_t)~bit;
+    song.rec_wait &= (uint8_t)~bit;
+    song.rec_pass &= (uint8_t)~bit;
+    song.rec_latch &= (uint8_t)~bit;
+    recording_undo_finish(t);
+}
 static void rec_set(track_t *t, uint32_t on)
 {
     uint8_t bit = (uint8_t)(1u << trk_index(t));
     if (on) {
+        for (uint32_t k = 0; k < NTRK; k++)
+            if ((song.rec & (1u << k)) && &trk[k] != t) rec_disarm(&trk[k]);
         if (song.rec & bit) return;
         song.rec |= bit;
         if (song.playing && t->seq_pos < 0x7FFFFFFFu) song.rec_wait |= bit;
         else if (song.playing) song.rec_pass |= bit;
-    } else {
-        recording_seal(t);
-        rec_finish(t);
-        if (song.playing && (song.rec & ~song.rec_wait & bit)) recording_quantize(t);
-        t->rh_n = t->rh_ties = t->rskip_n = 0;
-        song.rec &= (uint8_t)~bit;
-        song.rec_wait &= (uint8_t)~bit;
-        song.rec_pass &= (uint8_t)~bit;
-        song.rec_latch &= (uint8_t)~bit;
-        recording_undo_finish(t);
-    }
+    } else rec_disarm(t);
 }
 
 /* A sustained input crossing punch-in starts at zero without retriggering its
@@ -918,6 +938,7 @@ static void seq_start(void)
         cap_step[i] = 0xFFFFu;                     /* (capture: step 0 is the first) */
     }
     cap_from = cap_w;                              /* capture and the jam log: this run */
+    cap_track = song.sel;
     jam.n = 0;
     song.tick = 0;
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */

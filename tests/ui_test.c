@@ -484,6 +484,15 @@ static int test_rec(void)
     ui_power_on();
     press(B_REC);
     bad += check("REC on HOME arms without changing the screen or starting PLAY", ui.home && song.rec == 1u && transport_req == 0u);
+    track_select(2); press(B_REC);
+    bad += check("REC on another track transfers the arm and latch without starting PLAY",
+                 song.rec == 4u && song.rec_latch == 4u && !song.rec_wait && !song.rec_pass && !transport_req);
+    track_select(1);
+    bad += check("selecting another track alone keeps the existing arm", song.rec == 4u);
+    press(B_REC);
+    bad += check("REC transfers the arm to the newly selected track", song.rec == 2u && song.rec_latch == 2u);
+    press(B_REC);
+    bad += check("REC again disarms the sole armed track", !song.rec && !song.rec_latch);
     /* STEP page: armed + playing -> the keys record live only */
     ui_power_on();
     open_family(FAM_SEQ);
@@ -3685,12 +3694,12 @@ static int test_rec_gestures(void)
     int bad = 0;
     ui_power_on();
     stop_transport();
-    song.rec = 0;
+    rec_set(&trk[2], 1); song.rec_latch = 4u;
     btn_down(B_REC); frame();
     press(B_PLAY);
     btn_up(B_REC); frame();
     bad += check("REC + PLAY: the track armed, the transport starting, REC's release no disarm",
-                 (song.rec & 1u) && (song.rec_latch & 1u) && transport_req == 1u && msg_is("RECORDING"));
+                 song.rec == 1u && song.rec_latch == 1u && transport_req == 1u && msg_is("RECORDING"));
     stop_transport();
     transport_req = 0;
     song.rec = 0;
@@ -4974,6 +4983,7 @@ static int test_capture(void)
         ui_power_on(); recording_reset();
         transport_req = 1; events_block(1);
         uint32_t generation = recording_generation;
+        uint32_t first_capture = cap_w;
         for (uint32_t round = 0; round < 8u; round++) {
             for (uint32_t track = 0; track < NPART; track++)
                 for (uint32_t note = 48; note < 64; note++) input_on(&trk[track], note, 100);
@@ -4982,7 +4992,8 @@ static int test_capture(void)
         }
         uint32_t held = 0;
         for (uint32_t event = 0; event < CAP_N; event++) held += (cap_ev[event].tr >> 7) & 1u;
-        bad += check("Background Capture: releases find every retained note across four tracks and ring wraps", !held);
+        bad += check("Background Capture: only the selected track enters the ring; releases survive wraps",
+                     !held && cap_w == first_capture + 8u * 16u);
         for (uint32_t repeat = 0; repeat < 3u; repeat++) input_on(TSEL, 72, 100);
         input_off(TSEL, 72);
         held = 0;
@@ -5309,10 +5320,11 @@ static int test_seq_keys(void)
                  plane_led(2, 14u + key_at(1, 2)) && !plane_led(1, 14u + key_at(1, 3)) && !key_light(14u + key_at(1, 3)));
     led_pos_init();
     my_steps(TSEL); pattern_switch(TSEL, 2); my_steps(TSEL); pattern_switch(TSEL, 0);
-    song.rec = 0;
+    rec_set(&trk[2], 1); song.rec_latch = 4u;
     tap_key(w2);
     bad += check("  white key 2 tapped, an empty pattern: pattern 2, REC armed with it", TSEL->pattern == 1u &&
-                 (song.rec & 1u) && !(song.rec_latch & 1u));
+                 song.rec == 1u && !song.rec_latch);
+    bad += check("  the pattern shortcut disarms the other track and clears its latch", !(song.rec & 4u) && !(song.rec_latch & 4u));
     tap_key(w2);
     bad += check("  .. hit again at once: still armed", (song.rec & 1u) != 0u);
     song.rec = 0;

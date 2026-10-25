@@ -56,6 +56,7 @@ static int recapture_and_capture_pause(void)
     uint32_t held=recording_run[0].held;
     ok &= held>0 && (recording_flags[0]&1u) && recording_left(0)==0;
     song.playing=1;song.rec=1;uint32_t w=cap_w;
+    cap_on(t,65,90);cap_off(t,65);
     cap_on(&trk[1],67,90);cap_off(&trk[1],67);
     ok &= cap_w==w && recording_run[0].held==held;
     recording_finish(0);recorded_note_t saved=recording[0];
@@ -75,7 +76,8 @@ static int take_taker_boundaries(void)
     uint32_t loop=recording_loop(TSEL,seq_div_samples(TSEL->p[P_SDIV]));
     seq_advance(100);
     uint32_t first=cap_w;
-    input_on(&trk[1],72,90);rec_set(TSEL,1);
+    track_select(1);
+    input_on(&trk[1],72,90);rec_set(&trk[0],1);
     input_on(&trk[1],73,91);input_off(&trk[1],73);
     int bad=check("queued recording leaves Take Taker collecting until loop zero",
         song.rec_wait==1 && !rec_any() && cap_w==first+2u);
@@ -86,31 +88,62 @@ static int take_taker_boundaries(void)
     /* Releasing an onset retained before punch-in must still close its hold. */
     input_off(&trk[1],72);
     ok &= cap_w==w && !(cap_ev[first%CAP_N].tr&128u) && cap_ev[first%CAP_N].dur>0;
-    uint32_t gen=recording_generation;song.sel=1;
-    capture_take();song.sel=0;
+    uint32_t gen=recording_generation;
+    capture_take();
     ok &= recording_generation==gen && msg_is("RECORDING");
     bad+=check("any active take pauses every track and capture action, while old held notes close",ok);
     rec_set(&trk[1],1);
+    track_select(2);
+    cap_on(&trk[2],79,90);cap_off(&trk[2],79);
+    bad+=check("transferring to a waiting arm resumes Take Taker until the new punch-in",
+        song.rec==2 && song.rec_wait==2 && !rec_any() && cap_w==w+1u);
     seq_advance(loop);
     cap_on(&trk[2],80,90);
-    bad+=check("Take Taker stays paused when one take ends as another track punches in",
-        song.rec==2 && rec_any() && cap_w==w);
+    bad+=check("Take Taker pauses again when the replacement track punches in",
+        song.rec==2 && rec_any() && cap_w==w+1u);
     seq_advance(2u*loop);
     cap_on(&trk[2],80,90);cap_off(&trk[2],80);
     bad+=check("Take Taker resumes immediately when the final one-pass recording ends",
-        !song.rec && !rec_any() && song.playing && cap_w==w+1u);
-    rec_set(TSEL,1);song.rec_latch|=1;
+        !song.rec && !rec_any() && song.playing && cap_w==w+2u);
+    rec_set(&trk[0],1);song.rec_latch|=1;
     seq_advance(2u*loop);w=cap_w;
-    cap_on(&trk[3],81,90);
+    cap_on(&trk[2],81,90);
     ok=rec_any() && song.rec_latch==1 && cap_w==w;
-    rec_set(TSEL,0);cap_on(&trk[3],81,90);cap_off(&trk[3],81);
+    rec_set(&trk[0],0);cap_on(&trk[2],81,90);cap_off(&trk[2],81);
     bad+=check("latched recording keeps Take Taker paused across loops; manual disarm resumes it",
         ok && !rec_any() && cap_w==w+1u);
     seq_stop();return bad;
 }
+static int single_track_capture(void)
+{
+    pass_begin(0,16,0);
+    uint32_t first=cap_w;
+    input_on(&trk[0],60,90);seq_advance(100);
+    input_on(&trk[1],60,95);input_off(&trk[1],60);
+    int bad=check("Take Taker ignores other tracks without consuming its selected track's buffer",
+        cap_track==0 && cap_w==first+1u && cap_from==first && (cap_ev[first%CAP_N].tr&128u));
+    track_select(0);
+    bad+=check("selecting the same track retains its capture",cap_from==first && cap_w==first+1u);
+    track_select(1);
+    capture_take();
+    bad+=check("changing track discards the previous capture immediately",
+        cap_track==1 && cap_from==cap_w && msg_is("NOTHING TO CAPTURE") && gate_note(&trk[0],60));
+    input_on(&trk[1],60,101);seq_advance(100);
+    input_off(&trk[0],60);
+    bad+=check("an old track's held-note release cannot close the new track's same pitch",
+        cap_w==first+2u && (cap_ev[(cap_w-1u)%CAP_N].tr&128u));
+    input_off(&trk[1],60);capture_take();
+    bad+=check("Take Taker commits only the new track's performance after a switch",
+        recording_head[recording_owner(&trk[0])]==RECORD_MAX &&
+        recording_head[recording_owner(&trk[1])]<RECORD_MAX && !recording[1].vel &&
+        !(cap_ev[(cap_w-1u)%CAP_N].tr&128u));
+    track_select(0);capture_take();
+    bad+=check("switching back cannot recover a discarded track's capture",msg_is("NOTHING TO CAPTURE"));
+    seq_stop();led_pos_init();return bad;
+}
 int main(void)
 {
-    int bad=complete_store()+recapture_and_capture_pause()+take_taker_boundaries();
+    int bad=single_track_capture()+complete_store()+recapture_and_capture_pause()+take_taker_boundaries();
     if(!bad)puts("Recording shared runtime: 4096 bytes, capture/playback handoffs preserved");
     return bad!=0;
 }

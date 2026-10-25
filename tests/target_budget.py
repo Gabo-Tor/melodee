@@ -18,7 +18,7 @@ import sys
 
 FUNCS = ["phase_render", "sid_render", "cz_native_render", "cz_native_wave", "formant_render",
          "trio_render", "trio_pass", "wheel_render", "wheel_block",
-         "phys_render", "drum_render", "noise_render", "fm6_render", "p5_samples", "p5_mod_samples", "px_modal_block", "px_modal_run", "px_memb_block",
+         "phys_render", "drum_render", "dsk_render", "noise_render", "fm6_render", "p5_samples", "p5_mod_samples", "px_modal_block", "px_modal_run", "px_memb_block",
          "px_string_excite", "px_string_run", "px_symp_run",
          "dr_bd", "dr_sd", "dr_tom", "dr_rs", "dr_cl", "dr_cp", "dr_ma", "dr_metal", "dr_cb", "dr_cy", "dr_hat", "dr8_run",   # drum_808.c
          "drum_source", "drum_limit", "drum_color", "dr_metal_tune",
@@ -40,7 +40,7 @@ EXTRACTED = {
     "sid_render": ("sid_render_into",),
     "drum_render": ("drum_render_into",),
     "dr8_run": ("dr8_run_into",),
-    "fm6_render": ("fm6_run", "fm6_run_into", "fm6_output", "fm6_join"),
+    "fm6_render": ("fm6_run", "fm6_run_into", "fm6_op_mark1", "fm6_op_modern_flat", "fm6_output", "fm6_join"),
     "fm1_alnk0_irq": ("mix_block", "mix_part", "mix_prepare_batch", "audio_batch_flush", "mix_mono_samples", "mix_mono_dry", "mix_mono_general", "master_samples", "master_out"),
     "track_render_audio": ("fm6_dc_samples", "p5_dc_samples"),
 }

@@ -437,6 +437,8 @@ if sound && [ $TABLES = 1 ]; then
         -DMELODEE_LEGACY_EXTRAS=1 -O2 $FW -- "$OUT/mod_test" build/mod_demo
     t "matrix S&H / SLEW / DEPTH, SPREAD: off = bit-identical, stereo sides and routing" mod_spread_test -O2 $FW
     t "FM6 ROM symmetry: exact original operators and envelope wrap" fm6_table_test -O2 $FW
+    t "synth kernels: exact Prophet/FM6 PCM and state, all modes and live edits" synth_kernel_test -O2 $FW
+    t "synth kernels at 2x: exact Prophet PCM and state" synth_kernel_os2:synth_kernel_test -O2 -DP5_OVERSAMPLE=2 $FW -- "$OUT/synth_kernel_os2" parity
     t "modulation routing cache: independent reference parity and comparison cost" mod_route_test -O2 $FW
     t "CPU playback fixtures: exact full-bank serialization across densities/timing/engines" audio_cpu_fixture -O2 $FW
     t "CPU live takes: REC/overdub schedules, native simulation, jitter bounds, FBKK decoding" audio_cpu_take -O2 $FW
@@ -446,6 +448,7 @@ if sound && [ $TABLES = 1 ]; then
     t "routing rebuild probes: full-state parity and rejected steady/changing costs" mod_churn_bench -O2 $FW
     t "SID filter output: exact full state across models/waves/stacks/modes and costs" sid_filter_test -O2 $FW
     t "808/909 metal preparation: exact pitches, states and steady/changing costs" drum_prepare_test -O2 $FW
+    t "SID drum kernel: original PCM/state through digi, controls, steals and releases" drum_sid_fast_test -O2 $FW
     t "CZ native window: exact phase kernel and full renderer through live edits" cz_window_test -O2 $FW
     t "FM6 zero-level preparation: exact state and static/changing costs" fm6_prepare_test -O2 $FW
     t "Prophet zero-wheel: exact shared state and static/changing cost" prophet_fast_test -O2 $FW

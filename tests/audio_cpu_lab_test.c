@@ -55,7 +55,7 @@ static void lifecycle(void)
         for(uint32_t n=0;n<loop+CTL;n+=CTL)seq_advance(CTL);
         assert(song.rec==(latch?1:0));
         /* Mid-loop arming preserves native WAIT LOOP, then punch-in at zero. */
-        assert(!control(3,2));assert(song.rec_wait==2);
+        assert(!control(3,2));assert(song.rec==2 && song.rec_wait==2 && song.rec_latch==2);
         note(1,67,1);
         for(uint32_t n=0;n<loop+CTL;n+=CTL)seq_advance(CTL);
         assert(!(song.rec_wait&2) && (song.rec_pass&2));
@@ -102,7 +102,11 @@ int main(void)
     momentary.active=1;assert(control(1,0)==3 && control(3,1)==3);momentary.active=0;
     /* Tracks not in use cannot be armed; cleanup disarm still accepts all. */
     song.ntrk=2;assert(control(3,4)==3 && control(4,8)==3 && control(3,7)==3 && !song.rec);
-    assert(!control(4,3) && song.rec==3);assert(!control(5,15) && !song.rec);song.ntrk=NPART;
+    assert(control(4,3)==1 && !song.rec);
+    assert(!control(4,1) && song.rec==1);
+    assert(control(3,3)==1 && song.rec==1);
+    assert(!control(4,2) && song.rec==2);
+    assert(!control(5,15) && !song.rec);song.ntrk=NPART;
     assert(!control(1,0));assert(control(1,0)==3);assert(!control(2,0));events_block(0);assert(!song.playing);
     settings_countin=1;assert(!control(3,1));assert(!control(1,0));events_block(0);
     assert(seq_counting() && !song.playing);assert(!control(2,0));events_block(0);assert(!seq_counting());

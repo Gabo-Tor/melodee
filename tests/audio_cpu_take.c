@@ -21,15 +21,14 @@ static uint32_t take_count, take_step;
 static uint8_t take_base_raw[BANK_STORE_SIZE], take_raw[BANK_STORE_SIZE];
 static take_record_t take_base_records[RECORD_MAX], take_records[RECORD_MAX];
 
-static uint32_t take_tracks(uint32_t mask) { return mask == 1u ? 1u : mask == 15u ? 4u : 0u; }
+static uint32_t take_tracks(uint32_t mask) { return mask == 1u ? 1u : 0u; }
 static int take_valid(const take_spec_t *s)
 {
     uint32_t n = take_tracks(s->mask);
     if (s->bpm < 60u || s->bpm > 160u || !n || s->latch > 1u || s->quant > 1u) return 0;
-    if ((s->notes != 16u && s->notes != 64u && s->notes != 256u) || s->notes / n > 64u) return 0;
-    /* Overdub bases keep at most one note per cell on every armed track. */
-    if (s->base != 0u && s->base != 64u && s->base != 256u) return 0;
-    if (s->base == 256u && s->mask != 15u) return 0;
+    if (s->notes != 16u && s->notes != 64u) return 0;
+    /* Overdub bases keep at most one note per cell on the recording track. */
+    if (s->base != 0u && s->base != 64u) return 0;
     return strlen(s->assignment) == NPART;
 }
 static int take_restore(const uint8_t *raw)
@@ -260,9 +259,9 @@ static int take_same_structure(const take_record_t *a, const take_record_t *b, u
 static int take_selftest(void)
 {
     static const take_spec_t specs[] = {
-        {120, 16, 1, 1, 0, 0, "0124"}, {120, 64, 1, 0, 1, 64, "0124"}, {120, 64, 15, 1, 1, 64, "0124"},
-        {120, 256, 15, 0, 0, 256, "0124"}, {90, 256, 15, 1, 0, 0, "4455"}, {160, 64, 15, 0, 1, 256, "1230"},
-        {60, 16, 15, 1, 1, 0, "2222"}, {120, 64, 1, 1, 0, 64, "5555"}, {140, 256, 15, 1, 1, 256, "3333"},
+        {120, 16, 1, 1, 0, 0, "0124"}, {120, 64, 1, 0, 1, 64, "0124"}, {120, 64, 1, 1, 1, 64, "0124"},
+        {120, 64, 1, 0, 0, 64, "0124"}, {90, 64, 1, 1, 0, 0, "4455"}, {160, 64, 1, 0, 1, 64, "1230"},
+        {60, 16, 1, 1, 1, 0, "2222"}, {120, 64, 1, 1, 0, 64, "5555"}, {140, 64, 1, 1, 1, 64, "3333"},
     };
     static uint8_t exact[BANK_STORE_SIZE];
     static take_record_t exact_records[RECORD_MAX];
@@ -295,6 +294,7 @@ static int take_selftest(void)
     bad.notes = 256; assert(!take_valid(&bad));
     bad = specs[0]; bad.base = 256; assert(!take_valid(&bad));
     bad = specs[0]; bad.mask = 3; assert(!take_valid(&bad));
+    bad = specs[0]; bad.mask = 15; assert(!take_valid(&bad));
     bad = specs[0]; bad.bpm = 170; assert(!take_valid(&bad));
     printf("CPU live takes: %u REC/overdub schedules, native simulation, jitter bounds and FBKK decoding\n", cases);
     return 0;

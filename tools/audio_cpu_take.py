@@ -27,13 +27,12 @@ FIELDS = ('bpm', 'notes', 'mask', 'latch', 'quant', 'base')
 
 
 def take_spec(bpm, notes, tracks, mode, timing, base, assignment):
-    spec = dict(bpm=bpm, notes=notes, mask=1 if tracks == 'single' else 15, latch=int(mode == 'latched'),
+    spec = dict(bpm=bpm, notes=notes, mask=1, latch=int(mode == 'latched'),
                 quant=int(timing == 'grid'), base=base, assignment=assignment)
-    if (not isinstance(bpm, int) or not 60 <= bpm <= 160 or notes not in (16, 64, 256) or tracks not in ('single', 'all')
-            or mode not in ('latched', 'one-pass') or timing not in ('free', 'grid') or base not in (0, 64, 256)
-            or (tracks == 'single' and notes > 64) or (base == 256 and tracks != 'all')
+    if (not isinstance(bpm, int) or not 60 <= bpm <= 160 or notes not in (16, 64) or tracks != 'single'
+            or mode not in ('latched', 'one-pass') or timing not in ('free', 'grid') or base not in (0, 64)
             or len(assignment) != 4 or any(c not in '012345' for c in assignment)):
-        raise ValueError('Live take: BPM 60..160, 16/64/256 notes (64 per track), base 0/64/256 (256 all tracks)')
+        raise ValueError('Live take: one recording track, BPM 60..160, 16/64 notes, base 0/64')
     return spec
 
 

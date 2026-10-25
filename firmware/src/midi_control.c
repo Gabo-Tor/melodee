@@ -142,6 +142,8 @@ static int midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
         n = 1;
         nn[0] = (uint8_t)note;
     }
+    if (trk[0].p[P_QUANT] == Q_MPC)
+        midi_hint = (uint8_t)(MIDI_TRACK_FOLLOW | (trk_index(t) + 1u)); /* every accepted pad: latest bank wins */
     for (i = 0; i < n; i++)
         step_midi_edge(trk_index(t), nn[i], 1, ch, note); /* step entry keeps the complete chord */
     if (n > 1u || nn[0] != note) {
@@ -174,8 +176,6 @@ static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
         midi_expression(t, c);
         if (!midi_play(t, ch, note, vel))           /* (a note the layout silences: no owner) */
             return;
-        if (trk[0].p[P_QUANT] == Q_MPC)
-            midi_hint = (uint8_t)(MIDI_TRACK_FOLLOW | (trk_index(t) + 1u)); /* every accepted pad: latest bank wins */
         c->targets |= (uint8_t)(1u << trk_index(t));
         mn_set(ch, note, trk_index(t) + 1u);
         uint32_t mask = 1u << (note & 31u);

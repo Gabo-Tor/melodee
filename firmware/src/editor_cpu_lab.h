@@ -14,6 +14,7 @@ static uint32_t ed_cpu_control(uint32_t op, uint32_t mask)
     if (op != 2u && op != 5u && (chain_busy() || momentary.active || template_old())) return 3;
     /* Tracks not in use take no input or CPU; the panel cannot arm them. */
     if ((op == 3u || op == 4u) && (mask >> trk_n())) return 3;
+    if ((op == 3u || op == 4u) && (mask & (mask - 1u))) return 1;
     if (op == 1u) {
         /* transport_busy() without its own cli/sti: interrupts are already
          * off here and a nested sti would reopen them before the snapshot. */

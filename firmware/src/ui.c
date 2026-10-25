@@ -1148,7 +1148,10 @@ static void track_select(uint32_t i)
         return;
     browse_commit();                             /* (a sound still pending loads into the track it was meant for) */
     momentary_restore();
+    fm1_irq_off();
     song.sel = (uint8_t)i;
+    cap_select(i);
+    fm1_irq_on();
     ui.entry_open = 0;
     ui.note_copy = ui.note_move = 0;
     seq_midi_reset();                            /* (MIDI notes held for the other track enter nothing here) */

@@ -318,11 +318,11 @@ static int pattern_passes(void)
     t->p[P_SSWING] = 0; trk[1].p[P_SLEN] = 3; trk[1].p[P_SDIV] = t->p[P_SDIV]; trk[1].p[P_SSWING] = 0;
     seq_advance(100); rec_set(t, 1); rec_set(&trk[1], 1);
     seq_advance(2u * period - 100u);
-    bad += check("independent track lengths punch in at their own starts", rec_on(t) && !rec_on(&trk[1]) && song.rec_wait == 2);
+    bad += check("arming another waiting track cancels the previous arm", song.rec == 2 && !rec_on(t) && !rec_on(&trk[1]) && song.rec_wait == 2);
     seq_advance(period);
-    bad += check("the longer track starts while the shorter track is still recording", rec_on(t) && rec_on(&trk[1]));
+    bad += check("only the newly armed track punches in at its own loop start", !rec_on(t) && rec_on(&trk[1]) && song.rec_pass == 2);
     seq_advance(period);
-    bad += check("the shorter track disarms without interrupting the longer take", song.rec == 2 && !rec_on(t) && rec_on(&trk[1]));
+    bad += check("the old track's loop boundary does not interrupt the new take", song.rec == 2 && !rec_on(t) && rec_on(&trk[1]));
     seq_advance(2u * period);
     bad += check("the longer track finishes at its own end", !song.rec && song.playing);
     seq_stop();
@@ -418,10 +418,44 @@ static int explicit_rec(void)
     trk[1].p[P_SLEN] = 3; trk[1].p[P_SDIV] = t->p[P_SDIV];
     t->p[P_SSWING] = trk[1].p[P_SSWING] = 0;
     press(B_REC); rec_set(&trk[1], 1);
+    bad += check("a one-pass arm replaces explicit REC and clears its latch", song.rec == 2 && song.rec_wait == 2 && !song.rec_latch);
     seq_advance(6u * period);
-    bad += check("a shortcut track disarms independently while an explicit REC track keeps recording",
-        song.rec == 1 && song.rec_latch == 1 && rec_on(t) && !rec_on(&trk[1]));
-    press(B_REC); seq_stop(); led_pos_init();
+    bad += check("the replacement shortcut finishes without rearming the old explicit REC track",
+        !song.rec && !song.rec_latch && !rec_on(t) && !rec_on(&trk[1]));
+    seq_stop(); led_pos_init();
+    return bad;
+}
+
+static int exclusive_recording(void)
+{
+    int bad = 0;
+    for (uint32_t source = 0; source < 3; source++) for (uint32_t q = 0; q <= 3; q += 3) {
+        pass_begin(source, 4, q);
+        track_t *t = TSEL;
+        t->p[P_SSWING] = 0;
+        press(B_REC); seq_stop(); seq_start(); seq_advance(0);
+        seq_advance(600); input_on(t, 60, 91); seq_advance(300);
+        rec_set(&trk[1], 1);
+        recording_undo_t *take_undo = recording_undo_state();
+        bad += check("transferring REC seals and quantizes held notes, finishes undo, and keeps monitoring",
+            song.playing && song.rec == 2 && song.rec_wait == 2 && !song.rec_pass && !song.rec_latch &&
+            !(recording_flags[0] & 1u) && recording[0].duration && (!q || !recording[0].on) &&
+            !t->rh_n && !t->rh_ties && !t->rskip_n && gate_note(t, 60) && take_undo && !take_undo->active && !take_undo->track);
+        recorded_note_t sealed = recording[0];
+        seq_advance(200); input_off(t, 60);
+        bad += check("a later physical release cannot extend the previous take",
+            !memcmp(&sealed, &recording[0], sizeof sealed) && !gate_note(t, 60));
+        rec_set(&trk[1], 0);
+        bad += check("cancelling the replacement arm keeps the previous take undo available",
+            !song.rec && recording_undo_state() == take_undo && recording_history(0) == 1 && !recording[0].vel);
+        seq_stop();
+    }
+    /* Reasserting the same arm must retain its latch and waiting state. */
+    pass_begin(0, 4, 0); seq_advance(100); press(B_REC);
+    rec_set(TSEL, 1);
+    bad += check("arming the same track again preserves its pending latched take",
+        song.rec == 1 && song.rec_wait == 1 && song.rec_latch == 1 && !song.rec_pass);
+    rec_set(TSEL, 0); seq_stop(); led_pos_init();
     return bad;
 }
 
@@ -656,7 +690,7 @@ static int take_quantization(void)
 #ifndef RECORDING_NO_MAIN
 int main(void)
 {
-    int bad=explicit_rec()+take_quantization()+first_note_start()+pattern_passes()+control_tick_precision()+repeated_hits()+independent_lengths()+raw_loop()+raw_storage()+raw_capacity()+copy_and_edit()+slow_precision()+replace_during_replay()+standalone_and_template()+full_recording_replay();
+    int bad=exclusive_recording()+explicit_rec()+take_quantization()+first_note_start()+pattern_passes()+control_tick_precision()+repeated_hits()+independent_lengths()+raw_loop()+raw_storage()+raw_capacity()+copy_and_edit()+slow_precision()+replace_during_replay()+standalone_and_template()+full_recording_replay();
     printf("%s\n",bad?"RAW RECORDING TEST FAILED":"Raw recording tests passed");return !!bad;
 }
 #endif

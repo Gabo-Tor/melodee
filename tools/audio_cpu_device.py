@@ -284,7 +284,7 @@ def main():
     p.add_argument('--sequence-bpm', type=float, default=120)
     p.add_argument('--clock-jitter-ms', type=float, default=2)
     p.add_argument('--live-notes', type=int, choices=(16, 64, 256), help='Bounded live REC take from host-paced USB MIDI')
-    p.add_argument('--live-tracks', choices=('single', 'all'), default='all')
+    p.add_argument('--live-tracks', choices=('single',), default='single')
     p.add_argument('--live-mode', choices=('latched', 'one-pass'), default='latched')
     p.add_argument('--live-base', type=int, choices=(0, 64, 256), default=0, help='Constructed events to overdub')
     p.add_argument('--take-tolerance-ms', type=float, default=8)

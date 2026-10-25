@@ -264,11 +264,43 @@ static void drum_pads(void)
     puts("MPC drums: USB/TRS pads select silently, record GM hits and release their original owners: OK");
 }
 
+static void capture_follow_pad(uint32_t source,uint32_t note,uint32_t vel)
+{
+    uint32_t status=vel?0x90u:0x80u;
+    if(source==1u)midi_in_event((vel?9u:8u)|status<<8|note<<16|vel<<24);
+    else {um_byte((uint8_t)status);um_byte((uint8_t)note);um_byte((uint8_t)vel);}
+    events_block(CTL);
+}
+static void capture_follow(void)
+{
+    for (uint32_t source=1;source<=2u;source++) {
+        setup_mpc();song.g[G_MIDI]=(int16_t)(source-1u);
+        seq_start();seq_advance(0);
+        capture_follow_pad(source,MPC_PAD_NOTES[0][1],100);
+        uint32_t first=cap_w;
+        capture_follow_pad(source,MPC_PAD_NOTES[1][1],110);
+        assert(song.sel==0 && cap_track==1 && cap_w==first+1u && cap_from==first);
+        uint32_t retained=cap_from;
+        frame();
+        assert(song.sel==1 && cap_track==1 && cap_from==retained && cap_w==first+1u);
+        capture_follow_pad(source,MPC_PAD_NOTES[0][1],0);
+        assert(cap_ev[first%CAP_N].tr==(1u|128u));
+        seq_advance(100);
+        capture_follow_pad(source,MPC_PAD_NOTES[1][1],0);
+        assert(cap_ev[first%CAP_N].tr==1 && cap_ev[first%CAP_N].dur>0);
+        capture_take();
+        assert(recording_head[recording_owner(&trk[0])]==RECORD_MAX);
+        assert(recording_head[recording_owner(&trk[1])]<RECORD_MAX);
+        seq_stop();
+    }
+    puts("MPC Take Taker: first USB/TRS pad retained across selection; prior bank discarded: OK");
+}
 int main(void)
 {
     buttons_and_mapping();
     persistence();
     track_follow();
     drum_pads();
+    capture_follow();
     return 0;
 }

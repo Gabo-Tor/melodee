@@ -435,8 +435,13 @@ static void sid_render_into(track_t *t,voice_t *v,int32_t *out,uint32_t n,const 
     gout = (4096 << 12) / (4096 + p[P_E7] * 32);
     a0 = mulq15(mulq15(sid_edac(model, s->env_prev), norm), vel);   /* the envelope DAC over the block */
     a1 = mulq15(mulq15(sid_edac(model, s->env), norm), vel);
+#if MELODEE_SID_FAST
+    /* Oscillator edges do not depend on the output filters. Keep their
+     * registers out of the filter loop, retaining the delayed edge sample. */
+    int32_t excitation[CTL];
+#endif
     for (i = 0; i < n; i++) {
-        int32_t xn = 0, pre = 0, now = 0, x, f;
+        int32_t xn = 0, pre = 0, now = 0, x;
         uint32_t reset = 0, j;
         ph[0] += inc[0];                               /* (a voice the stack leaves out: inc 0) */
         ph[1] += inc[1];
@@ -472,6 +477,13 @@ static void sid_render_into(track_t *t,voice_t *v,int32_t *out,uint32_t n,const 
         }
         x = held + pre;                                /* the sample before, its edges band-limited */
         held = xn - zero + now;
+#if MELODEE_SID_FAST
+        excitation[i]=x;
+    }
+    for(i=0;i<n;i++){
+        int32_t x=excitation[i];
+#endif
+        int32_t f;
         x = (x * (a0 + (((a1 - a0) * (int32_t)i) >> CTL_LOG2))) >> 15;
         if (bits) {                                    /* the filter: a TPT state variable filter */
             int32_t in = (x * gin) >> 12, v3 = in - ic2, bp, lp, hp;
