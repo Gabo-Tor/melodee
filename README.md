@@ -36,10 +36,11 @@ For a black-screen device already in ROM UBOOT, use the
 Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current stable release:
 **[Melodee 1.4.5](https://github.com/keremimo/melodee/releases/tag/v1.4.5)**.
 
-Release candidate: **[Melodee 1.5.0-rc.1](https://github.com/keremimo/melodee/releases/tag/v1.5.0-rc.1)**
-([release notes](docs/RELEASE_1.5.0-rc.1.md)); choose **Release candidate** in the web installer.
+Release candidate: **[Melodee 1.5.0-rc.4](https://github.com/keremimo/melodee/releases/tag/v1.5.0-rc.4)**
+([release notes](docs/RELEASE_1.5.0-rc.4.md)); choose **Release candidate** in the web installer.
 It adds USB MIDI Track, four additional MIDI-only tracks, USB Host input/output,
-the revised punch and insert effects, and the current audio-memory optimizations.
+the revised punch and shared audio effects, MIDI timing recovery, LZMA startup
+compression, and the current synth and audio-memory optimizations.
 Stable remains the default installer channel. Read the
 [stable manual](https://keremimo.github.io/melodee/webapp/manual/) or the
 [nightly guide](https://keremimo.github.io/melodee/webapp/manual/nightly/) for development firmware.

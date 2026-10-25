@@ -27,7 +27,7 @@ PRODUCT = f"FM-1_9{MAJOR}{int(MINOR):02d}{PATCH}"
 class ReleaseTests(unittest.TestCase):
     def test_release_and_prerelease_identities(self):
         for version, product in (("1.3.2", "FM-1_91032"), ("1.4.0-rc.1", "FM-1_91040"),
-                                 ("1.4.0", "FM-1_91040"), ("1.5.0-rc.1", "FM-1_91050"), ("1.5.0-rc.2", "FM-1_91050"), ("1.5.0-rc.3", "FM-1_91050"), ("0.11.1-audio3", "FM-1_90111"),
+                                 ("1.4.0", "FM-1_91040"), ("1.5.0-rc.1", "FM-1_91050"), ("1.5.0-rc.2", "FM-1_91050"), ("1.5.0-rc.3", "FM-1_91050"), ("1.5.0-rc.4", "FM-1_91050"), ("0.11.1-audio3", "FM-1_90111"),
                                  ("0.10", "FM-1_9010")):
             with self.subTest(version=version):
                 self.assertEqual(release_product(version), product)
