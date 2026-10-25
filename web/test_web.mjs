@@ -451,7 +451,7 @@ async function editorMidiTrack() {
   let dump=E.parse[C.TRACK_DUMP](await rq(E.req.trackDump(2)), info);
   ok(dump.engine===21 && dump.p[info.pe0]===3, "MIDI Track: editor defaults output channel to track number");
   const names=E.parse[C.NAMES](await rq(E.req.names(21)));
-  ok(names.names.length===1 && names.names[0]==="DEFAULT", "MIDI Track: one default factory preset");
+  ok(names.names.length===1 && names.names[0]==="MIDI Track", "MIDI Track: one clearly named factory preset");
   await rq(E.req.set(0,info.pe0,16)); await rq(E.req.set(0,info.pe0+1,1));
   const level=dump.p[0],pan=dump.p[39];
   await rq(E.req.set(0,0,0)); await rq(E.req.trackParam(2,39,30));

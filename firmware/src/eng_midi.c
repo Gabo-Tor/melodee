@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* A musical track with a USB MIDI destination and no audio working state.
  * E0 is the saved 1..16 output channel; E1 additionally admits TRS input. */
-static const preset_t MIDI_PRESET[] = {{.name = "DEFAULT", .e = {1, 0}}};
+static const preset_t MIDI_PRESET[] = {{.name = "MIDI Track", .e = {1, 0}}};
 static const char *const MIDI_THRU[] = {"OFF", "ON"};
 static const engine_t ENG_MIDI = {
     .name = "MIDI Track",

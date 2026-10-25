@@ -2136,7 +2136,7 @@ function makeMockDevice(opt = {}) {
       ...P5_FACTORY.map((b)=>P(P5.name(b),Array(8).fill(0),[0,0,127,0],0))]});
   ENG.push({name:"-",titles:["-","-"],edit:Array(8).fill(NONE),presets:[]},
     {name:"MIDI Track",titles:["MIDI Track","-"],edit:[D("CH",F.INT,1,16,1),E("TRS",["OFF","ON"],0),...Array(6).fill(NONE)],
-      presets:[P("DEFAULT",[1,0,0,0,0,0,0,0],[0,0,0,0],0)]});
+      presets:[P("MIDI Track",[1,0,0,0,0,0,0,0],[0,0,0,0],0)]});
   const FM6_E = ENG.findIndex((e) => e.name === "FM6"), FM6_BANK = 0;
   /* the mock's demo sequences (the device powers on empty; it has no pattern library): absolute notes, 0 rest;
      flags 1 accent, 2 slide, 4 tie (holds the previous note). ACID, BEAT */
