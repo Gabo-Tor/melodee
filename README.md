@@ -34,16 +34,13 @@ For a black-screen device already in ROM UBOOT, use the
 [direct USB recovery tool](BUILDING.md#recover-a-black-screen-fm-1).
 
 Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current stable release:
-**[Melodee 1.4.5](https://github.com/keremimo/melodee/releases/tag/v1.4.5)**.
+**[Melodee 1.5.0](https://github.com/keremimo/melodee/releases/tag/v1.5.0)**
+([release notes](docs/RELEASE_1.5.0.md)).
 
-Release candidate: **[Melodee 1.5.0-rc.4](https://github.com/keremimo/melodee/releases/tag/v1.5.0-rc.4)**
-([release notes](docs/RELEASE_1.5.0-rc.4.md)); choose **Release candidate** in the web installer.
-It adds USB MIDI Track, four additional MIDI-only tracks, USB Host input/output,
-the revised punch and shared audio effects, MIDI timing recovery, LZMA startup
-compression, and the current synth and audio-memory optimizations.
-Stable remains the default installer channel. Read the
-[stable manual](https://keremimo.github.io/melodee/webapp/manual/) or the
-[nightly guide](https://keremimo.github.io/melodee/webapp/manual/nightly/) for development firmware.
+Four internal synth/MIDI parts plus four dedicated MIDI tracks, USB Host input/output,
+AUTO/AUTO2 harmony, master punch effects and a shared audio rack. Stable is the default
+installer channel. Read the [stable manual](https://keremimo.github.io/melodee/webapp/manual/)
+or the [nightly guide](https://keremimo.github.io/melodee/webapp/manual/nightly/) for development firmware.
 
 Melodee is a modified version of [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita
 ([@kurogedelic](https://github.com/kurogedelic)), [Hügelton Instruments](https://hugelton.com), and
@@ -59,6 +56,21 @@ Tagged releases from 1.4.4 use the [FM-1 shared build workflow](https://github.c
 to build and attest firmware from the tagged source. See [release verification](BUILDING.md#releases)
 for the process and the command to check a downloaded package. An attestation establishes
 build provenance; hardware validation is a separate check.
+
+## What's new in 1.5.0
+
+- **Eight tracks:** four synth/MIDI parts and four extra MIDI tracks for external instruments.
+- **USB Host input/output:** play from a USB keyboard or sequence a supported USB synth, directly or through one powered hub.
+- **AUTO / AUTO2 chords:** context-aware harmony, or melody on top with accompaniment underneath.
+- **Performance effects:** 27 SLOOP master punch choices and a three-slot shared audio rack with CHAIN/SPLIT sends.
+- **PATTERNS workflow:** turn PRESET to audition sounds in place, create a missing track from its black key, and repeat half/double while holding a pattern.
+- **Recording and controllers:** one project-wide recording grid, one armed track at a time, focused Take Taker capture, and optional eight-knob MIDI profiles.
+- **Lean resource use:** compressed startup images, reduced fixed RAM reservations, synth/mixer optimizations and changed-tile display transfers.
+
+**Upgrading:** old per-track audio processors load OFF; recreate them in SHARED and set track sends.
+NOTE TAIL and NOTE ECHO remain per-track. Eight-track projects use FBKL, which older firmware cannot read;
+fully dense projects can exceed a flash slot. See the [1.5.0 release notes](docs/RELEASE_1.5.0.md)
+for routing migration, USB Host setup and compatibility limits.
 
 ## What's new in 1.4.5
 
