@@ -47,7 +47,7 @@
 # LEGACY FX (tests/no_effects_test.c): legacy values/automation do not process audio or allocate,
 #                   old notes survive, retired MIDI sends are inert, FX opens only the new knob page.
 # MOD / SPREAD (tests/mod_spread_test.c): the matrix's S&H / SLEW sources and DEPTH destination, SPREAD's sides.
-# LAYERS / SCREEN (tests/layer_screen_test.c): GLO/SCL double-tapped layers, SCREEN OFF, LFO 2.
+# LAYERS / SCREEN (tests/layer_screen_test.c): GLO double-tap lock, SCL tap navigation, SCREEN OFF, LFO 2.
 # INPUT (tests/input_test.c): the key / button debounce of hal/fm1_input.h against the TIMER5 scan and bouncing
 #                   contacts: a press within 2 scans (<= 2.3 ms), one note per bouncy press, no early or hanging
 #                   release, stray samples ignored, fast repeats, the encoders' detents.
@@ -415,7 +415,7 @@ if core && [ $TABLES = 1 ]; then
     t "CPU lab controls absent with benchmark only" cpu_lab_bench:audio_cpu_lab_test -O2 -DMELODEE_AUDIO_BENCH=1 $FW
     t "DX7 librarian: USB voice/bank receive, dump replies and malformed frame recovery" fm6_sysex_test $FW
     t "SWING: track + global at most 100, sequencer step lengths, the SWG display" swing_test -O2 $FW
-    t "double-tap layers, SCREEN OFF, LFO 2 SYNC / TRIG / POL" layer_screen_test \
+    t "GLO double-tap lock, SCL tap navigation, SCREEN OFF, LFO 2 SYNC / TRIG / POL" layer_screen_test \
         -O1 -DMELODEE_USB_AUDIO=1 $FW
     t "DRUM EDITOR: synthesized 909, sound controls, individual pitch/length, undo and storage" drum_editor_test -O2 $FW
 fi

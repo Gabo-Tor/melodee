@@ -491,8 +491,9 @@ user presets saved by earlier Melodee versions are not imported, and the user sa
   MONO / LEGATO / UNISON
 - **Modulation matrix:** 4 slots per track, MIDI controllers as sources
 - **Dry mixer:** track level, pan and synth voice spread, optional per-track FX, with output protection
-- **Quick layers:** hold GLO or SCL for shortcuts on the keys and knobs; double-press to lock
-  a layer. Multi-level undo (EDIT held); REC on every page; OCT+ confirms, OCT- goes back
+- **Quick layers:** hold GLO or SCL for shortcuts on the keys and knobs; double-press GLO to lock
+  its layer. Repeated SCL taps navigate the scale pages. Multi-level undo (EDIT held); REC on every page;
+  OCT+ confirms, OCT- goes back
 - **Presets:** browse by category (BASS, LEAD, PAD, KEYS, ORGAN, STRING, BRASS, WIND, PLUCK, BELL, DRUM, FX), favourites or
   RECENT, with knob acceleration; factory presets, 384 shared user slots and 4 projects, named on the device;
   a startup project and a template for new projects; compatible upstream projects from earlier versions load
@@ -655,7 +656,12 @@ loads it at once. Hold **SAVE** to return to the sound you had before browsing.
 
 ### Patterns and songs
 
-Hold **SEQ** and press one of the first eight white keys to pick pattern 1–8: the pattern playing is lit, the others
+Hold **SEQ** to enter **PATTERNS**. While the selected track is unarmed, the keys select tracks and patterns;
+they do not play notes. Arming a pattern immediately restores normal playing, including while stopped or waiting
+for the loop. Play a note to start recording immediately, or press **PLAY** to use the configured count-in.
+When the take disarms, the keys return to selection. Holding **SEQ** also gives these selection shortcuts on other pages.
+
+Press one of the first eight white keys to pick pattern 1–8: the pattern playing is lit, the others
 holding notes glow, the one waiting for the loop end breathes. Picking an empty pattern arms REC with it; on a
 pattern with notes, hit its key twice quickly to arm REC. These shortcuts record one pattern pass
 and automatically disarm. Selecting an empty pattern preserves existing explicit REC arming.
@@ -663,7 +669,7 @@ Hold a pattern key alone for a second: a small dialog asks what next: press it a
 pattern key to copy it there, OCT- to leave it. In the dialog the 4th and 5th black keys (C#, D#) blink: C# halves the
 pattern (LEN /2, the steps past it kept hidden), D# doubles it (LEN x2, its steps, recorded notes and motion copied
 after themselves; 64 steps at most). While SEQ is held the dialog stays, its title saying the length, so either can
-be pressed again; letting go of SEQ closes it. On the pattern playing EDIT held undoes them. With SEQ held the first four black keys (F#, G#, A#, C#) select
+be pressed again; letting go of SEQ closes it. On the pattern playing EDIT held undoes them. The first four black keys (F#, G#, A#, C#) select
 tracks 1–4 (the selected one lit, an armed one breathing). **SEQ + SELECT** also chooses a pattern. While playing,
 destructive edits wait for the track's loop end, as a pattern change does: deleting or clearing a pattern, clearing
 its motion, copying over a pattern in use or the one playing (the header says **… AT LOOP END**, the pattern's key

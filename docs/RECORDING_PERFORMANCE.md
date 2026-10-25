@@ -12,7 +12,13 @@ while waiting, and notes still held at the start enter the take there.
 Explicit REC arming stays active across pattern loops, including notes held
 across loop zero. Tap REC again to finish the take, or tap it while waiting to
 cancel. STOP finishes the take and leaves the track armed for the next start.
-SEQ + pattern-key shortcuts still arm one complete pattern pass, then
+On **SEQ > PATTERNS** (hold SEQ to enter), unarmed keys select tracks and
+patterns without sounding. Selecting an empty pattern, or double-tapping an
+occupied one, arms recording and immediately restores normal playing. Keys
+stay playable while stopped, during count-in, while waiting for the loop and
+through the take. Disarming returns them to track/pattern selection. SELECT
+still navigates to SONG; holding SEQ gives the selection shortcuts on other pages.
+Pattern-key shortcuts arm one complete pattern pass, then
 automatically disarm at its end while playback continues. Notes still held have
 their recorded lengths finished at that boundary; their live sound continues
 until release. Selecting an empty pattern preserves existing explicit REC

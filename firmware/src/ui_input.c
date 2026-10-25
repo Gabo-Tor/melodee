@@ -2,6 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Melodee UI input: LEDs, knobs and buttons, SEQ step entry, panel setup. */
+static int pattern_keys_on(void);
 #include "ui_name.c"                                    /* NAME: naming user presets and projects */
 #include "ui_new.c"                                     /* NEW SONG: key, tempo, roles */
 #include "ui_midi_knobs.c"
@@ -108,7 +109,8 @@ static uint32_t arp_led(void)
     return !on ? 2u : beat_pos < (beat_n ? b / 6u : b / 2u);
 }
 
-/* SEQ held: the white keys F3 .. F4 are the selected track's eight patterns, the first four black keys (F# G# A# C#,
+/* PATTERNS while unarmed, or SEQ held: the white keys F3 .. F4 are the selected track's eight patterns,
+ * the first four black keys (F# G# A# C#,
  * as GLO's mutes) the tracks. A white key tapped switches to its pattern (playing: at the bar); an empty one arms REC
  * with it, one with notes when hit again at once (PAT_DTAP_MS: REC's tap, on or off); held PAT_HOLD_MS, its
  * dialog (CF_PAT_KEY): the key again deletes it, another white key copies it there, the 4th and 5th black keys
@@ -123,9 +125,10 @@ static const uint8_t LEN_KEY[2] = {8, 10};              /* (its dialog: half, do
 static int pattern_keys_on(void)
 {
     return !ui.menu && !ui.confirm && !name_on() && !ui.ly && !ui.uboot &&
-        (fm1_in.buttons & (1u << panel.btn[B_SEQ]));
+        ((fm1_in.buttons & (1u << panel.btn[B_SEQ])) ||
+         (!ui.home && cur_page()->graph == GR_PATGRID && !live_rec_sel()));
 }
-/* the pattern keys (SEQ held), as the keys show things everywhere: bright the pattern playing (and the one held to copy),
+/* the pattern keys, as the keys show things everywhere: bright the pattern playing (and the one held to copy),
  * dim the others that hold something, breathing the one waiting for the bar; the empty ones dark. The track keys: the
  * selected one bright, the others in use dim, an armed one breathing. Its dialog: no track keys, half and double
  * blinking (as a layer's button) */
@@ -2456,6 +2459,7 @@ static void ui_input(void)
         slice_keys_pick(notes);
 #endif
     pattern_keys(bank_notes);
+    song.grid = (uint8_t)keys_mode();                 /* a pattern key can arm REC: play from this frame */
     if (pattern_keys_on() || ui.pat_key) {
         seq_midi_events(0);
     } else if (song.grid) {
@@ -2503,7 +2507,7 @@ static void ui_input(void)
     if (!glo_select_layer && (s = panel_enc(EN_SELECT)) != 0) { /* SELECT: pages; with SEQ / a step key / ENV / SCL: below */
         step_edit_combo();
         if(bulk_jog(s)) {
-        } else if (pattern_keys_on()) {
+        } else if (pattern_keys_on() && (fm1_in.buttons & (1u << panel.btn[B_SEQ]))) {
             ui.seq_t0 |= 2u;
             uint32_t from = TSEL->pattern_next < NPAT ? TSEL->pattern_next : TSEL->pattern;
             if (pattern_request(TSEL, (uint32_t)clamp((int32_t)from + s, 0, NPAT - 1u))) ui_message("STOP SONG TO SWITCH");
@@ -2555,6 +2559,7 @@ static void ui_input(void)
     if (recording_undo_lost) { recording_undo_lost = 0; ui_message("NO RECORD UNDO MEMORY"); }
     step_history_end();                                 /* (seq_undo.c: this frame's STEP edit) */
     ui_notices();
+    song.grid = (uint8_t)keys_mode();                 /* encoder track/page changes also change key ownership */
 }
 
 /* ---------------------------------------------------- panel setup --- */

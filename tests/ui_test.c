@@ -5295,6 +5295,83 @@ static int test_pattern_key_handoff(void)
     ui_power_on();
     return bad;
 }
+/* PATTERNS owns the keyboard until the selected track is armed. Exercise the
+ * audio keyboard too: selection must neither sound nor start a recording. */
+static int test_pattern_page_keys(void)
+{
+    int bad = 0;
+    uint8_t saved_countin = settings_countin;
+    settings_countin = 1;
+    ui_power_on();
+    song.ntrk = NTRK;
+    go_home(); hold(B_SEQ);
+    bad += check("PATTERNS entered by holding SEQ: selection keys remain after release",
+                 cur_page()->graph == GR_PATGRID && pattern_keys_on() && song.grid == 2u && !fm1_in.buttons);
+    uint32_t midi = mo_w;
+    key_down(TRK_KEY[1]); frame(); key_up(TRK_KEY[1]); frame();
+    bad += check("PATTERNS black keys select silently without holding SEQ",
+                 song.sel == 1u && !gates() && mo_w == midi && !song.playing && !song.rec);
+    tap_key(GRP_KEY);
+    bad += check("PATTERNS D# switches to the MIDI track group", song.sel == 5u && pattern_keys_on());
+    tap_key(GRP_KEY); tap_key(TRK_KEY[0]);
+    key_down(26); frame(); key_up(26); frame();
+    bad += check("unused selection keys cannot play notes", !gates() && mo_w == midi && !song.playing);
+    key_down(PAT_KEY[0]); frame(); key_up(PAT_KEY[0]); frame();
+    bad += check("empty pattern selection arms silently and immediately enables playing",
+                 song.rec == 1u && !song.playing && !song.grid && !pattern_keys_on() && !cap_events(TSEL) && mo_w == midi);
+    key_down(PAT_KEY[2]); events_block(1); frame();
+    bad += check("armed PATTERNS: a pattern key now plays and starts the take at zero",
+                 song.playing && rec_on(TSEL) && TSEL->pattern == 0u && kb_note[PAT_KEY[2]] != KB_SILENT && cap_events(TSEL));
+    seq_advance(recording_loop(TSEL, seq_div_samples(TSEL->p[P_SDIV]))); frame();
+    bad += check("one pattern pass ends: selection keys return while playback continues",
+                 song.playing && !song.rec && pattern_keys_on() && song.grid == 2u);
+    key_up(PAT_KEY[2]); frame();
+    bad += check("releasing a note after selection returns ends its live ownership", !trk[0].nheld);
+    seq_stop(); frame();
+    tap_key(PAT_KEY[0]);
+    bad += check("occupied pattern tap stays in selection mode", !song.rec && song.grid == 2u);
+    tap_key(PAT_KEY[0]);
+    bad += check("occupied pattern double tap arms and enables playing", song.rec == 1u && !song.grid);
+    turn(EN_ALGO, 1);
+    bad += check("another unarmed track restores selection in the encoder frame", song.sel == 1u && song.grid == 2u);
+    turn(EN_ALGO, -1);
+    bad += check("returning to the armed track restores playing in the encoder frame", song.sel == 0u && !song.grid);
+    press(B_REC);
+    bad += check("cancelling REC on PATTERNS immediately restores selection", !song.rec && song.grid == 2u);
+    turn(EN_SELECT, 1);
+    bad += check("PATTERNS SELECT navigates to SONG and restores playing", cur_page()->graph == GR_SONG && !song.grid);
+
+    /* PLAY retains the configured count-in; cancelling it restores selection. */
+    ui_power_on(); hold(B_SEQ);
+    tap_key(PAT_KEY[0]);
+    settings_countin = 1;
+    press(B_PLAY); events_block(1); frame();
+    bad += check("PLAY on armed PATTERNS starts count-in with playable keys",
+                 seq_counting() && !song.playing && !song.grid && !pattern_keys_on());
+    key_down(PAT_KEY[3]); frame();
+    bad += check("keys during count-in audition without selecting or starting early",
+                 seq_counting() && !song.playing && TSEL->pattern == 0u && kb_note[PAT_KEY[3]] != KB_SILENT);
+    key_up(PAT_KEY[3]); frame();
+    for (uint32_t i = 0; i < 5u; i++) events_block(beat_samples());
+    frame();
+    bad += check("count-in completes into recording with playable keys", !seq_counting() && song.playing && rec_on(TSEL) && !song.grid);
+    press(B_REC);
+    bad += check("ending a take with REC restores selection during playback", song.playing && !song.rec && song.grid == 2u);
+
+    /* Arming during playback keeps keys playable through WAIT LOOP. */
+    ui_power_on(); hold(B_SEQ);
+    seq_start(); seq_advance(1);
+    tap_key(PAT_KEY[0]);
+    bad += check("arming during playback enables playing while waiting for the loop",
+                 song.rec_wait == 1u && !song.grid && !pattern_keys_on());
+    press(B_REC);
+    bad += check("cancelling WAIT LOOP restores selection", !song.rec && !song.rec_wait && song.grid == 2u);
+    press(B_HOME);
+    bad += check("leaving PATTERNS restores ordinary playing", ui.home && !song.grid && !pattern_keys_on());
+    settings_countin = saved_countin;
+    ui_power_on();
+    return bad;
+}
 static int test_seq_keys(void)
 {
     int bad = 0;
@@ -5351,7 +5428,7 @@ static int test_seq_keys(void)
     tap_key(key_at(1, 2));
     bad += check("  .. a black key: nothing (track 1 still)", ui.confirm == CF_PAT_KEY && song.sel == 0u);
     press(B_OCTDN);
-    bad += check("  .. OCT-: gone, pattern 3 as it was", !ui.confirm && pattern_used(0, 2) && song.grid != 2u);
+    bad += check("  .. OCT-: gone, pattern 3 as it was, SEQ keys still select", !ui.confirm && pattern_used(0, 2) && song.grid == 2u);
     seq_hold_key(w3, 1100u);
     {
         char a[24], b[CF_DETAIL];
@@ -5497,6 +5574,7 @@ int main(void)
     bad += test_home_view_release();
     bad += test_home_select();
     bad += test_seq_keys();
+    bad += test_pattern_page_keys();
     bad += test_pattern_key_handoff();
     bad += test_loop_end_edits();
     bad += test_grid();

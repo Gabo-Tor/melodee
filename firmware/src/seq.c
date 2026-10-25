@@ -850,7 +850,7 @@ static void keyboard_block(void)
                 kb_layer |= 1u << k;
                 continue;
             }
-            if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
+            if (song.grid == 2u)                  /* NAME / pattern selection: keys belong to the UI */
                 kb_note[k] = KB_SILENT;
             else if (song.grid)                   /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;

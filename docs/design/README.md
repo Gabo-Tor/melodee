@@ -95,6 +95,13 @@ D# switches groups; its track keys select within the group. GLO keeps mute/solo 
 level for MIDI tracks. Partial groups leave unused places blank. Renders: `stage_midi`, `stage_midi_partial`,
 `mixer_midi`, `patterns_midi`, `song_midi`, `layer_glo_midi`.
 
+PATTERNS keyboard (2026-10-25): track/pattern selection is the default while the selected track is unarmed,
+with the same key map and lights as holding SEQ. Keys are silent in selection mode. Arming restores normal
+playing immediately, including while stopped, during count-in and while waiting for loop zero; disarming or
+finishing a single pass restores selection. First note starts an armed stopped take immediately; PLAY uses the
+configured count-in. SELECT alone still navigates to SONG; SEQ + SELECT chooses a pattern. Other SEQ pages keep
+their existing keyboard behavior.
+
 HOME's second page (2026-10-13, `firmware/src/ui_view.c`; HOME tapped on HOME, two page dots in the header; HOME
 from elsewhere returns to the page it was on; SELECT is not a page turn on HOME: it turns the menu's HOME SELECT, a
 header message saying the value): a wheel of the twelve notes in fifths centred (160 x 158

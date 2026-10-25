@@ -98,7 +98,7 @@ static void layer_arm(uint32_t pressed, uint32_t now)
         return;
     for (l = LAYER_FX; l < LAYER_N; l++)
         if (pressed & ly_bit(l) & layer_bits()) {
-            lys.dtap=lys.dt_l==l && fm1_ms-lys.dt_ms<=LY_DTAP_MS;
+            lys.dtap=l!=LAYER_SCL && lys.dt_l==l && fm1_ms-lys.dt_ms<=LY_DTAP_MS;
             lys.dt_l=0;
             ui.ly = (uint8_t)l;
             ui.ly_t0 = (now & ~15u) | 1u | (layer_allowed() ? 0u : LY_DEAD);

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio) */
 /* Host test of Felucca 1.2's panel controls as Melodee has them, through the UI test's stubs (ui_test.c):
- * double-tapped quick layers stay open and own the keys silently, FX LATCH, the FX key map (PRESETS assigns, EDIT
+ * double-tapped GLO stays open and owns the keys silently, repeated SCL taps navigate without locking,
+ * FX LATCH, the FX key map (PRESETS assigns, EDIT
  * restores the default), MENU > SCREEN OFF (the panel dark while the transport runs, the wake press swallowed, NEVER),
  * LFO 2 (SYNC's increments at every division and tempo, TRIG NOTE / FREE, POL UNI, the transport's reset),
  * and EDIT map detents published by a scan interrupt between the control read and unused-control cleanup. */
@@ -46,7 +47,8 @@ static void reset_controls(void)
 static void tap_fast(uint32_t b) { btn_down(b); frame(); btn_up(b); frame(); }
 static void test_layers(void)
 {
-    for (uint32_t l=LAYER_GLO;l<LAYER_N;l++) {
+    {
+        uint32_t l = LAYER_GLO;
         reset_controls(); uint32_t b=LAYERS[l].btn;
         tap_fast(b); tap_fast(b);
         assert(ui.lock==l && ui.layer==l && ui.home);
@@ -55,7 +57,22 @@ static void test_layers(void)
         key_up(white(0)); frame(); tap_fast(b);
         assert(!ui.lock && !ui.layer);
     }
-    puts("layers/screen: double-tap layers and silent layer keys passed");
+    for (uint32_t home = 0; home < 2u; home++) {
+        reset_controls();
+        if (!home) { go_title("ENV"); frame(); }
+        for (uint32_t tap = 0; tap < 4u; tap++) {
+            btn_down(B_SCL); frame();
+            assert(!ui.lock && !ui.layer);
+            btn_up(B_SCL); frame();
+            assert(!ui.lock && !ui.ly && !ui.layer && !kb_lock && !pop.on && !smap.on);
+            assert(!ui.home && cur_page()->fam == FAM_SCL);
+        }
+        int16_t root = TSEL->p[P_ROOT];
+        key_down(white(0)); frame();
+        assert(gates() && !kb_layer && TSEL->p[P_ROOT] == root);
+        key_up(white(0)); frame();
+    }
+    puts("layers/screen: GLO double-tap locks; repeated SCL taps navigate and keep keys playable");
 }
 static void test_glo_select(void)
 {
