@@ -1180,7 +1180,8 @@ static void edit_param(uint32_t slot, int32_t steps)
         if (motion_param((uint32_t)(vp - TSEL->p)))
             motion_unplayed();
     }
-    if (pg->scope == SC_TRACK && scale_shared((uint32_t)(vp - TSEL->p)))
+    if ((pg->scope == SC_TRACK && scale_shared((uint32_t)(vp - TSEL->p))) ||
+        (pg->scope == SC_GLOBAL && pg->id[slot] == G_PROJECT_RECQ))
         scale_share(TSEL);
 }
 

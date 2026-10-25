@@ -672,7 +672,7 @@
           <tbody>
             <tr><td>NOTES</td><td>Edit entered steps and recorded takes (piano roll; drum grid on Drum).</td></tr>
             <tr><td>PATTERN</td><td>How long the selected track’s loop is, how fast its steps run, and its own swing and note length.</td></tr>
-            <tr><td>TEMPO</td><td>Project speed (BPM) and song swing; the quantize grid for the next recorded take on the selected track.</td></tr>
+            <tr><td>TEMPO</td><td>Project speed (BPM) and song swing; the project-wide quantize grid for the next recorded take on any track.</td></tr>
             <tr><td>PATTERNS</td><td>One row per track in use, eight patterns each.</td></tr>
             <tr><td>SONG</td><td>Arrangement of sections.</td></tr>
             <tr><td>MOTION</td><td>Knob automation for the selected pattern (shown once that pattern has some automation saved).</td></tr>
@@ -792,7 +792,7 @@
           <li><strong>Undo a take:</strong> when you stop or disarm, or a one-pass shortcut finishes, hold <kbd>EDIT</kbd> to put that pattern back as it was (<strong>UNDO RECORDING</strong>). Motion recorded while armed is included, even when no notes were played. There is one such undo. Details are under <a href="#navigate">Sheets and undo</a>.</li>
           <li>While stopped and armed, the first key or MIDI note starts playback and records immediately, skipping count-in. A count-in you start with <kbd>PLAY</kbd> still runs (internal clock only; external clock skips it).</li>
           <li><strong>Capture (Take Taker):</strong> sometimes referred to as "retroactive recording" - while the transport runs, Melodee keeps only what you play on the selected track. Switching tracks clears the previous capture buffer; notes on other tracks are ignored. Hold <kbd>REC</kbd> to write the selected track’s last bars into its pattern. An empty pattern takes 1, 2 or 4 bars and sets LEN (the pattern length on SEQ → Pattern); a pattern with notes takes its last LEN steps. Hold <kbd>EDIT</kbd> to undo. Capture pauses while a track is actively recording.</li>
-          <li><strong>SEQ → TEMPO → QNT</strong> quantizes the new take’s onsets when recording ends. <strong>OFF</strong> (default) keeps the timing you played. This is separate from scale QNT on SCL. Track GATE affects manually entered steps.</li>
+          <li><strong>SEQ → TEMPO → QNT</strong> sets one recording grid for all audio and MIDI tracks, saved with the project or template. It quantizes the new take’s onsets when recording ends. <strong>OFF</strong> (default) keeps the timing you played. This is separate from scale QNT on SCL. Track GATE affects manually entered steps.</li>
           <li>A project shares <strong>1,024 timed notes</strong> across all 32 banks. <strong>RECORDING FULL</strong> leaves existing takes intact; clear or replace recorded steps to free space.</li>
         </ul>
         <p>The header shows <strong>WAIT LOOP</strong> while recording waits for the selected track’s loop boundary, and <strong>ERASING</strong> during an erase pass. These stay visible while the state applies. An armed track has a REC border around its Stage row.</p>

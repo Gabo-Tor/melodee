@@ -589,20 +589,20 @@ static int project_scale_protocol(void)
 {
     reset();
     int ok = 1;
-    const uint8_t ids[] = {P_ROOT, P_SCALE, P_QUANT};
-    const int16_t values[] = {9, 2, Q_WHITE};
+    const uint8_t ids[] = {P_ROOT, P_SCALE, P_QUANT, P_RECQ};
+    const int16_t values[] = {9, 2, Q_WHITE, 6};
     for (uint32_t i = 0; i < NELEM(ids); i++) {
         uint16_t v = (uint16_t)(values[i] + 8192);
         uint8_t a[4] = {0, ids[i], v & 127u, v >> 7};
         request(ED_SET, a, sizeof a);
-        for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].p[ids[i]] == values[i];
+        for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].p[ids[i]] == values[i];
         a[0] = 2;
         v = (uint16_t)(TP[ids[i]].def + 8192);
         a[2] = v & 127u; a[3] = v >> 7;
         request(ED_TRACK_PARAM, a, sizeof a);
-        for (uint32_t k = 0; k < NPART; k++) ok &= trk[k].p[ids[i]] == TP[ids[i]].def;
+        for (uint32_t k = 0; k < NTRK; k++) ok &= trk[k].p[ids[i]] == TP[ids[i]].def;
     }
-    return check("SET and TRACK_PARAM share project ROOT, scale and note quantization", ok);
+    return check("SET and TRACK_PARAM share project ROOT, scale, note and recording quantization across all eight tracks", ok);
 }
 static int prophet_protocol(void)
 {

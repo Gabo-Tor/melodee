@@ -759,9 +759,13 @@ accents only. Full backups retain recorded gates.
 
 Track parameter **8**, previously the inert `P_ED_FX` field, is now `P_RECQ`: **OFF** (0),
 then the ten existing DIV values plus one (1/4 = 1, 1/16 = 3, 16T = 6, 4BAR = 10).
-P_COUNT stays 92 and P_E0 stays 84. This parameter is per track, survives sound loads, and
+P_COUNT stays 92 and P_E0 stays 84. This parameter is project-wide, survives sound loads, and
 is shown on SEQ > TEMPO and the web sequencer. Scale QNT remains parameter 27. Old projects
-and templates initialize timing QNT to OFF. New TPLB templates retain it without changing size.
+and templates that predate recording QNT initialize it to OFF. Templates retain it
+without changing size. Runtime values are mirrored in every track slot for project
+and protocol compatibility: SET and TRACK_PARAM for parameter 8 change all eight
+tracks. Loading older projects with differing values adopts the selected
+track's QNT (including MIDI tracks loaded from the FBKL tail).
 Web library files use `TQNT` for parameter 8 and keep `QNT` for scale parameter 27, so older
 library files retain their scale mapping. The timing page appears only when the device advertises it.
 

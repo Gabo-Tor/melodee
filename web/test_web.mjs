@@ -1108,6 +1108,14 @@ async function editorTrackParam() {
     "v4: TRACK_PARAM get / set on other tracks (clamped as SET, selection kept, no push)");
   const bad = await rq(E.req.trackParam(4, PAN), { timeout: 60, retries: 0, quiet: true }).then(() => "reply", () => "none");
   ok(bad === "none", "v4: TRACK_PARAM of track 5: no reply");
+  await rq(E.req.set(0, 8, 3));
+  const sharedQnt = await Promise.all([0, 1, 2, 3].map(async (track) =>
+    E.parse[C.TRACK_PARAM](await rq(E.req.trackParam(track, 8))).value));
+  ok(sharedQnt.every((q) => q === 3), "recording QNT: SET shares one project grid across tracks");
+  await rq(E.req.trackParam(2, 8, 6));
+  const sharedTrackQnt = await Promise.all([0, 1, 2, 3].map(async (track) =>
+    E.parse[C.TRACK_PARAM](await rq(E.req.trackParam(track, 8))).value));
+  ok(sharedTrackQnt.every((q) => q === 6), "recording QNT: TRACK_PARAM updates the project grid from another track");
   /* device-side changes: CHANGED for the selected track, TRACK_CHANGED for the others */
   m.sim.param(2, PAN, 30);
   m.sim.param(3, MUTE, 1);

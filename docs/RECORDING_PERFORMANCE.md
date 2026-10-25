@@ -36,14 +36,16 @@ subsequent edit must be undone first, or the take undo becomes unavailable.
 If working memory is exhausted, the device shows **NO RECORD UNDO MEMORY**;
 recording and audio take priority over keeping this snapshot.
 
-**SEQ > TEMPO > QNT** chooses an automatic quantization pass when recording
-finishes, including an early STOP or REC disarm. OFF keeps the captured timing;
-a division snaps only the new take's onsets to that swung grid. Independent
-note lengths, velocities and drum properties stay intact, and the piano roll
+**SEQ > TEMPO > QNT** is one project-wide recording grid, shared by all audio
+and MIDI tracks and saved with the project or template. It chooses an automatic
+quantization pass when recording finishes, including an early STOP or REC disarm.
+OFF keeps the captured timing; a division snaps only the new take's onsets to
+that swung grid. Independent note lengths, velocities and drum properties stay intact, and the piano roll
 shows the committed timing. Changing QNT later affects the next take only.
 An occupied manual step prevents the pass: the take is retained unchanged and
 the device shows **QNT STEP OCCUPIED**. Existing recorded notes and other banks
-are preserved.
+are preserved. Older projects with different track QNT values use the selected
+track's value for the whole project when loaded.
 REC + PLAY explicitly arms and starts in one gesture (or waits for the next
 pattern start if already playing), keeping recording active across loops.
 Holding REC opens the mixer.

@@ -2509,9 +2509,9 @@ function makeMockDevice(opt = {}) {
         if (cmd === CMD.SET && a.length >= 4 && !(a[0] ? globalReserved(a[1]) : paramReserved(a[1]))) {
           if (a[0] === 1 && a[1] === G_ENGSEL) setEngine(clamp(v14dec(a[2], a[3]), 0, ENG.length - 1));
           else if (d.max > d.min) arr[a[1]] = enumOrig(d, clamp(v14dec(a[2], a[3]), d.min, d.max));
-          if (!a[0] && [26, 27, P_MPCDEG].includes(a[1])) {
+          if (!a[0] && [8, 26, 27, P_MPCDEG].includes(a[1])) {
             for (const track of st.tracks) {
-              track.p[26] = st.p[26]; track.p[27] = st.p[27];
+              track.p[8] = st.p[8]; track.p[26] = st.p[26]; track.p[27] = st.p[27];
               track.p[P_MPCDEG] = clamp(st.p[P_MPCDEG], 1, SCALE_DEGREES[st.p[26]]);
             }
           }
@@ -2548,6 +2548,7 @@ function makeMockDevice(opt = {}) {
         if (a.length < 2 || a[0] >= NTRK || a[1] >= P_COUNT) return null;
         const t = st.tracks[a[0]], d = a[1] >= P_E0 ? ENG[t.engine].edit[a[1] - P_E0] : TP[a[1]];
         if (a.length >= 4 && !paramReserved(a[1]) && !midiAudioDisabled(t.engine,a[1]) && d.max > d.min) t.p[a[1]] = enumOrig(d, clamp(v14dec(a[2], a[3]), d.min, d.max));
+        if (a.length >= 4 && a[1] === 8) for (const track of st.tracks) track.p[8] = t.p[8];
         b(a[0]); b(a[1]); v(t.p[a[1]]);
         break;
       }
@@ -3269,8 +3270,8 @@ const LAYOUT = (pe0) => [
   { t: "SCL", pages: [["SCL", 0, [25, 26, 27, 28]], ...(pe0 >= 83 ? [["CHORD", 0, [...P_CHORD, ...(pe0 >= 116 ? [114,115] : [])]]] : []),   /* CHRD VOIC 81, 82 */
     ...(pe0 >= 84 ? [["MPC", 0, [P_MPCDEG]]] : [])] },                                                 /* DEG 83 */
   { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },
-  { t: "SEQ PATTERN", tab: "seqgroups", pages: [["PATTERN", 0, [29, 30, 31, 32]], ["TIMING", 0, [8]]] },
-  { t: "TEMPO", tab: "seqgroups", pages: [["TEMPO", 1, [0, 1]]] },   /* BPM SWG: the project's (SEQ > TEMPO) */
+  { t: "SEQ PATTERN", tab: "seqgroups", pages: [["PATTERN", 0, [29, 30, 31, 32]]] },
+  { t: "TEMPO", tab: "seqgroups", pages: [["TEMPO", 1, [0, 1]], ["TIMING", 0, [8]]] },   /* project BPM, swing and recording QNT */
   { t: "GLOBAL", tab: "setgroups", pages: [["GLOBAL", 1, [21, 41, 2, 3]], ["SYSTEM", 1, [14]]] }, /* device workload budget */
 ];
 /* globals that are actions or placeholders on the device: buttons instead, or hidden */

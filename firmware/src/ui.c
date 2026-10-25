@@ -964,9 +964,9 @@ static int param_kept(uint32_t i)
            i == P_CHRD || i == P_VOIC || i == P_STRUM || i == P_STROKE || i == P_MPCDEG || i == P_RECQ || param_fx(i) || param_fx_send(i);
 }
 
-/* ROOT, SCL, QNT and the MPC degree are the project's: kept the same in each track's own slots
+/* ROOT, SCL, scale QNT, recording QNT and the MPC degree are the project's: kept the same in each track's own slots
  * for compatibility with the project format and editor protocol. TRN stays the track's. */
-static int scale_shared(uint32_t id) { return id == P_ROOT || id == P_SCALE || id == P_QUANT || id == P_MPCDEG; }
+static int scale_shared(uint32_t id) { return id == P_ROOT || id == P_SCALE || id == P_QUANT || id == P_MPCDEG || id == P_RECQ; }
 static void scale_share(const track_t *from)
 {
     uint32_t k;
@@ -974,6 +974,7 @@ static void scale_share(const track_t *from)
         trk[k].p[P_ROOT] = from->p[P_ROOT];
         trk[k].p[P_SCALE] = from->p[P_SCALE];
         trk[k].p[P_QUANT] = from->p[P_QUANT];
+        trk[k].p[P_RECQ] = from->p[P_RECQ];
         trk[k].p[P_MPCDEG] = (int16_t)clamp(from->p[P_MPCDEG], 1, (int32_t)scale_count(from));
     }
 }

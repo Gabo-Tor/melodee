@@ -138,7 +138,7 @@ static int standalone_and_template(void)
     int bad=check("standalone FUN16 restores the active bank and original recorded timing",ok);
     seq_stop();t->p[P_RECQ]=6;template_save();tmpl_t saved=tmpl;
     tmpl_take((const uint8_t *)&saved,sizeof saved);
-    bad+=check("new templates preserve per-track timing quantization",tmpl.t[0].p[P_RECQ]==6);
+    bad+=check("new templates preserve project timing quantization",tmpl.t[0].p[P_RECQ]==6);
     saved.magic=0x414C5054u;
     bad+=check("a template of an older format (TPLA) is not read",!tmpl_take((const uint8_t *)&saved,sizeof saved) && !template_used());
     bad+=check("recording timing QNT cannot become recorded knob automation",!motion_param(P_RECQ));
@@ -157,10 +157,10 @@ static int copy_and_edit(void)
     bad += check("deleting the overview step silences its timed notes",!gate_note(t,60));
     seq_stop();int undone=step_history_apply(0);raw_replay();seq_advance(600);
     bad += check("manual undo restores the original timed note",undone && gate_note(t,60));
-    seq_stop(); t->p[P_RECQ]=6;trk[1].p[P_RECQ]=0;int16_t scale=t->p[P_QUANT];
+    seq_stop(); go_title("TEMPO"); turn(EN_K3,6); int16_t scale=t->p[P_QUANT];
     apply_preset_to(t,1);
-    bad += check("timing QNT stays per-track, survives sound loads and leaves scale QNT separate",
-                 t->p[P_RECQ]==6 && !trk[1].p[P_RECQ] && t->p[P_QUANT]==scale);
+    bad += check("project timing QNT survives sound loads and leaves scale QNT separate",
+                 t->p[P_RECQ]==6 && trk[1].p[P_RECQ]==6 && t->p[P_QUANT]==scale);
     return bad;
 }
 static int slow_precision(void)
@@ -687,10 +687,48 @@ static int take_quantization(void)
     seq_stop();
     led_pos_init(); return bad;
 }
+static int project_recording_quantization(void)
+{
+    raw_begin(); seq_stop(); song.ntrk=NTRK;
+    for(uint32_t k=NPART;k<NTRK;k++) track_blank(k);
+    song.sel=2; go_title("TEMPO"); turn(EN_K3,3);
+    int ok=1;
+    for(uint32_t k=0;k<NTRK;k++) {
+        song.sel=(uint8_t)k; track_t *t=TSEL; int16_t *value;
+        page_desc(cur_page(),2,&value);
+        ok &= value && *value==3;
+        t->p[P_SLEN]=16; t->p[P_SDIV]=2; t->p[P_SSWING]=0;
+        song.rec=(uint8_t)(1u<<k); song.rec_pass=song.rec_wait=0;
+        seq_start(); seq_advance(0); seq_advance(600);
+        input_on(t,60,90); seq_advance(300); input_off(t,60); seq_stop();
+        uint32_t i=recording_head[recording_owner(t)];
+        ok &= i<RECORD_MAX && recording[i].on==0 && recording[i].duration==3200;
+    }
+    int bad=check("TEMPO QNT chosen on one track quantizes takes on all eight audio/MIDI tracks",ok);
+    turn(EN_K3,-3); ok=1;
+    for(uint32_t k=0;k<NTRK;k++) ok &= !trk[k].p[P_RECQ];
+    bad+=check("turning project QNT OFF on a MIDI track disables it on every track",ok);
+
+    /* Old projects may contain different per-track values. The selected
+     * track wins, including a MIDI track restored from the bank tail. */
+    for(uint32_t sel=2;sel<NTRK;sel+=5) {
+        song.sel=(uint8_t)sel;
+        for(uint32_t k=0;k<NTRK;k++) trk[k].p[P_RECQ]=(int16_t)(k+1u);
+        project_capture(&proj_scratch);
+        ok=bank_pack(proj_wire_u.raw,&proj_scratch,1) && bank_valid(proj_wire_u.raw,BANK_STORE_SIZE);
+        if(ok) { ok=!project_restore_runtime(&proj_scratch); bank_restore(proj_wire_u.raw); }
+        for(uint32_t k=0;k<NTRK;k++) ok &= trk[k].p[P_RECQ]==(int16_t)(sel+1u);
+        bad+=check("legacy project load shares the selected audio/MIDI track's recording grid",ok);
+        template_save(); project_new_blank(); template_load(); ok=1;
+        for(uint32_t k=0;k<NTRK;k++) ok &= trk[k].p[P_RECQ]==(int16_t)(sel+1u);
+        bad+=check("project-wide recording QNT survives a new project loaded from its template",ok);
+    }
+    return bad;
+}
 #ifndef RECORDING_NO_MAIN
 int main(void)
 {
-    int bad=exclusive_recording()+explicit_rec()+take_quantization()+first_note_start()+pattern_passes()+control_tick_precision()+repeated_hits()+independent_lengths()+raw_loop()+raw_storage()+raw_capacity()+copy_and_edit()+slow_precision()+replace_during_replay()+standalone_and_template()+full_recording_replay();
+    int bad=project_recording_quantization()+exclusive_recording()+explicit_rec()+take_quantization()+first_note_start()+pattern_passes()+control_tick_precision()+repeated_hits()+independent_lengths()+raw_loop()+raw_storage()+raw_capacity()+copy_and_edit()+slow_precision()+replace_during_replay()+standalone_and_template()+full_recording_replay();
     printf("%s\n",bad?"RAW RECORDING TEST FAILED":"Raw recording tests passed");return !!bad;
 }
 #endif
