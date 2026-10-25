@@ -7,7 +7,7 @@
 #   tools/flash.sh PACKAGE.fwsc       flash that package (no build)
 #   tools/flash.sh --info             the connected FM-1's identity
 #   --port NAME                       MIDI port (part of its name), passed to tools/fm1_install.py
-#   MELODEE_VENV                      Python with Pillow, mido, python-rtmidi, fontTools (default: ~/.cache/melodee-venv,
+#   MELODEE_VENV                      Python with build dependencies and MIDI tools (default: ~/.cache/melodee-venv,
 #                                     made with uv when missing)
 set -e
 cd "$(dirname "$0")/.."
@@ -29,14 +29,14 @@ while [ $# -gt 0 ]; do
 done
 
 # the Python (the build's fonts and the install's MIDI): made once, kept outside /tmp
-if ! "$PY" -c 'import PIL, mido, rtmidi, fontTools' 2>/dev/null; then
+if ! "$PY" -c 'import PIL, mido, rtmidi, fontTools, zopfli.zlib' 2>/dev/null; then
     echo "== Python environment: $VENV"
     if command -v uv >/dev/null 2>&1; then
         [ -x "$PY" ] || uv venv -q --python 3.13 "$VENV"
-        uv pip install -q --python "$PY" Pillow mido python-rtmidi fonttools
+        uv pip install -q --python "$PY" -r tools/requirements-build.txt mido python-rtmidi
     else
         [ -x "$PY" ] || python3 -m venv "$VENV"
-        "$PY" -m pip install -q Pillow mido python-rtmidi fonttools
+        "$PY" -m pip install -q -r tools/requirements-build.txt mido python-rtmidi
     fi
 fi
 
