@@ -57,6 +57,15 @@ to build and attest firmware from the tagged source. See [release verification](
 for the process and the command to check a downloaded package. An attestation establishes
 build provenance; hardware validation is a separate check.
 
+## 1.6 release candidate
+
+**[Melodee 1.6.0-rc.1](https://github.com/keremimo/melodee/releases/tag/v1.6.0-rc.1)** adds
+64-section song arrangements, per-track rests and block resizing, cursor playback,
+undoable arrangement editing and saved song looping. It also includes the Bluetooth
+MIDI and radio recovery work since 1.5.1. Stable remains 1.5.1; choose the candidate
+channel to try the RC. Read the [candidate release notes](docs/RELEASE_1.6.0-rc.1.md)
+for project-format compatibility and hardware-validation limits.
+
 ## What's new in 1.5.1
 
 - **Web editor connection hotfix:** fixes “Error: Invalid favorites reply” when connecting to 1.5 firmware.
