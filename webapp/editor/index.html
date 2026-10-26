@@ -602,7 +602,11 @@ const parse = {
   [CMD.INFO](a) {
     const r = new Reader(a);
     const o = { version: r.s(), nengines: r.b(), pcount: r.b(), gcount: r.b(), nstep: r.b(), pe0: r.b(), engines: [] };
-    for (let i = 0; i < o.nengines; i++) o.engines.push(r.s());
+    for (let i = 0; i < o.nengines; i++) {
+      const name = r.s();
+      /* INFO caps engine names at 8 bytes; keep MIDI Track's UI identity intact. */
+      o.engines.push(i === 21 && name === "MIDI Tra" ? "MIDI Track" : name);
+    }
     o.chainRows = 0;
     o.ntrk = r.i < a.length ? r.b() : 0;             /* v3: tracks (0 = older firmware, one instrument) */
     o.uiCaps = 0;
@@ -2495,7 +2499,7 @@ function makeMockDevice(opt = {}) {
       }
       case CMD.INFO:
         s(opt.legacy ? "MELODEE 0.4 BETA (MOCK)" : "MELODEE v1.2.1 (MOCK)"); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
-        ENG.forEach((e) => s(e.name));
+        ENG.forEach((e) => s(e.name.slice(0, 8)));   /* editor.c: ed_str(name, 8) */
         if (!opt.legacy) b(NTRK);
         if (!opt.legacy && !opt.v3 && !opt.v5) {
           b(0);
@@ -2832,8 +2836,8 @@ async function readDevicePreferences(rq, info, names, previous = null) {
     }
     if (!previous || state.favoriteSig !== previous.state.favoriteSig || state.bankSig !== previous.state.bankSig) {
       favorites = [];
-      /* MIDI Track has a loadable preset but no favorite storage in 1.5 firmware. */
-      const counts=Array.from({length:info.nengines},(_,engine)=>[engine,(names[engine]||[]).length]).filter(([engine,total])=>total>0 && info.engines[engine]!=="MIDI Track");
+      /* Stable engine 21 (MIDI Track) has a preset but no factory favorite storage. */
+      const counts=Array.from({length:info.nengines},(_,engine)=>[engine,(names[engine]||[]).length]).filter(([engine,total])=>total>0 && engine!==21);
       counts.push([info.namespace?.general??info.nengines,slots.total]);
       if(info.native)for(const engine of Object.keys(info.native))counts.push([info.namespace?.[engine]??info.nengines+(+engine===12?1:2),info.native[engine]]);
       for(const [engine,total] of counts) {
