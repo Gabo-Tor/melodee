@@ -82,7 +82,7 @@
   </nav>
   <h1>Manual</h1>
   <p class="small">Firmware: <span data-firmware-version>development source</span>. Use the guide shipped with your firmware; the <a href="https://keremimo.github.io/melodee/webapp/manual/nightly/">nightly manual</a> follows the latest development build.</p>
-  <p>How to use Melodee on the M-VAVE FM-1 after installing the custom firmware. This guide shows screenshots of each page and tables what each knob and control on that page does. Screens shown here use the NIGHT theme; your colors depend on the MENU Settings page (long hold HOME button) → COLOR. Type on the device is large. FONT in that same menu switches between Rubik and Melodee Pixel.</p>
+  <p>How to use Melodee on the M-VAVE FM-1 after installing the custom firmware. This guide shows screenshots of each page and tables what each knob and control on that page does. Screens shown here use the NIGHT theme; your colors depend on the MENU Settings page (long hold HOME button) → COLOR. Type on the device uses Melodee Pixel.</p>
 
   <div class="layout">
     <nav class="toc" id="toc" aria-label="Contents">
@@ -760,6 +760,7 @@
             <li>The ruler above the blocks shows elapsed <strong>minutes:seconds</strong>. <kbd>KNOB 4</kbd> extends the selected block into following sections on its own track, or trims its right edge. Notes and automation continue through the extended block; trimming leaves rests. Extension stops at another occupied block and can append empty sections at the end.</li>
             <li><kbd>KNOB 3</kbd> chooses <strong>REST</strong> below P1. A rest leaves that track silent while release, delay and reverb tails decay. Track 1 rests and continued blocks retain one straight four-beat bar per section repeat.</li>
             <li><kbd>OCT+</kbd> opens cell actions: Set rest, Copy to…, Move to…, Add empty section. Add empty section inserts a section of rests at the cursor. For copy and move, choose a destination on the grid, then <kbd>OCT+</kbd> applies or <kbd>OCT−</kbd> cancels. Copy and move act on the whole block. Destinations must be empty. Copies reuse the pattern; editing its notes changes every occurrence.</li>
+            <li><strong>Set preset:</strong> select the section and track, then <kbd>OCT+</kbd> → Set preset. Browse sounds as usual; <kbd>OCT+</kbd> saves a separate copy for that section, <kbd>OCT−</kbd> cancels. The normal track sound returns in sections without an assignment and on STOP. Remove preset clears the assignment. Native patches are included, so later library edits cannot change the song. Song copy/move and undo include these assignments; the note pattern remains shared. Tracks 5–8 remain MIDI-only.</li>
             <li>Hold <kbd>OCT+</kbd> for Insert empty section, Duplicate section, Move section, Copy sections, Delete section, Take jam, and Clear song. Inserted empty sections contain rests on every track.</li>
             <li>Hold <kbd>OCT+</kbd> and turn <kbd>KNOB 1</kbd> to select a phrase, then tap <kbd>OCT+</kbd> to copy, move, duplicate or delete its sections. Copy and move insert before the destination. Duplication inserts after the source.</li>
             <li>Hold <kbd>EDIT</kbd> to undo song edits; <kbd>EDIT</kbd> + <kbd>OCT−</kbd>/<kbd>OCT+</kbd> undo/redo. Up to eight edits are retained while edit memory is available.</li>
@@ -841,7 +842,6 @@
           <thead><tr><th>Item</th><th>What it does</th></tr></thead>
           <tbody>
             <tr><td>COLOR</td><td><strong>NIGHT</strong> (default), <strong>DAY</strong>, <strong>CONTRAST</strong>, <strong>SUNSET</strong>, <strong>OCEAN</strong>, <strong>NEON</strong>, <strong>CANDY</strong> or <strong>LO-FI</strong>. Knob 1 uses the selected track’s color; the other three knobs are shades of it. Remembered.</td></tr>
-            <tr><td>FONT</td><td><strong>RUBIK</strong> (default) or <strong>PIXEL</strong> (Melodee Pixel, a block face). Pages keep the same layout in either. Remembered.</td></tr>
             <tr><td>HOLD</td><td>The duration of a long hold of a button or knob (0.3–0.6&nbsp;s) to pull up an additional menu or action.</td></tr>
             <tr><td>LIGHTS</td><td>Idle indicator brightness, OFF (only pressed / engaged / selectable) through FULL.</td></tr>
             <tr><td>USB AUDIO</td><td>In+Out / In / Out / Off.</td></tr>

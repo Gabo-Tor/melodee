@@ -310,6 +310,7 @@ static void pattern_apply(track_t *t, uint32_t bank)
 }
 static void pattern_init(void)
 {
+    song_sound_reset();
     recording_reset(); pattern_epoch++;
     pattern_pool_used = pattern_pool_peak = 0; pattern_fallbacks = 0; pattern_free = 0; pattern_full = 0;
     for (uint32_t i = 0; i < PAT_CHUNKS; i++) pattern_link[i] = (uint16_t)(i + 1u < PAT_CHUNKS ? i + 1u : PAT_NONE);

@@ -106,6 +106,36 @@ static void extended_songs_stream(int punches)
     puts(punches ? "Project stream: FBKN punch songs, exact codec, dirty hashes, rename and track removal passed" :
         "Project stream: extended FBKM songs, eight-track rests, dirty hashes, rename and track removal passed");
 }
+static void song_sounds_stream(void)
+{
+    reset(); chain_config.count = 3;
+    engine_load_of(&trk[0], ENGI_PROPHET, 1);
+    for (uint32_t k = NPART; k < NTRK; k++) trk[k].p[P_E0] = (int16_t)(k + 1u);
+    song_sound_t sound;
+    song_sound_capture(&sound, &trk[0], "LOCAL SONG");
+    assert(song_sound_valid(&sound));
+    uint32_t id = song_sound_store(&sound); assert(id);
+    chain_config.sound[1][0] = chain_config.sound[2][1] = (uint8_t)id;
+    project_capture(&proj_scratch); assert(bank_pack(oracle, &proj_scratch, 1));
+    assert(*(uint32_t *)oracle == BANKO_MAGIC);
+    assert(proj_image_capture(1)); st_stream_t w;
+    assert(!proj_stream_generate(&w, OBJ_BANK0)); assert(!st_stream_publish(&w));
+    assert(st_load(OBJ_BANK0, actual, sizeof actual) == sizeof actual && !memcmp(oracle, actual, sizeof actual));
+    project_new_blank(); project_load(0);
+    assert(chain_config.sound[1][0] && chain_config.sound[2][1]);
+    assert(!memcmp(song_sound_get(chain_config.sound[1][0]), &sound, sizeof sound));
+    assert(!project_dirty()); assert(!project_rename(0, "SOUND SONG"));
+    assert(!track_remove(0));
+    assert(!chain_config.sound[1][0] && chain_config.sound[2][0]);
+    assert(!memcmp(song_sound_get(chain_config.sound[2][0]), &sound, sizeof sound));
+    assert(!project_save_as(1, "MOVED SOUND")); project_new_blank(); project_load(1);
+    assert(chain_config.sound[2][0] && !project_dirty());
+    assert(!put_all(2, oracle, sizeof oracle, st_crc32(oracle, sizeof oracle)));
+    project_load(0);
+    assert(chain_config.sound[1][0] && chain_config.sound[2][1]);
+    assert(!memcmp(song_sound_get(chain_config.sound[1][0]), &sound, sizeof sound));
+    puts("Project stream: FBKO sound copies, exact codec, dirty hash, rename and track removal passed");
+}
 static void workload(uint32_t count,uint32_t spread,uint32_t tail,uint32_t quant,uint32_t engine)
 {
     reset();song.ntrk=NPART;
@@ -183,6 +213,7 @@ int main(void)
     midi_tracks_stream();
     extended_songs_stream(0);
     extended_songs_stream(1);
+    song_sounds_stream();
     printf("Project stream: %u complete RAM-codec comparisons, hash/dirty/save/load/rename, failed save and track removal passed\n",cases);
     return 0;
 }

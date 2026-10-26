@@ -181,6 +181,7 @@ static const sheet_row_t SHEET_SONG[] = {
     {"Take jam", ps_jam_v, 0, ps_jam, 0}, {"Clear song", 0, 0, 0, CF_CLEAR_SONG}};
 
 static const sheet_row_t SHEET_SONG_CELL[] = {
+    {"Set preset", 0, 0, song_preset_open, 0}, {"Remove preset", 0, 0, song_preset_remove, 0},
     {"Set rest", 0, 0, song_cell_rest, 0}, {"Copy to\x85", 0, 0, song_cell_copy, 0},
     {"Move to\x85", 0, 0, song_cell_move, 0}, {"Add empty section", 0, 0, ps_insert, 0},
     {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0},
@@ -195,7 +196,8 @@ static void song_cell_sheet_open(void)
     if (ui.song_row >= chain_config.count) { song_insert(0); return; }
     char b[20] = "T1 / Section "; b[1] = (char)('1' + song.sel);
     fmt_int(b + str_len(b), ui.song_row + 1u);
-    sheet_open("Song cell", b, SHEET_SONG_CELL, NELEM(SHEET_SONG_CELL));
+    const song_sound_t *sound = song_sound_get(chain_config.sound[ui.song_row][song.sel]);
+    sheet_open(sound ? sound->name : "Song cell", b, SHEET_SONG_CELL, NELEM(SHEET_SONG_CELL));
 }
 static void song_range_sheet_open(void)
 {

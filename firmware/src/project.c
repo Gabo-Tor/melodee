@@ -1515,6 +1515,7 @@ static uint32_t chain_prepare_from(uint32_t start)
         for (uint32_t k = 0; k < NTRK; k++) if (chain_patterns[i][k] > CHAIN_HOLD || (chain_patterns[i][k] == CHAIN_HOLD && chain_bank(i, k) >= NPAT)) return 1;
     uint32_t f = motion_guard();
     if (transport_busy()) { motion_unguard(f); return 2; }
+    if (!song_sound_prepare()) { motion_unguard(f); return 67; }
     for (uint32_t k = 0; k < NTRK; k++) { pattern_commit(&trk[k]); trk[k].pattern_next = 0xff; }
     chain.config = chain_config;
     chain.start = (uint8_t)start;

@@ -4,8 +4,9 @@
 /* SONG arranges the current project's banks, one per track per row.
  * Main-loop preparation commits the original selections. The ISR switches
  * bounded in-RAM patterns and timing; STOP restores the original selections. */
-#include "pattern.c"
 static chain_config_t chain_config;
+#include "song_sound.c"
+#include "pattern.c"
 static struct {
     uint8_t original[NTRK];
     chain_config_t config;
@@ -51,6 +52,8 @@ static int chain_valid(const chain_config_t *c)
     for (i = 0; i < CHAIN_ROWS; i++)
         for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++)
             if (!chain_fx_valid(&c->fx[i][j]) || (i >= c->count && c->fx[i][j].fx)) return 0;
+    for (i = 0; i < CHAIN_ROWS; i++) for (uint32_t k = 0; k < NTRK; k++)
+        if (c->sound[i][k] > CHAIN_SOUNDS || (i >= c->count && c->sound[i][k])) return 0;
     return 1;
 }
 static void chain_legacy_defaults(chain_legacy_t *c)
@@ -121,6 +124,7 @@ static const step_t *seq_steps(const track_t *t)
     return t->step;
 }
 static void motion_restore(track_t *t);
+static void song_sound_motion_chase(track_t *t);
 static void chain_apply(int starting)
 {
     uint32_t i;
@@ -128,9 +132,13 @@ static void chain_apply(int starting)
     chain.rest_pos = chain.carry;
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
-        if (!starting && chain_patterns[chain.row][i] == CHAIN_HOLD) continue;
+        int change = song_sound_changed(chain.row, i);
+        int continued = !starting && chain_patterns[chain.row][i] == CHAIN_HOLD;
+        if (continued && !change) continue;
         seq_release(t);
         motion_restore(t);
+        if (change) song_sound_section(chain.row, i);
+        if (continued) { song_sound_motion_chase(t); continue; }
         recording_stop(t);
         uint32_t bank = chain_bank(chain.row, i);
         if (bank < NPAT) pattern_apply(t, bank);
@@ -167,8 +175,8 @@ static void chain_stop(void)
     uint32_t i;
     chain.armed = 0;
     punch_song_req = -1; punch_song_buffered = 0;
-    if (!chain.running)
-        return;
+    if (!chain.running) { song_sound_stop(); return; }
+    song_sound_stop();
     for (i = 0; i < NTRK; i++) {
         pattern_apply(&trk[i], chain.original[i]);
         memcpy(&trk[i].p[P_SLEN], chain.timing[i], sizeof chain.timing[i]);
@@ -230,6 +238,7 @@ static void chain_tick(uint32_t n)
  * STOP can always restore the original selections through the bounded fallback. */
 static void pattern_poll(void)
 {
+    if (!song_sound_count) resource_release(RES_SONG_SOUNDS);
     for (uint32_t k = 0; k < NTRK; k++) {
         uint32_t bank = trk[k].pattern_next;
         if (chain.armed) bank = chain_bank(chain.start, k);

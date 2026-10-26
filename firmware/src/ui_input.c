@@ -2051,6 +2051,7 @@ static void ui_input(void)
         return;
     }
     if(ui.import_refresh){pop.on=0;brw.on=0;ui.import_refresh=0;ui.force=1;}
+    if (song_picker.active && song_picker.epoch != pattern_epoch) song_preset_cancel();
     if (song_punch_on() && (song_punch_epoch != pattern_epoch || song_punch.row >= chain_config.count))
         pop_close();
     if (scr_input(pressed, notes)) return;
@@ -2356,6 +2357,7 @@ static void ui_input(void)
         b = panel_btn_of(id);
         switch (b) {
         case B_PLAY:
+            if (song_picker.active) { ui_message("FINISH PRESET FIRST"); break; }
             if ((fm1_in.buttons >> panel.btn[B_REC]) & 1u) {   /* REC + PLAY: record now */
                 rec_play();
                 break;

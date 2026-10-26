@@ -6,7 +6,7 @@
  * BG, rounded corners, no rules, colours from the theme tokens only (gfx.c T_*); THEME is the selected track's
  * colour (labels, gauges, curves), values in TEXT. Type: the large type's roles (gfx.c TY_*; docs/design/README.md
  * "Large type"): labels 16 px, text and the strip's values 20 px, values 28 px, the hero (the chord, big names) 48 px,
- * in Rubik or Melodee Pixel. A value too wide for its cell is set a role smaller (never under the label face); free text (names, messages)
+ * in Melodee Pixel. A value too wide for its cell is set a role smaller (never under the label face); free text (names, messages)
  * is ellipsised. */
 static void draw_menu(void);
 static int name_on(void);                              /* NAME (ui_name.c) */
@@ -600,6 +600,14 @@ static void foot_hint(char *a, char *b)
 /* the sound's name on the track: a user preset or the engine's preset (b holds 16) */
 static void sound_name(const track_t *t, char *b)
 {
+    if (song_picker.active && t == &trk[song_picker.track] && browse_loads == browse_mark) {
+        const song_sound_t *s = song_sound_get(chain_config.sound[song_picker.row][song_picker.track]);
+        if (s) { str_cpy(b, s->name, 16); return; }
+    }
+    if (chain.running) {
+        const song_sound_t *s = song_sound_get(chain.config.sound[chain.row][t - trk]);
+        if (s) { str_cpy(b, s->name, 16); return; }
+    }
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
     b[0] = 0;
     if(t->eng_req==ENGI_PROPHET)p5_short_name(t,b,16);

@@ -192,6 +192,24 @@ even if PLAY began at a later cursor section. PLAY still stops and restores the 
 header shows LOOP on SONG while enabled, and SONG LOOP during playback on every page. The web editor exposes
 the same stopped-only setting when bank capability version 4 is available.
 
+SONG cell presets: while stopped, select a section and track, then OCT+ > Set preset.
+The normal browser auditions that track; OCT+ saves an independent sound copy in that exact
+section and returns to SONG, OCT- cancels. Navigation away also restores the normal track sound.
+Remove preset returns the cell to the track's normal sound. The assignment includes native
+FM6, CZ, Prophet and drum data; overwriting a library preset does not change it.
+An assignment lasts for that section and its repeats only, including a section inside a
+continued block. Unassigned sections and STOP restore the sound from before song playback.
+Track mix, FX routing, scale, arp, notes, timing and motion lanes stay track-owned.
+Changing a sound releases the old sequence notes; a continued block keeps its playback
+position and automation, and subsequent note onsets use the new sound.
+Section and cell copy/move, section duplication/deletion, project backups and song undo include
+the sound assignments. Copies share an immutable song snapshot; replacing one cell leaves
+other cells unchanged. Up to 64 distinct snapshots can live in a project/history, subject to
+available edit memory and the existing PROJECT FULL save limit. Snapshots allocate memory on
+demand; playback boundaries do no allocation or library reads. Tracks 5–8 remain MIDI-only.
+The shared header shows SET PRESET through browser selection, then the selected cell's sound
+name on SONG (LOOP and transport statuses retain priority); the cell sheet title also names the assignment.
+
 TAKE JAM: REC held on SONG (elsewhere REC held captures).
 
 Timed master punches: tap FX on SONG to open the selected section's punches directly; OCT+ > Punch FX also opens it.
@@ -254,7 +272,7 @@ place status cards over knobs, lists, waveforms, or notes.
   The live FX layer retains its own HOLD / LOCK / MEMORY context and names the selected key.
 - **Optional context:** octave, song row, page dots, and the low-battery glyph use the remaining header space in
   the normal layout. Never overlap or truncate a status to preserve optional context. Use a concise, documented
-  label that fits both Rubik and Melodee Pixel; `WAIT LOOP` is the header label for “waiting for loop”.
+  label that fits Melodee Pixel; `WAIT LOOP` is the header label for “waiting for loop”.
   The signed octave pill (`+2`, `-1`) shows the selected track's MPC bank octave while QNT is MPC;
   otherwise it shows the shared keyboard octave. It updates on track/mode changes and disappears at zero.
   In MPC mode the latest accepted pad note selects its track silently; use the normal track context and
@@ -450,16 +468,17 @@ release. It does not require a rack reverb slot. See ../SLOOP_PUNCH_FX.md.
 
 ## Large type (2026-10-14)
 
-The 1.54" panel (27.7 mm across) needs larger text: every screen is set in four type roles, and Settings > FONT picks
-the face. Rubik 500 or Melodee Pixel (`assets/fonts/melodee_pixel.txt`, a 5 x 7 1-bit face drawn at whole multiples);
-a role has the same line height and baseline in both, so a layout holds in either (`gfx.c` `TY_*`, `ui.c` PREF_PIXEL).
+The 1.54" panel (27.7 mm across) uses Melodee Pixel exclusively (`assets/fonts/melodee_pixel.txt`,
+a 5 x 7 1-bit face drawn at whole multiples). The FONT setting was removed on 2026-10-26;
+its old preference bit is retained but ignored. Line heights and baselines stay unchanged.
+Historical mockups above still show the former Rubik face.
 
-| Role | Use | Rubik | Pixel |
-|---|---|---|---|
-| `TY_LB` | labels, units, tags, chips, keycaps | 16 px | 2 x (letters and figures 4 wide) |
-| `TY_TX` | names, rows, the header, text | 20 px | 2 x |
-| `TY_VL` | values | 28 px | 3 x |
-| `TY_HR` | the hero: the chord, big names | 48 px | 5 x |
+| Role | Use | Pixel |
+|---|---|---|
+| `TY_LB` | labels, units, tags, chips, keycaps | 2 x (letters and figures 4 wide) |
+| `TY_TX` | names, rows, the header, text | 2 x |
+| `TY_VL` | values | 3 x |
+| `TY_HR` | the hero: the chord, big names | 5 x |
 
 `ty_y(cy, f)` centres a face's capitals on a row; `ty_fit(f, s, w)` drops to the label face before anything is cut.
 
@@ -477,10 +496,8 @@ turning: its value in the track's colour and a bar); the picture at y 84, 124 ta
 
 Rules, from the reviews: screens stay calm (no boxes or rings around cells, no tabs, no hint rows); nothing is ever
 cut or ellipsised (labels have short forms, `ui_draw.c` CELL_SHORT; dialogs and toasts
-wrap); Stage is multicolour. `tests/ui_render.c` lints every screen in both faces: overlaps, texts past their canvas
+wrap); Stage is multicolour. `tests/ui_render.c` lints every screen with Melodee Pixel: overlaps, texts past their canvas
 or cell, ellipsised labels; it must report none.
 
-Storage: the four Rubik faces are 4-bit alpha kept in four steps (0, 5, 10, 15) and Huffman-coded, with one kerning
-table for all of them (at 28 px, scaled per face); with the pixel face 31.4 KB in all. Glyphs stay in flash: no
-decode table lives in RAM (`gfx.c` builds a 64-entry one on the stack per string).
-
+Storage: the shared Pixel bitmaps, two glyph tables (regular and condensed), extras and four roles cost
+about 2.3 KB. No Rubik glyphs or kerning tables are generated for the firmware.

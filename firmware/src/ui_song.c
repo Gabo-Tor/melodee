@@ -221,11 +221,13 @@ static void song_rows_remove(uint32_t first, uint32_t n)
     song_materialize(first + n);
     song_edit_shift(chain_config.row + first, chain_config.row + first + n, tail * sizeof(chain_row_t));
     song_edit_shift(chain_config.fx + first, chain_config.fx + first + n, tail * sizeof chain_config.fx[0]);
+    song_edit_shift(chain_config.sound + first, chain_config.sound + first + n, tail * NTRK);
     song_edit_shift(chain_patterns + first, chain_patterns + first + n, tail * NTRK);
     chain_config.count -= (uint8_t)n;
     for (uint32_t r = chain_config.count; r < CHAIN_ROWS; r++) {
         chain_config.row[r] = (chain_row_t){0, 1}; memset(chain_patterns[r], 0, NTRK);
         memset(chain_config.fx[r], 0, sizeof chain_config.fx[r]);
+        memset(chain_config.sound[r], 0, NTRK);
     }
     if (ui.song_row > chain_config.count) ui.song_row = chain_config.count;
 }
@@ -248,9 +250,12 @@ static void song_insert(uint32_t duplicate)
     song_materialize(r);
     song_edit_shift(chain_config.row + r + n, chain_config.row + r, (chain_config.count - r) * sizeof(chain_row_t));
     song_edit_shift(chain_config.fx + r + n, chain_config.fx + r, (chain_config.count - r) * sizeof chain_config.fx[0]);
+    song_edit_shift(chain_config.sound + r + n, chain_config.sound + r, (chain_config.count - r) * NTRK);
     song_edit_shift(chain_patterns + r + n, chain_patterns + r, (chain_config.count - r) * NTRK);
     for (uint32_t j = 0; j < n; j++) {
         chain_config.row[r + j] = duplicate ? s->config.row[first + j] : (chain_row_t){CHAIN_REST, 1};
+        if (duplicate) memcpy(chain_config.sound[r + j], s->config.sound[first + j], NTRK);
+        else memset(chain_config.sound[r + j], 0, NTRK);
         if (duplicate) memcpy(chain_config.fx[r + j], s->config.fx[first + j], sizeof chain_config.fx[0]);
         else memset(chain_config.fx[r + j], 0, sizeof chain_config.fx[0]);
         if (duplicate) memcpy(chain_patterns[r + j], s->patterns[first + j], NTRK);
@@ -282,11 +287,14 @@ static void song_apply_destination(void)
         const song_edit_snapshot_t *s = &((song_edit_snapshot_t *)resource[RES_SONG_UNDO].ptr)[se.top - 1u];
         song_extend_rows(dest + n > chain_config.count ? dest + n : chain_config.count);
         if (mode == SONG_CELL_MOVE) for (uint32_t r = se.first; r <= se.last; r++) {
+            chain_config.sound[r][se.track] = 0;
             chain_patterns[r][se.track] = CHAIN_REST; chain_config.row[r].slot = chain_patterns[r][0];
         }
         uint32_t clear_first = rest ? chain_origin(dest, song.sel) : dest;
         uint32_t clear_end = rest ? chain_block_end(clear_first, song.sel) : dest + n;
         for (uint32_t r = clear_first; r < clear_end; r++) {
+            if (r >= dest && r < dest + n)
+                chain_config.sound[r][song.sel] = s->config.sound[se.first + r - dest][se.track];
             chain_patterns[r][song.sel] = rest ? CHAIN_REST : s->patterns[se.first + r - dest][se.track];
             chain_config.row[r].slot = chain_patterns[r][0];
         }
@@ -302,9 +310,11 @@ static void song_apply_destination(void)
         song_materialize(dest);
         song_edit_shift(chain_config.row + dest + n, chain_config.row + dest, (chain_config.count - dest) * sizeof(chain_row_t));
         song_edit_shift(chain_config.fx + dest + n, chain_config.fx + dest, (chain_config.count - dest) * sizeof chain_config.fx[0]);
+        song_edit_shift(chain_config.sound + dest + n, chain_config.sound + dest, (chain_config.count - dest) * NTRK);
         song_edit_shift(chain_patterns + dest + n, chain_patterns + dest, (chain_config.count - dest) * NTRK);
         memcpy(chain_config.row + dest, s->config.row + se.first, n * sizeof(chain_row_t));
         memcpy(chain_config.fx + dest, s->config.fx + se.first, n * sizeof chain_config.fx[0]);
+        memcpy(chain_config.sound + dest, s->config.sound + se.first, n * NTRK);
         memcpy(chain_patterns[dest], s->patterns[se.first], n * NTRK);
         for (uint32_t k = 0; k < NTRK; k++) chain_patterns[dest][k] = (uint8_t)song_snapshot_bank(s, se.first, k);
         chain_config.row[dest].slot = chain_patterns[dest][0];
@@ -315,8 +325,13 @@ static void song_apply_destination(void)
 
 static const char *song_edit_status(void)
 {
+    if (song_picker.active) return "SET PRESET";
     if (chain.running && chain.config.rsv[CHAIN_LOOP]) return "SONG LOOP";
     if (ui.home || cur_page()->graph != GR_SONG) return "";
     if (se.pending) return se.pending == SONG_CELL_MOVE || se.pending == SONG_SECTIONS_MOVE ? "MOVE TO..." : "COPY TO...";
-    return se.range ? "SELECTED" : chain_config.rsv[CHAIN_LOOP] ? "LOOP" : "";
+    if (se.range) return "SELECTED";
+    if (chain_config.rsv[CHAIN_LOOP]) return "LOOP";
+    const song_sound_t *sound = ui.song_row < chain_config.count ? song_sound_get(chain_config.sound[ui.song_row][song.sel]) : 0;
+    if (sound) return sound->name;
+    return "";
 }
