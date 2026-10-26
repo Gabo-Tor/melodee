@@ -714,6 +714,8 @@ cannot be marked. Factory DRUM sounds use the same favorite path.
 MIDI Track (engine 21) has a loadable preset but no factory favorite storage;
 1.5 firmware rejects FAV_GET/FAV_SET for it with rc 1. Editors must skip its
 favorite requests and leave its star control disabled.
+INFO limits engine names to eight bytes, so its wire name is `MIDI Tra`.
+Identify this favorite exclusion by stable engine id 21, not its display name.
 
 rc 0 = applied and saved; 1 = invalid arguments; 2 = unsupported feature;
 3 = applied in RAM but not saved (no flash or a failed write);
