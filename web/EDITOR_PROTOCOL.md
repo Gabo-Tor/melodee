@@ -443,6 +443,16 @@ cannot start a track or follow REST. FBKM stores it in the same assignment byte;
 Older firmware does not read FBKM. Sparse saves retain the existing PROJECT FULL capacity check and never truncate
 patterns to make a song fit. Normal songs continue to save as FBKK/FBKL.
 
+Songs with timed master punch FX use **FBKN** (`0x4e4b4246`), with the same record extent and FBKM
+arrangement prefix. Immediately after that prefix, before the sparse steps, are 64 sections × 4 punches ×
+3 bytes: effect (0 = disabled, 1–27 = SLOOP effect ID + 1), zero-based start step, and duration in conductor
+steps. A disabled event has three zero bytes. Enabled events require start < 64 and duration 1–(64 − start);
+events past the section count must be disabled. The FX are section-local and repeat with the section.
+All event fields are validated before restoring a project. Older firmware rejects FBKN; saves without punches
+continue to use FBKK/FBKL/FBKM as appropriate. Backup transfers preserve FBKN unchanged. Timed punch editing
+is currently available on the device through SONG > OCT+ > Punch FX; the song protocol operations still
+describe note-pattern assignments, and replacing the arrangement clears its punch lane.
+
 pauses recording and sequence edits, and restores the original bank selections on STOP or the song's end.
 Each bank has LEN/DIV/SWING/GATE. Automation has a project-wide limit of 64 events; events belong to a
 track and bank, while the ON switch remains track-wide. WATCH sends RELOAD when a bank changes.

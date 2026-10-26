@@ -233,6 +233,8 @@ static int head_shared_status(void)
 static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : song_edit_status(); }
 static const char *head_punch(void)                     /* (the FX layer names it itself: [FX] HOLD, its key below) */
 {
+    if (ui.layer != LAYER_FX && punch.req < 0 && punch_song_req >= 0 &&
+        punch_needs_ring(punch_song_req) && punch_memory_failed) return "FX MEMORY";
     int32_t fx=punch.cur;
     if(ui.layer!=LAYER_FX && fx>=0 && fx<(int32_t)PUNCH_NFX)return PUNCH_NAME[fx];
     return "";

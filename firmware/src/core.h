@@ -438,10 +438,15 @@ _Static_assert(sizeof(motion_store_t) == 260u, "motion disk layout");
 #define CHAIN_REST NPAT
 #define CHAIN_HOLD (NPAT + 1u)
 #define CHAIN_LOOP 0u /* chain_config_t.rsv index; persisted by FBKM */
+#define CHAIN_FX_EVENTS 4u
+/* fx: zero is dry; 1..27 are the stable SLOOP key-effect IDs plus one.
+ * Timing is in conductor steps, repeated with each section repeat. */
+typedef struct { uint8_t fx, start, length; } chain_fx_t;
 typedef struct { uint8_t slot, repeat; } chain_row_t;
 typedef struct {
     uint8_t count, rsv[3];
     chain_row_t row[CHAIN_ROWS];
+    chain_fx_t fx[CHAIN_ROWS][CHAIN_FX_EVENTS];
 } chain_config_t;
 /* FUN records and raw snapshots retain their original arrangement extent. */
 typedef struct {

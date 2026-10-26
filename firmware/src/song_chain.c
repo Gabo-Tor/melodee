@@ -11,7 +11,7 @@ static struct {
     chain_config_t config;
     int16_t timing[NTRK][4];
     volatile uint8_t armed, running, row, remaining;
-    uint8_t slot, rec, start, seek_chase;
+    uint8_t slot, rec, start, seek_chase, fx_event;
     uint32_t carry, rest_pos, seek_phase[NTRK];
     uint64_t seek_samples[NTRK];
 } chain;
@@ -28,6 +28,17 @@ static void chain_defaults(chain_config_t *c)
     for (i = 0; i < CHAIN_ROWS; i++)
         c->row[i].repeat = 1;
 }
+static int chain_fx_valid(const chain_fx_t *e)
+{
+    return e->fx ? e->fx <= PUNCH_NFX && e->start < NSTEP && e->length &&
+        e->length <= NSTEP - e->start : !e->start && !e->length;
+}
+static uint32_t chain_fx_count(uint32_t row)
+{
+    uint32_t n = 0;
+    for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++) n += chain_config.fx[row][j].fx != 0;
+    return n;
+}
 static int chain_valid(const chain_config_t *c)
 {
     uint32_t i;
@@ -37,6 +48,9 @@ static int chain_valid(const chain_config_t *c)
         if (c->row[i].slot > CHAIN_HOLD || !c->row[i].repeat || c->row[i].repeat > 16u ||
             (c->row[i].slot == CHAIN_HOLD && (!i || c->row[i-1u].slot == CHAIN_REST)))
             return 0;
+    for (i = 0; i < CHAIN_ROWS; i++)
+        for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++)
+            if (!chain_fx_valid(&c->fx[i][j]) || (i >= c->count && c->fx[i][j].fx)) return 0;
     return 1;
 }
 static void chain_legacy_defaults(chain_legacy_t *c)
@@ -141,12 +155,18 @@ static void chain_start(void)
     chain.carry = 0;
     chain.running = 1;
     chain.armed = 0;
+    punch_song_buffered = 0;
+    chain.fx_event = 0;
+    for (uint32_t r = 0; r < chain.config.count; r++)
+        for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++)
+            if (chain.config.fx[r][j].fx && punch_needs_ring(chain.config.fx[r][j].fx - 1)) punch_song_buffered = 1;
     chain_apply(1);
 }
 static void chain_stop(void)
 {
     uint32_t i;
     chain.armed = 0;
+    punch_song_req = -1; punch_song_buffered = 0;
     if (!chain.running)
         return;
     for (i = 0; i < NTRK; i++) {
@@ -155,6 +175,24 @@ static void chain_stop(void)
     }
     song.rec = chain.rec;
     chain.running = 0;
+}
+/* Called after the track clocks advance, including the first step and seeks.
+ * Four bounded comparisons; overlapping punches use the latest start, then
+ * the later event slot. Releasing a live key resumes the current song punch. */
+static void chain_fx_tick(void)
+{
+    if (!chain.running) return;
+    uint32_t step = chain_patterns[chain.row][0] >= NPAT ?
+        chain.rest_pos / seq_div_samples(2u) : trk[0].seq_idx;
+    uint32_t latest = 0, event = 0;
+    punch_song_req = -1;
+    for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++) {
+        const chain_fx_t *e = &chain.config.fx[chain.row][j];
+        if (e->fx && step >= e->start && step - e->start < e->length && e->start >= latest) {
+            punch_song_req = (int8_t)(e->fx - 1u); latest = e->start; event = j + 1u;
+        }
+    }
+    if (chain.fx_event != event) { chain.fx_event = (uint8_t)event; punch_song_gate++; }
 }
 static void chain_tick(uint32_t n)
 {
@@ -174,6 +212,7 @@ static void chain_tick(uint32_t n)
         position = t->seq_pos;
     }
     if (position + n < length) return;
+    chain.fx_event = 0;
     if (chain.remaining > 1u) {
         chain.remaining--;
         if (timed) chain.rest_pos -= length;

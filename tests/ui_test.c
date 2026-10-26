@@ -134,6 +134,7 @@ static void ui_power_on(void)
     midi_insert_init();
     memset(midi_output, 0, sizeof midi_output);
     punch_reset(); punch_panel_mask=punch_panel_lock=0;
+    punch_song_req=-1; punch_song_buffered=0; punch_song_gate=0;
     fx_clear_all();
     for(uint32_t k=0;k<FX_STATE_COUNT;k++)resource_release(RES_FX0+k);
     fx_bus_result=fx_bus_pending=0;fx_bus_mix=fx_bus_target=0;

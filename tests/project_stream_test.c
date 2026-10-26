@@ -61,7 +61,7 @@ static void midi_tracks_stream(void)
     puts("Project stream: eight-track FBKL oracle, all 64 recording owners, save/load and MIDI removal passed");
 }
 
-static void extended_songs_stream(void)
+static void extended_songs_stream(int punches)
 {
     reset(); song.ntrk = NTRK;
     for (uint32_t k = NPART; k < NTRK; k++) trk[k].p[P_E0] = (int16_t)(k + 1u);
@@ -72,6 +72,10 @@ static void extended_songs_stream(void)
         chain_config.row[r].slot = chain_patterns[r][0];
     }
     chain_config.rsv[CHAIN_LOOP] = 1;
+    if (punches) {
+        chain_config.fx[0][0] = (chain_fx_t){PX_REV + 1, 3, 8};
+        chain_config.fx[63][3] = (chain_fx_t){PX_FREEZE + 1, 63, 1};
+    }
     chain_patterns[1][1] = CHAIN_HOLD; chain_patterns[63][2] = CHAIN_HOLD;
     chain_config_t expected = chain_config;
     uint8_t patterns[CHAIN_ROWS][NTRK]; memcpy(patterns, chain_patterns, sizeof patterns);
@@ -87,10 +91,20 @@ static void extended_songs_stream(void)
     assert(!project_rename(0, "LONG SONG"));
     project_new_blank(); project_load(0);
     assert(!memcmp(patterns, chain_patterns, sizeof patterns));
+    assert(!memcmp(expected.fx, chain_config.fx, sizeof expected.fx));
     assert(!track_remove(2));
     for (uint32_t r = 0; r < CHAIN_ROWS; r++) for (uint32_t k = 2; k < NTRK - 1u; k++)
         assert(chain_patterns[r][k] == patterns[r][k + 1u]);
-    puts("Project stream: extended FBKM songs, eight-track rests, dirty hashes, rename and track removal passed");
+    assert(!memcmp(expected.fx, chain_config.fx, sizeof expected.fx));
+    if (punches) {
+        assert(!project_save_as(1, "PUNCH SONG")); project_new_blank(); project_load(1);
+        assert(!memcmp(expected.fx, chain_config.fx, sizeof expected.fx));
+        assert(!project_dirty());
+        song_punch.row = 63; song_punch.event = 3; song_punch_edit(0, 1);
+        assert(project_dirty());
+    }
+    puts(punches ? "Project stream: FBKN punch songs, exact codec, dirty hashes, rename and track removal passed" :
+        "Project stream: extended FBKM songs, eight-track rests, dirty hashes, rename and track removal passed");
 }
 static void workload(uint32_t count,uint32_t spread,uint32_t tail,uint32_t quant,uint32_t engine)
 {
@@ -167,7 +181,8 @@ int main(void)
     legacy[at+8u]=25;sum=proj_hash(legacy,len-4u);memcpy(legacy+len-4u,&sum,4);
     assert(!st_save(OBJ_BANK0+3u,legacy,len));assert(!proj_read_slot(3)&&proj_meta[3].old);
     midi_tracks_stream();
-    extended_songs_stream();
+    extended_songs_stream(0);
+    extended_songs_stream(1);
     printf("Project stream: %u complete RAM-codec comparisons, hash/dirty/save/load/rename, failed save and track removal passed\n",cases);
     return 0;
 }

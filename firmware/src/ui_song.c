@@ -74,6 +74,39 @@ static void song_loop_set(int on)
     chain_config.rsv[CHAIN_LOOP] = (uint8_t)on;
     song_edit_end();
 }
+static struct { uint8_t row, event; } song_punch;
+static uint32_t song_punch_steps(void)
+{
+    uint32_t bank = chain_patterns[song_punch.row][0];
+    return bank < NPAT ? (uint32_t)pattern_timing(0, bank, 0) : 16u;
+}
+static void song_punch_edit(uint32_t field, int32_t delta)
+{
+    uint32_t row = song_punch.row, j = song_punch.event;
+    if (row >= chain_config.count) return;
+    chain_fx_t e = chain_config.fx[row][j];
+    uint32_t steps = song_punch_steps();
+    if (!field) {
+        e.fx = (uint8_t)clamp((int32_t)e.fx + delta, 0, PUNCH_NFX);
+        if (!e.fx) memset(&e, 0, sizeof e);
+        else if (!e.length) e.length = 1;
+    } else {
+        if (!e.fx) { ui_message("CHOOSE AN EFFECT"); return; }
+        if (field == 1u) e.start = (uint8_t)clamp((int32_t)e.start + delta, 0, steps - 1u);
+        else e.length = (uint8_t)clamp((int32_t)e.length + delta, 1, steps);
+    }
+    if (e.fx) {
+        if (e.start >= steps) e.start = (uint8_t)(steps - 1u);
+        if (e.length > steps - e.start) e.length = (uint8_t)(steps - e.start);
+    }
+    if (!memcmp(&e, &chain_config.fx[row][j], sizeof e) || !song_edit_begin()) return;
+    chain_config.fx[row][j] = e; song_edit_end();
+}
+static void song_punch_clear(void)
+{
+    if (song_punch.row >= chain_config.count || !chain_fx_count(song_punch.row) || !song_edit_begin()) return;
+    memset(chain_config.fx[song_punch.row], 0, sizeof chain_config.fx[0]); song_edit_end();
+}
 static void song_edit_history(int redo)
 {
     uint32_t f = motion_guard();
@@ -183,10 +216,12 @@ static void song_rows_remove(uint32_t first, uint32_t n)
     uint32_t tail = chain_config.count - first - n;
     song_materialize(first + n);
     song_edit_shift(chain_config.row + first, chain_config.row + first + n, tail * sizeof(chain_row_t));
+    song_edit_shift(chain_config.fx + first, chain_config.fx + first + n, tail * sizeof chain_config.fx[0]);
     song_edit_shift(chain_patterns + first, chain_patterns + first + n, tail * NTRK);
     chain_config.count -= (uint8_t)n;
     for (uint32_t r = chain_config.count; r < CHAIN_ROWS; r++) {
         chain_config.row[r] = (chain_row_t){0, 1}; memset(chain_patterns[r], 0, NTRK);
+        memset(chain_config.fx[r], 0, sizeof chain_config.fx[r]);
     }
     if (ui.song_row > chain_config.count) ui.song_row = chain_config.count;
 }
@@ -208,9 +243,12 @@ static void song_insert(uint32_t duplicate)
     if (duplicate) r = first + n;
     song_materialize(r);
     song_edit_shift(chain_config.row + r + n, chain_config.row + r, (chain_config.count - r) * sizeof(chain_row_t));
+    song_edit_shift(chain_config.fx + r + n, chain_config.fx + r, (chain_config.count - r) * sizeof chain_config.fx[0]);
     song_edit_shift(chain_patterns + r + n, chain_patterns + r, (chain_config.count - r) * NTRK);
     for (uint32_t j = 0; j < n; j++) {
         chain_config.row[r + j] = duplicate ? s->config.row[first + j] : (chain_row_t){CHAIN_REST, 1};
+        if (duplicate) memcpy(chain_config.fx[r + j], s->config.fx[first + j], sizeof chain_config.fx[0]);
+        else memset(chain_config.fx[r + j], 0, sizeof chain_config.fx[0]);
         if (duplicate) memcpy(chain_patterns[r + j], s->patterns[first + j], NTRK);
         else memset(chain_patterns[r + j], CHAIN_REST, NTRK);
         if (duplicate && !j) {
@@ -259,8 +297,10 @@ static void song_apply_destination(void)
         }
         song_materialize(dest);
         song_edit_shift(chain_config.row + dest + n, chain_config.row + dest, (chain_config.count - dest) * sizeof(chain_row_t));
+        song_edit_shift(chain_config.fx + dest + n, chain_config.fx + dest, (chain_config.count - dest) * sizeof chain_config.fx[0]);
         song_edit_shift(chain_patterns + dest + n, chain_patterns + dest, (chain_config.count - dest) * NTRK);
         memcpy(chain_config.row + dest, s->config.row + se.first, n * sizeof(chain_row_t));
+        memcpy(chain_config.fx + dest, s->config.fx + se.first, n * sizeof chain_config.fx[0]);
         memcpy(chain_patterns[dest], s->patterns[se.first], n * NTRK);
         for (uint32_t k = 0; k < NTRK; k++) chain_patterns[dest][k] = (uint8_t)song_snapshot_bank(s, se.first, k);
         chain_config.row[dest].slot = chain_patterns[dest][0];

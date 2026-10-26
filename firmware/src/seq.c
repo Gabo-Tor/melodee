@@ -1317,6 +1317,7 @@ static void seq_advance_part(uint32_t n)
     chain_tick(n);
     for (i = 0; i < nt; i++)
         seq_tick(&trk[i], n);
+    chain_fx_tick();
     for (i = 0; i < nt; i++)
         /* Held keys play at the local tempo while the selected master is
          * stopped. A released HOLD chord still waits for external transport. */

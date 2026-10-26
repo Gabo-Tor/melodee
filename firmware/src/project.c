@@ -1338,6 +1338,8 @@ static int project_dirty(void)
                proj_hash(proj_wire_u.raw, BANK_STORE_SIZE) != proj_saved_hash[proj_cur];
 #endif
     }
+    for (k = 0; k < chain_config.count; k++)
+        if (chain_fx_count(k)) return 1;
     for (k = 0; k < NTRK; k++)
         if (!seq_is_empty(&trk[k]) || notes_have_recording(&trk[k]))
             return 1;

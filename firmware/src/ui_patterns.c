@@ -387,7 +387,7 @@ static void sg_lines(int32_t y, int32_t h)              /* the sections' rules a
 }
 static void sg_head(void)
 {
-    if (head_shared_status() || song_edit_status()[0]) { draw_head(); return; }
+    if (head_shared_status() || song_edit_status()[0] || head_punch()[0]) { sgv.top = ~0u; draw_head(); return; }
     char b[24], t[12];
     uint32_t secs = chain_div_samples(sg.total + FS / 2u, FS, 0), jam_on = song.playing && !chain.running;
     uint32_t sig = secs * 7u + jam.n * 131u + jam_on * 3u + (uint32_t)(ui.act == 4u) * 5u + ux.gen * 977u + ux.pal * 31u +
@@ -513,6 +513,11 @@ static void sg_foot(void)                               /* the sections and bars
         fmt_int(b, r + 1u); str_cpy(b + str_len(b), "/", 2); fmt_int(b + str_len(b), n);
         cv_text_on(8, ty_y(17, TY_LB), TY_LB, b, T_MID, T_BG);
         if (r < n) {
+            uint32_t punches = chain_fx_count(r);
+            if (punches) {
+                str_cpy(b, "FX ", sizeof b); fmt_int(b + 3, punches);
+                cv_text_on(80, ty_y(17, TY_LB), TY_LB, b, T_THEME, T_BG);
+            }
             uint32_t bank = chain_bank(r, song.sel);
             str_cpy(b, bank < NPAT ? "LEN " : "REST", sizeof b);
             if (bank < NPAT) fmt_int(b + 4, chain_block_end(r, song.sel) - chain_origin(r, song.sel));

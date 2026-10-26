@@ -146,6 +146,31 @@ static void ps_dup(void) { ps_row_insert(1); }
 static void ps_song_loop_v(char *b) { str_cpy(b, chain_config.rsv[CHAIN_LOOP] ? "On" : "Off", 4); }
 static void ps_song_loop_turn(int32_t s) { song_loop_set(s > 0); }
 static void ps_song_loop(void) { song_loop_set(!chain_config.rsv[CHAIN_LOOP]); }
+static void ps_punch_event_v(char *b) { fmt_int(b, song_punch.event + 1u); }
+static void ps_punch_event_turn(int32_t s) { song_punch.event = (uint8_t)clamp((int32_t)song_punch.event + s, 0, CHAIN_FX_EVENTS - 1u); ui.force = 1; }
+static void ps_punch_fx_v(char *b) {
+    uint32_t fx = chain_config.fx[song_punch.row][song_punch.event].fx;
+    str_cpy(b, fx ? PUNCH_NAME[fx - 1u] : "Off", 16);
+}
+static void ps_punch_start_v(char *b) { fmt_int(b, chain_config.fx[song_punch.row][song_punch.event].start + 1u); }
+static void ps_punch_length_v(char *b) { fmt_int(b, chain_config.fx[song_punch.row][song_punch.event].length); }
+static void ps_punch_fx_turn(int32_t s) { song_punch_edit(0, s); }
+static void ps_punch_start_turn(int32_t s) { song_punch_edit(1, s); }
+static void ps_punch_length_turn(int32_t s) { song_punch_edit(2, s); }
+static const sheet_row_t SHEET_SONG_PUNCH[] = {
+    {"Punch", ps_punch_event_v, ps_punch_event_turn, 0, 0},
+    {"Effect", ps_punch_fx_v, ps_punch_fx_turn, 0, 0},
+    {"Start step", ps_punch_start_v, ps_punch_start_turn, 0, 0},
+    {"Length", ps_punch_length_v, ps_punch_length_turn, 0, 0},
+    {"Clear section FX", 0, 0, song_punch_clear, SR_RED}};
+static void song_punch_open(void)
+{
+    if (!ps_song_free()) return;
+    if (ui.song_row >= chain_config.count) { ui_message("ADD A SONG ROW"); return; }
+    song_punch.row = ui.song_row; song_punch.event = 0;
+    char b[20] = "Master / Section "; fmt_int(b + str_len(b), song_punch.row + 1u);
+    sheet_open("Punch FX", b, SHEET_SONG_PUNCH, NELEM(SHEET_SONG_PUNCH));
+}
 static void ps_jam_v(char *b)
 {
     fmt_int(b, jam.n);
@@ -165,12 +190,14 @@ static void ps_jam(void)
 static const sheet_row_t SHEET_SONG[] = {
     {"Insert empty section", 0, 0, ps_insert, 0}, {"Duplicate section", 0, 0, ps_dup, 0}, {"Move section", 0, 0, song_sections_move, 0}, {"Copy sections", 0, 0, song_sections_copy, 0}, {"Delete section", 0, 0, 0, CF_DEL_ROW},
     {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0},
+    {"Punch FX", 0, 0, song_punch_open, 0},
     {"Take jam", ps_jam_v, 0, ps_jam, 0}, {"Clear song", 0, 0, 0, CF_CLEAR_SONG}};
 
 static const sheet_row_t SHEET_SONG_CELL[] = {
     {"Set rest", 0, 0, song_cell_rest, 0}, {"Copy to\x85", 0, 0, song_cell_copy, 0},
     {"Move to\x85", 0, 0, song_cell_move, 0}, {"Add empty section", 0, 0, ps_insert, 0},
-    {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0}};
+    {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0},
+    {"Punch FX", 0, 0, song_punch_open, 0}};
 static const sheet_row_t SHEET_SONG_RANGE[] = {
     {"Copy sections", 0, 0, song_sections_copy, 0}, {"Move sections", 0, 0, song_sections_move, 0},
     {"Duplicate sections", 0, 0, ps_dup, 0}, {"Delete sections", 0, 0, song_sections_delete, SR_RED},

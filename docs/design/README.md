@@ -194,6 +194,22 @@ the same stopped-only setting when bank capability version 4 is available.
 
 TAKE JAM: REC held on SONG (elsewhere REC held captures).
 
+Timed master punches: SONG > OCT+ > Punch FX opens the selected section's saved FX lane.
+KNOB 2 selects Punch (1–4), Effect, Start step, Length, or Clear section FX; KNOB 1 changes the selected value.
+Effect Off removes that punch. Start step is one-based; Length counts conductor steps, including its start.
+The first track's pattern defines the step division, swing and section length; rests and continuations use
+16 straight sixteenth-note steps. Timing restarts on every section repeat, including a punch spanning the
+whole section. Overlaps use the latest start, with the later punch slot breaking ties; an earlier punch
+resumes if its duration remains. Events outside a subsequently shortened pattern do not play; their stored
+timing is retained. These are master effects, shared by all tracks, and are local to the song section;
+referencing the same note pattern elsewhere does not copy them. Section copy, move, duplicate, delete and
+song undo include the FX lane. Cell operations change only the selected track's pattern reference.
+The footer's `FX n` counts saved punches in the selected section. Active effects and allocation failures
+use the shared header (`FX MEMORY` for a buffered effect that cannot allocate). A live FX key overrides
+the lane until released. Buffered song effects warm their history from PLAY and keep the optional 32 KiB
+history until STOP or song end. Filter-only songs require no punch history. Editing remains stopped-only.
+Projects with punches use FBKN; projects without punches keep their existing compatible formats.
+
 ## Popups (R6)
 
 - **Action sheet**: OCT+ on an item opens what can be done with it (KNOB 2 the row, KNOB 1 a row's value, OCT+ does
