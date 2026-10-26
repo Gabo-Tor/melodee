@@ -2823,6 +2823,9 @@ function makeMockDevice(opt = {}) {
     access: { sysexEnabled: true, inputs: new Map([[input.id, input]]), outputs: new Map([[output.id, output]]), onstatechange: null },
   };
 }
+/* The fm1-base USB descriptor uses FM-1; retain older firmware's port names. */
+const isDevicePort = (p) => /melodee|felucca|\bfm-1\b/i.test(p?.name || "");
+
 /* Optional preferences: old firmware is never probed with unknown commands. */
 async function readDevicePreferences(rq, info, names, previous = null) {
   if (!info.uiCaps) return null;
@@ -3309,7 +3312,7 @@ async function connect() {
       }
       access.onstatechange = onState;
     }
-    const isF = (p) => /melodee|felucca/i.test(p.name || "") && p.state !== "disconnected";
+    const isF = (p) => isDevicePort(p) && p.state !== "disconnected";
     const input = [...access.inputs.values()].find(isF);
     const output = [...access.outputs.values()].find(isF);
     if (!input || !output) { sayK("nodevice"); return; }
@@ -3362,7 +3365,7 @@ function disconnect(reasonKey = "disconnected") {
 
 function onState(e) {
   const p = e.port;
-  if (!p || !/melodee|felucca/i.test(p.name || "")) return;
+  if (!isDevicePort(p)) return;
   if (dev && p.state === "disconnected" && (p.id === dev.input.id || p.id === dev.output.id)) {
     disconnect("lost");
   } else if (!dev && wantConnected && p.state === "connected" && p.type === "output") {
