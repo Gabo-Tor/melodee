@@ -2418,7 +2418,8 @@ function makeMockDevice(opt = {}) {
         if (!(st.uiCaps & 8)) { b(2); break; }
         const engine = a[0], preset = v14dec(a[1], a[2]), count = a[3];
         const collection={17:12,18:15,20:19}[engine],limit=collection?st.native[collection].length:engine===16?st.bank.length:engine<ENG.length?ENG[engine].presets.length:0;
-        if (a.length !== 4 || preset < 0 || preset >= limit ||
+        /* Released firmware accepts favorite namespaces only through USER_NATIVE_P5 (20). */
+        if (a.length !== 4 || engine > 20 || preset < 0 || preset >= limit ||
             (cmd === CMD.FAV_GET ? !count || count > 32 || preset + count > limit : count > 1 || engine === 16 && count && !st.bank[preset])) { b(1); break; }
         if (cmd === CMD.FAV_SET) st.favorites[engine][preset] = !!count;
         b(cmd === CMD.FAV_SET ? (opt.noFlash ? 3 : opt.deferSettings ? 4 : 0) : 0); b(engine); v(preset); b(count);
@@ -2831,7 +2832,8 @@ async function readDevicePreferences(rq, info, names, previous = null) {
     }
     if (!previous || state.favoriteSig !== previous.state.favoriteSig || state.bankSig !== previous.state.bankSig) {
       favorites = [];
-      const counts=Array.from({length:info.nengines},(_,engine)=>[engine,(names[engine]||[]).length]).filter(([engine,total])=>total>0);
+      /* MIDI Track has a loadable preset but no favorite storage in 1.5 firmware. */
+      const counts=Array.from({length:info.nengines},(_,engine)=>[engine,(names[engine]||[]).length]).filter(([engine,total])=>total>0 && info.engines[engine]!=="MIDI Track");
       counts.push([info.namespace?.general??info.nengines,slots.total]);
       if(info.native)for(const engine of Object.keys(info.native))counts.push([info.namespace?.[engine]??info.nengines+(+engine===12?1:2),info.native[engine]]);
       for(const [engine,total] of counts) {
@@ -2875,7 +2877,7 @@ function devicePresetRows(info, names, preferences) {
   for (const slot of preferences.slots.slots) if (slot.used)
     rows.push({ engine: info.namespace?.general??info.nengines, preset: slot.slot, name: slot.name, user: true, actualEngine:slot.engine });
   if(info.shared){const order=engineOrder(info.engines);rows.sort((a,b)=>order.indexOf(a.user?a.actualEngine:a.engine)-order.indexOf(b.user?b.actualEngine:b.engine)||Number(a.user)-Number(b.user)||a.preset-b.preset);}
-  return rows.map((row) => ({ ...row, favorite: !!(preferences.favorites[row.engine] || [])[row.preset] }))
+  return rows.map((row) => ({ ...row, canFavorite: !!preferences.favorites[row.engine], favorite: !!(preferences.favorites[row.engine] || [])[row.preset] }))
     .filter((row) => !preferences.state.filter || row.favorite);
 }
 
@@ -4469,7 +4471,7 @@ async function changePreference(id, value) {
 }
 async function changeFavorite(row) {
   const d = dev;
-  if (!d) return;
+  if (!d || !row.canFavorite) return;
   while (busy && d === dev) await sleep(20);
   if (d !== dev) return;
   await op(async () => {
@@ -4520,7 +4522,7 @@ function renderPreferences(force = false) {
   table.append(el("colgroup", {}, el("col", { style: "width:40px" }), el("col"), el("col", { style: "width:110px" })));
   for (const row of rows) {
     const name = row.user ? slotName(row.preset,row.nativeEngine||0) + " " + row.name : row.name;
-    const star = el("button", { text: row.favorite ? "\u2605" : "\u2606", "aria-label": t(row.favorite ? "deviceUnstar" : "deviceStar") + ": " + name, "aria-pressed": String(row.favorite) });
+    const star = el("button", { disabled: !row.canFavorite, text: row.favorite ? "\u2605" : "\u2606", "aria-label": t(row.favorite ? "deviceUnstar" : "deviceStar") + ": " + name, "aria-pressed": String(row.favorite) });
     star.addEventListener("click", () => changeFavorite(row));
     const load = el("button", { text: name });
     load.addEventListener("click", () => { if (!dev || busy) return; row.user ? bankLoad(row.preset,row.nativeEngine||0) : choosePreset(row.engine, row.preset); });
