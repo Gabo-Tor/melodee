@@ -15,6 +15,7 @@
  */
 #define ST_MAGIC 0x554C4546u                   /* "FELU" */
 #define ST_COMPACT_TAG 0x32504D43u             /* CMP2: preset payload begins at byte 32 */
+#define ST_SETTINGS_TAG 0x31454C42u /* BLE1: settings payload at byte 32, including BLE trailer */
 #define ST_SECTOR 4096u
 #define ST_PAYLOAD_OFF 256u
 #define ST_PAYLOAD_MAX (ST_SECTOR - ST_PAYLOAD_OFF)
@@ -89,14 +90,14 @@ static int st_banked(uint32_t obj) { return obj >= OBJ_BANK0 && obj < OBJ_CZBANK
 /* New preset objects start directly after the commit header, leaving the last
  * 256 bytes erased so the SPL/update loader cannot interpret musical data as OTA. */
 static uint32_t st_payload_off(uint32_t obj) { return obj >= OBJ_UPRESET_EXT0 ? sizeof(st_hdr_t) : ST_PAYLOAD_OFF; }
-static uint32_t st_capacity(uint32_t obj) { return st_banked(obj) ? ST_BANK_BASE_MAX + ST_BANK_EXT_MAX : obj >= OBJ_UPRESET_EXT0 ? ST_SECTOR - 256u - sizeof(st_hdr_t) : ST_PAYLOAD_MAX; }
+static uint32_t st_capacity(uint32_t obj) { return obj == OBJ_SETTINGS ? ST_SECTOR - sizeof(st_hdr_t) : st_banked(obj) ? ST_BANK_BASE_MAX + ST_BANK_EXT_MAX : obj >= OBJ_UPRESET_EXT0 ? ST_SECTOR - 256u - sizeof(st_hdr_t) : ST_PAYLOAD_MAX; }
 static int st_preset_object(uint32_t obj)
 {
     return (obj>=OBJ_UPRESET0 && obj<OBJ_BANK0) || (obj>=OBJ_CZBANK0 && obj<OBJ_COUNT);
 }
 static uint32_t st_payload_off_header(uint32_t obj,const st_hdr_t *h)
 {
-    return st_preset_object(obj) && h->rsv[0]==ST_COMPACT_TAG ? sizeof(st_hdr_t) : st_payload_off(obj);
+    return (st_preset_object(obj) && h->rsv[0]==ST_COMPACT_TAG) || (obj == OBJ_SETTINGS && h->rsv[0] == ST_SETTINGS_TAG) ? sizeof(st_hdr_t) : st_payload_off(obj);
 }
 static uint32_t st_extension(uint32_t obj, uint32_t copy)
 {
@@ -121,7 +122,7 @@ static uint32_t st_address_at(uint32_t obj, uint32_t copy, uint32_t off, uint32_
 static uint32_t st_address(uint32_t obj,uint32_t copy,uint32_t off,uint32_t *span)
 {
     st_hdr_t h;uint32_t payload=st_payload_off(obj);
-    if(st_preset_object(obj) && !st_read(st_sector(obj,copy),&h,sizeof h))payload=st_payload_off_header(obj,&h);
+    if((st_preset_object(obj) || obj == OBJ_SETTINGS) && !st_read(st_sector(obj,copy),&h,sizeof h))payload=st_payload_off_header(obj,&h);
     return st_address_at(obj,copy,off,span,payload);
 }
 static int st_read_range(uint32_t obj, uint32_t copy, uint32_t off, void *dst, uint32_t n)
@@ -151,7 +152,9 @@ static int st_head(uint32_t obj, uint32_t copy, st_hdr_t *h)   /* commit record 
         return -1;
     if (h->magic != ST_MAGIC || h->type != obj || h->slot != copy || h->len > st_capacity(obj) ||
         h->hcrc != st_crc32(h, sizeof *h - 4u) ||
-        (h->rsv[0]==ST_COMPACT_TAG && (!st_preset_object(obj) || h->len>ST_SECTOR-256u-sizeof(st_hdr_t))))
+        (h->rsv[0]==ST_COMPACT_TAG && (!st_preset_object(obj) || h->len>ST_SECTOR-256u-sizeof(st_hdr_t))) ||
+        (h->rsv[0] == ST_SETTINGS_TAG && obj != OBJ_SETTINGS) ||
+        (obj == OBJ_SETTINGS && h->rsv[0] != ST_SETTINGS_TAG && h->len > ST_PAYLOAD_MAX))
         return -1;
     return 0;
 }
@@ -228,18 +231,22 @@ static int st_save(uint32_t obj, const void *src, uint32_t len)
     base = st_sector(obj, cur == 0 ? 1u : 0u);       /* write the other copy */
     uint32_t payload=st_payload_off(obj),compact=0;
     if(st_preset_object(obj) && len==3716u){uint32_t magic;memcpy(&magic,src,sizeof magic);compact=magic==0x32425055u;}
-    if(compact)payload=sizeof(st_hdr_t);
+    if(compact || (obj == OBJ_SETTINGS && len > ST_PAYLOAD_MAX))payload=sizeof(st_hdr_t);
     uint32_t crc = st_crc32(src, len);
     uint32_t extent = obj >= OBJ_BANK0 && obj < OBJ_CZBANK0 ? 5u * ST_SECTOR : ST_SECTOR;
     for (off = 0; off < extent; off += ST_SECTOR)
         if ((rc = st_erase(base + off)) != 0) return rc;
     if (st_banked(obj)) for (off = 0; off < 2u * ST_SECTOR; off += ST_SECTOR)
         if ((rc = st_erase(st_extension(obj, cur == 0 ? 1u : 0u) + off)) != 0) return rc;
-    for (off = 0; off < len; off += sizeof st_buf) {
-        uint32_t n = len - off > sizeof st_buf ? sizeof st_buf : len - off;
-        memcpy(st_buf, (const uint8_t *)src + off, n);
+    for (off = 0; off < len;) {
         uint32_t span, addr = st_address_at(obj, cur == 0 ? 1u : 0u, off, &span,payload);
+        uint32_t n = len - off, page = 256u - (addr & 255u);
+        if (n > sizeof st_buf) n = sizeof st_buf;
+        if (n > page) n = page;
+        if (n > span) n = span;
+        memcpy(st_buf, (const uint8_t *)src + off, n);
         if ((rc = st_prog(addr, st_buf, n)) != 0) return rc;
+        off += n;
     }
     h.magic = ST_MAGIC;
     h.type = (uint16_t)obj;
@@ -247,7 +254,7 @@ static int st_save(uint32_t obj, const void *src, uint32_t len)
     h.seq = seq + 1u;
     h.len = len;
     h.crc = crc;
-    h.rsv[0]=compact?ST_COMPACT_TAG:0xFFFFFFFFu;h.rsv[1]=0xFFFFFFFFu;
+    h.rsv[0]=compact?ST_COMPACT_TAG:obj == OBJ_SETTINGS && payload == sizeof(st_hdr_t) ? ST_SETTINGS_TAG : 0xFFFFFFFFu;h.rsv[1]=0xFFFFFFFFu;
     h.hcrc = st_crc32(&h, sizeof h - 4u);
     if ((rc = st_prog(base, &h, sizeof h)) != 0)       /* the commit record, last */
         return rc;

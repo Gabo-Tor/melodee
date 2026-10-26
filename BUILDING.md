@@ -754,3 +754,18 @@ The row/stride/control layout follows the locally installed AC79 V1.2.1 SDK's
 `eq.c` and `asm/eq.h`, also described by
 [JieLi's EQ documentation](https://doc.zh-jieli.com/AC79/zh-cn/master/module_example/audio/EQ.html).
 Host register-model tests cannot establish physical audio quality or CPU savings.
+
+## Bluetooth MIDI
+
+For the separate SDK radio-calibration helper and web recovery tool, see
+[Bluetooth radio recovery](docs/BLE_CALIBRATION.md). It is built separately by
+`tools/build_ble_calibration.py`; normal firmware does not link the SDK radio
+library.
+
+The default build includes Optimist's bidirectional BLE MIDI stack, with
+peripheral and central roles. The radio starts OFF each boot. Settings >
+Bluetooth controls discovery, connection and pairings. `MELODEE_BLE=0 ./build.sh`
+builds a comparison without BLE. See [Bluetooth MIDI](docs/BLE_MIDI.md) for
+pairing, factory-calibration requirements, persistence, provenance and the
+hardware checks still required. The full host suite includes sanitizer BLE
+fixtures and rendered UI checks.

@@ -1373,6 +1373,29 @@ static uint8_t persist_repair;                  /* boot repair must retry even w
 static uint32_t persist_retry_ms;
 #endif
 
+#if MELODEE_FLASH
+static int settings_write_record(uint32_t n)
+{
+#if MELODEE_BLE
+    uint8_t *dst = proj_wire_borrow();
+    memcpy(dst, &set_rec, n);
+    mb_lock();
+    uint32_t revision = mb_revision;
+    mb_saved.magic = MEL_BLE_MAGIC;
+    memcpy(dst + n, &mb_saved, sizeof mb_saved);
+    mb_unlock();
+    int rc = st_save(OBJ_SETTINGS, dst, n + sizeof mb_saved);
+    if (!rc) mb_committed = revision;
+    return rc;
+#else
+    return st_save(OBJ_SETTINGS, &set_rec, n);
+#endif
+}
+#endif
+#if MELODEE_BLE && MELODEE_FLASH
+_Static_assert(sizeof set_rec + sizeof mb_saved <= ST_SECTOR - sizeof(st_hdr_t), "BLE settings and template fit A/B settings sectors");
+#endif
+
 static void persist_boot(void)                    /* before settings_init / panel_init */
 {
 #if MELODEE_FLASH
@@ -1390,6 +1413,13 @@ static void persist_boot(void)                    /* before settings_init / pane
 #endif
     {   /* the settings, then a template if one follows them */
         int n = st_load(OBJ_SETTINGS, wire_take(), sizeof proj_wire_u);
+#if MELODEE_BLE
+        if (n >= (int)(sizeof p + sizeof mb_saved)) {
+            mel_ble_saved_t saved;
+            memcpy(&saved, (const uint8_t *)&proj_wire_u + n - sizeof saved, sizeof saved);
+            if (saved.magic == MEL_BLE_MAGIC) { mb_saved = saved; n -= sizeof saved; }
+        }
+#endif
         int tail_ok = n == (int)sizeof p || (n > (int)sizeof p &&
             tmpl_blob_schema((const uint8_t *)&proj_wire_u + sizeof p, (uint32_t)n - sizeof p));
         int owned = 0, foreign, future_owner;
@@ -1410,6 +1440,9 @@ static void persist_boot(void)                    /* before settings_init / pane
             tmpl_old = (uint8_t)!tmpl_take((const uint8_t *)&proj_wire_u + sizeof set_rec.p, (uint32_t)n - sizeof set_rec.p);
         }
         if (foreign) {
+#if MELODEE_BLE
+            memset(&mb_saved, 0, sizeof mb_saved);
+#endif
             memset(&p, 0, sizeof p);
             p.magic = PERSIST_MAGIC;
             p.palette = palette_to_stored(UI_DEFAULT_INDEX);
@@ -1430,7 +1463,7 @@ static void persist_boot(void)                    /* before settings_init / pane
         if (!template_old() && (foreign || memcmp(&p, &original, sizeof p))) {
             BOOT_WORK_BEGIN(foreign ? "RESETTING SETTINGS" : "CHECKING SETTINGS", 1);
             set_rec.p = p;
-            if (st_save(OBJ_SETTINGS, &set_rec, sizeof p + (template_used() ? sizeof tmpl : 0u))) {
+            if (settings_write_record(sizeof p + (template_used() ? sizeof tmpl : 0u))) {
                 persist_repair = 1;
                 persist_pending = 2;
                 persist_retry_ms = fm1_ms;
@@ -1510,14 +1543,18 @@ static void settings_poll(void)
     }
     p = persist_saved;
     settings_export(&p);
-    if (!persist_repair && !memcmp(&p, &persist_saved, sizeof p) && !tmpl_dirty) {
+    if (!persist_repair && !memcmp(&p, &persist_saved, sizeof p) && !tmpl_dirty
+#if MELODEE_BLE
+        && mb_revision == mb_committed
+#endif
+        ) {
         persist_pending = 0;
         return;                                    /* unchanged: no erase cycle */
     }
     set_rec.p = p;                                 /* the record: the settings, the template (tmpl) after them */
     uint8_t repairing = persist_repair;
     if (repairing) BOOT_WORK_BEGIN("RESETTING SETTINGS", 1);
-    if (st_save(OBJ_SETTINGS, &set_rec, sizeof set_rec.p + (template_used() ? sizeof set_rec.t : 0u)) == 0) {
+    if (settings_write_record(sizeof set_rec.p + (template_used() ? sizeof set_rec.t : 0u)) == 0) {
         persist_saved = p;
         persist_pending = 0;
         persist_repair = 0;

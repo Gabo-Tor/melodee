@@ -215,7 +215,7 @@ def analyze(ir, dis, src):
         cache[key] = (frames.get(name, 0) + size, [name] + path)
         return cache[key]
     roots = ('fm1_cstart', 'isr_alnk0', 'isr_timer5',
-             'fm1_core1_main', 'fm1_fault_c')
+             'fm1_core1_main', 'fm1_fault_c', 'isr_ble_event', 'isr_ble_rx')
     paths = {name: depth(name)for name in roots if name in asm}
     reachable = {key[0] for key in cache}
     missing = [item for item in missing if item[0] in reachable]
@@ -239,9 +239,14 @@ def check(report, foreground, irq, worker, worker_user=None):
     if need > foreground:
         errors.append(
             f'foreground stack needs {need} B including margin, has {foreground} B')
+    ble_roots = {'isr_ble_event', 'isr_ble_rx'}
+    if ble_roots & paths.keys() and not ble_roots <= paths.keys():
+        errors.append('missing BLE interrupt stack root')
+    ble_stack = max((paths[n][0] for n in ble_roots if n in paths), default=0)
+    # BLE runs below audio; audio and TIMER5 can both preempt it.
     # TIMER5 preempts audio. Fatal handling can preempt either; include its
     # entire CPU0 display/recovery path and assembly exception context.
-    need = paths['isr_alnk0'][0] + \
+    need = ble_stack + paths['isr_alnk0'][0] + \
         paths['isr_timer5'][0]+paths['fm1_fault_c'][0]+128
     if need > irq:
         errors.append(

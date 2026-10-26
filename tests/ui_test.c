@@ -40,10 +40,14 @@ static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3 (zero: empty
 static const int8_t FM1_KEYMAP[6][FM1_NCOL];
 static uint8_t fm1_led[FM1_NCOL];
 static uint8_t fm1_led_dim[3][FM1_NCOL], fm1_led_dim_mask[3];   /* (hal/fm1_input.h: the dim planes) */
+#if !MELODEE_BLE
 #define FM1_TICKS_PER_US 1u
+#endif
 static uint32_t host_ticks, host_pressed, host_notes;
 static int32_t host_enc[7];
+#if !MELODEE_BLE
 static uint32_t fm1_ticks(void) { return host_ticks; }
+#endif
 static uint32_t fm1_input_edges(int x) { uint32_t p = host_pressed; (void)x; host_pressed = 0; return p; }
 static uint32_t fm1_input_note_edges(void) { uint32_t n = host_notes; host_notes = 0; return n; }
 static int32_t fm1_enc_take(uint32_t e)
@@ -56,8 +60,10 @@ static int32_t fm1_enc_take(uint32_t e)
     return s;
 }
 static void fm1_wdt_feed(void) {}
+#if !MELODEE_BLE
 static void fm1_irq_off(void) {}
 static void fm1_irq_on(void) {}
+#endif
 static uint16_t host_screen[240 * 240];
 static int host_blit_trace;                       /* (tests/ui_render.c UI_AUDIT_BLITS: each transfer listed) */
 static uint64_t host_sent;                        /* pixels sent to the LCD, blitted or filled (tests/ui_render.c) */

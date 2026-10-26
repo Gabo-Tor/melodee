@@ -61,8 +61,16 @@ static const char *const N_GLMODE[] = {"RATE", "TIME"};
 static const char *const N_PRIO[] = {"LAST", "LOW", "HIGH"};
 static const char *const N_ALLOC[] = {"ROT", "REUSE"};
 static const char *const N_ORDER[] = {"NOTE", "PLAY"};
-static const char *const N_CLOCK[] = {"INT", "USB", "TRS"};
-static const char *const N_MIDI_INPUT[] = {"USB", "TRS"};
+static const char *const N_CLOCK[] = {"INT", "USB", "TRS"
+#if MELODEE_BLE
+    , "BLE"
+#endif
+};
+static const char *const N_MIDI_INPUT[] = {"USB", "TRS"
+#if MELODEE_BLE
+    , "BLE"
+#endif
+};
 static const char *const N_ROUTE[] = {"CH1-4", "SEL", "CH5-8", "CH9-12", "CH13-16"}; /* Keep saved CH1-4/SEL ids; append ranges. */
 static const char *const N_NOTE[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 static const char *const N_DASH[] = {"--"};

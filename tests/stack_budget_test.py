@@ -42,6 +42,14 @@ class StackBudget(unittest.TestCase):
         del report['paths']['isr_timer5']
         self.assertTrue(stack_budget.check(report, 3000, 1000, 2000))
 
+    def test_ble_interrupt_nesting(self):
+        report = self.analyze({'isr_ble_event': '  ret void', 'isr_ble_rx': '  call void @helper()\n  ret void', 'helper': '  ret void'})
+        # BLE's 240 bytes + audio/timer/fault 3*120 + 128 reserve.
+        self.assertEqual(stack_budget.check(report, 3000, 728, 2000), [])
+        self.assertTrue(stack_budget.check(report, 3000, 727, 2000))
+        del report['paths']['isr_ble_rx']
+        self.assertTrue(stack_budget.check(report, 3000, 1000, 2000))
+
     def test_unknown_callback(self):
         with self.assertRaisesRegex(ValueError, 'unresolved stack callbacks'):
             self.analyze({'isr_alnk0': '  call void %callback(i32 1)\n  ret void'})

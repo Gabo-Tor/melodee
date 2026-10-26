@@ -58,7 +58,7 @@ static uint32_t midi_event_source; /* 0: internal/test dispatch, 1 USB, 2 TRS */
 static int midi_track_accept(const track_t *t)
 {
     return !midi_track_only(t) || !midi_event_source ||
-           midi_event_source == (song.g[G_MIDI] ? 2u : 1u) || (midi_event_source == 2u && t->p[P_E1]);
+           midi_event_source == (uint32_t)song.g[G_MIDI] + 1u || (midi_event_source == 2u && t->p[P_E1]);
 }
 
 static int drum_track(const track_t *t) { return ENGINES[eng_idx(t->eng_req)] == &ENG_DRUM; }
@@ -1358,12 +1358,27 @@ static void events_block(uint32_t n)
         /* A controller cannot send the missing releases after unplug. Keep local keys and TRS owners. */
         for (uint32_t ch = 0; ch < 16u; ch++)
             for (uint32_t note = 0; note < 128u; note++)
-                if (mn_get(ch, note) && !(midi_owner_trs[ch][note >> 5] & (1u << (note & 31u)))) {
+                if (mn_get(ch, note) && midi_note_source(ch, note) == 1u) {
                     midi_ch[ch].pedal = 0;
                     midi_release(ch, note);
                 }
         for (uint32_t tr = 0; tr < NTRK; tr++) midi_track_all_off(&trk[tr]);
     }
+#if MELODEE_BLE
+    static uint32_t ble_discard_until;
+    static uint8_t ble_discard;
+    if (midi_ble_lost) {
+        midi_knob_ble_epoch++;
+        midi_ble_lost = 0; ble_discard_until = mi_w; ble_discard = 1;
+        for (uint32_t ch = 0; ch < 16u; ch++)
+            for (uint32_t note = 0; note < 128u; note++)
+                if (mn_get(ch, note) && midi_note_source(ch, note) == 3u) {
+                    midi_ch[ch].pedal = 0; midi_release(ch, note);
+                }
+        if (midi_clock.mode == 3u) { seq_stop(); midi_clock_mode(0); }
+        for (uint32_t tr = 0; tr < NTRK; tr++) midi_track_all_off(&trk[tr]);
+    }
+#endif
     if (midi_in_overflow) {                            /* a lost note-off must never leave a held note */
         midi_knob_overflow = 1;
         mi_r = mi_w;
@@ -1421,6 +1436,9 @@ static void events_block(uint32_t n)
         uint32_t time = midi_in_time[at];
         uint16_t pulse_count = midi_in_pulse[at];
         uint32_t stale_usb = usb_discard && source == 1u && (int32_t)(mi_r - usb_discard_until) < 0;
+#if MELODEE_BLE
+        stale_usb |= ble_discard && source == 3u && (int32_t)(mi_r - ble_discard_until) < 0;
+#endif
         if (stale_usb) { mi_r++; midi_dispatch_left--; continue; }
         if (midi_render_timed && (int32_t)(time - midi_render_time) > 0)
             break;
@@ -1455,6 +1473,9 @@ static void events_block(uint32_t n)
         }
     }
     if (usb_discard && (int32_t)(mi_r - usb_discard_until) >= 0) usb_discard = 0;
+#if MELODEE_BLE
+    if (ble_discard && (int32_t)(mi_r - ble_discard_until) >= 0) ble_discard = 0;
+#endif
     if(song.playing)resource_release(RES_NOTE_HISTORY);
     if (clock_mode) {
         if (song.playing) {

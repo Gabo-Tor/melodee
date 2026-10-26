@@ -270,6 +270,11 @@ static uint32_t ed_bk_commit_inner(void)
         panel_init(); settings_init(); palette_set(settings.palette);
 #if MELODEE_FLASH
         persist_saved = ed_bk_set.p; persist_pending = persist_repair = 0;
+#if MELODEE_BLE
+        /* The musical archive contains preferences/template, not device keys.
+         * Reattach this device's BLE trailer on the next quiet A/B save. */
+        persist_pending = 1; mb_revision++;
+#endif
 #endif
     }
     sync_reload = 1; ui.force = 1;

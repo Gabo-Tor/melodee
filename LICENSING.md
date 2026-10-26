@@ -128,4 +128,10 @@ by those owners, nor by Hügelton Instruments.
 
 ## Radio
 
-Melodee never enables the Bluetooth / Wi-Fi radio of the hardware.
+Bluetooth MIDI uses the pinned Optimist sources and retained notices described
+in `docs/BLE_MIDI.md`. The separate calibration helper links the external JieLi
+AC79 SDK RF library (Apache-2.0) and compiler runtime; their source/input pins and
+boundaries are described in `docs/BLE_CALIBRATION.md`. Helper distributions must
+include the GPL licence, this file, `LICENSES/Apache-2.0.txt` and
+`LICENSES/compiler-rt.txt`. The normal Melodee application does not link that RF
+SDK library. The SDK-specific proprietary binary from FM1 Open is not included.

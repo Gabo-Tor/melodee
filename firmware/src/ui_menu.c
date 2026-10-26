@@ -20,6 +20,9 @@ enum { MI_COLOR, MI_FONT, MI_HOLD, MI_LIGHTS,
 #if MELODEE_USB_HOST
        MI_USB_HOST,
 #endif
+#if MELODEE_BLE
+       MI_BLE,
+#endif
        MI_MIDI_KNOBS, MI_MIDI_MODE,
        MI_CLICK, MI_CLICK_LEVEL, MI_COUNTIN, MI_PREVIEW, MI_ADD, MI_AUTOSAVE, MI_PICKER, MI_ACCEL, MI_HOME_SEL, MI_GLO_SEL, MI_TRACKS, MI_SCREEN, MI_PANEL, MI_ABOUT, MI_DESIGNER, MI_BACK,
        MI_COUNT };
@@ -29,6 +32,9 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "FONT", "HOLD", "LIGHTS",
 #endif
 #if MELODEE_USB_HOST
                                               "USB HOST",
+#endif
+#if MELODEE_BLE
+                                              "BLUETOOTH",
 #endif
                                               "MIDI KNOBS", "MIDI MODE",
                                               "AUDIO CLICK", "CLICK LEVEL", "COUNT-IN", "NOTE PREVIEW", "CHORD ENTRY",
@@ -67,6 +73,12 @@ static void draw_about_qr(int32_t x, int32_t y)
 enum { MC_TEXT, MC_TITLE, MC_URL };
 typedef struct { const char *text; uint8_t kind; } menu_credit_t;
 static const menu_credit_t MENU_CREDITS[] = {
+#if MELODEE_BLE
+    {"OPTIMIST / BLE MIDI", MC_TITLE},
+    {"w0ts/optimist contributors / GPL-3.0-only", MC_TEXT},
+    {"https://github.com/w0ts/optimist", MC_URL},
+    {"", MC_TEXT},
+#endif
     {"FELUCCA / UPSTREAM", MC_TITLE},                  /* Melodee is a modified Felucca */
     {"H\xFCgelton Instruments, Leo Kuroshita / GPL-3.0", MC_TEXT},
     {"https://github.com/hugelton/Felucca", MC_URL},
@@ -190,9 +202,17 @@ static int32_t menu_scroll_max(void)
 }
 
 /* the menu's header (0..24): its title, the REC mark, the way back */
+static void enc_drop(void);
+#if MELODEE_BLE
+#include "ui_ble.c"
+#endif
 static void menu_head(void)
 {
-    if (head_waiting()) { draw_head(); return; }
+    if (head_shared_status()
+#if MELODEE_BLE
+        || mb.on || ui.menu == 3
+#endif
+        ) { draw_head(); return; }
     cv_begin(240, MENU_HEAD, T_BG);
     cv_text(8, ty_y(MENU_HEAD / 2, TY_TX), TY_TX, ui.menu == 2 ? "About" : "Settings", T_THEME);
     if (ui.menu >= 2) {                               /* the way back at the right, the REC mark before it (then */
@@ -236,6 +256,9 @@ static void menu_words(char *d, const char *s, uint32_t n)
 }
 static void draw_menu(void)
 {
+#if MELODEE_BLE
+    if (ui.menu == 3) { draw_ble_page(); return; }
+#endif
     uint32_t i, pass, sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u +
                             settings_hold * 3511u + settings_lights * 6151u + settings_autosave * 15485863u +
                             settings_midi_knobs * 997u + settings_midi_knob_mode * 10007u +
@@ -245,7 +268,7 @@ static void draw_menu(void)
                             song.rec * 65537u + song.sel * 13u +
                             (ui.menu == 2 ? ui.menu_scroll * 48611u : 0u);
     if (!ui.force && sig == ui.menu_sig) {
-        if (head_waiting()) draw_head();
+        if (head_shared_status()) draw_head();
         return;
     }
     ui.menu_sig = sig;
@@ -347,6 +370,9 @@ static void enc_drop(void)                             /* knob turns nobody take
 
 static void menu_close(void)
 {
+#if MELODEE_BLE
+    mel_ble_scan(0);
+#endif
     settings_save();                                   /* palette / panel table, if changed */
     ui.menu = 0;
     ui.force = 1;
@@ -356,6 +382,9 @@ static void menu_close(void)
 /* menu: PRESETS moves, OCT+ confirms, OCT- cancels (ABOUT -> list -> close) */
 static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
 {
+#if MELODEE_BLE
+    if (ui.menu == 3) { ble_page_input(oct); return; }
+#endif
     int32_t s;
     uint32_t ok = (oct >> 1) & 1u, back = oct & 1u;
     if (back) {
@@ -476,6 +505,9 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
             palette_set(settings.palette);
             ui.force = 1;
             break;
+#if MELODEE_BLE
+        case MI_BLE: ble_page_open(); break;
+#endif
         case MI_PANEL:
             panel_setup();
             ui.force = 1;

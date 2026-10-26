@@ -1981,6 +1981,9 @@ static void ui_confirm_accept(void)
     uint32_t kind = ui.confirm;
     ui.confirm = 0;
     ui.force = 1;
+#if MELODEE_BLE
+    if (kind == CF_BLE_FORGET) { mel_ble_forget(); settings_save(); return; }
+#endif
     if(kind==CF_OLD_SETTINGS){settings_old_accept();settings_save();
     } else if(kind==CF_OLD_TEMPLATE){settings_old_accept();template_save();
     } else if(kind==CF_IMPORT){preset_old_allow(1);sysex_commit();preset_old_allow(0);
@@ -2208,6 +2211,9 @@ static void ui_input(void)
         if (ui.save_t0)
             ui.save_t0 |= 2u;
         ui.pg_down = 0;
+#if MELODEE_BLE
+        if (ui.menu == 3 && (pressed & (1u << panel.btn[B_SAVE]))) oct |= 2u;
+#endif
         if (!ui.home_t0)
             menu_input(oct);
         return;

@@ -35,6 +35,9 @@
 #ifndef MELODEE_UART
 #define MELODEE_UART 1           /* TRS MIDI IN on UART1 / PH8 */
 #endif
+#ifndef MELODEE_BLE
+#define MELODEE_BLE 1           /* Optimist LE MIDI: one bidirectional peripheral or central link */
+#endif
 #ifndef MELODEE_ID
 #define MELODEE_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
@@ -83,7 +86,13 @@
 /* ------------------------------------------------- MIDI, sequencer --- */
 #define MIDI_TIME_NOW() fm1_ticks()
 #define MIDI_TICKS_PER_MS (1000u * FM1_TICKS_PER_US)
+#if MELODEE_BLE
+#include "midi_ble.h"
+#endif
 #include "usb.c"
+#if MELODEE_BLE
+#include "midi_ble.c"
+#endif
 #if MELODEE_UART
 #include "midi_uart.c"
 #endif

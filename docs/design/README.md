@@ -222,6 +222,16 @@ place status cards over knobs, lists, waveforms, or notes.
   A connected device may provide IN, OUT or both; the same tag covers a USB synth receiving MIDI tracks.
   Crowded headers use the label face, with `P. PHASER` / `P. CHORUS` as compact pedal-effect names when needed.
 
+- **`BLE` (Bluetooth MIDI):** while the radio is on, the shared header keeps a
+  BLE tag; setup, scanning, waiting for MIDI and failures replace normal context.
+  A generated passkey appears as `PIN 000042` through its pairing lifetime,
+  including leading zeros. `BLE WAIT` means the peer has not subscribed to MIDI;
+  `BLE SETUP` means outgoing discovery/subscription, and `BLE TIMEOUT` a failed
+  attempt held until user action. Transport, BPM and REC remain visible; erasing,
+  WAIT LOOP and active PUNCH retain their existing priority. Settings > Bluetooth
+  uses the same header above its list. No ongoing BLE state uses a timed toast.
+
+
 Brief action results (saved, copied, invalid action) use the existing header-message area; a long explanation may
 wrap in a temporary toast. A question requiring a decision uses a dialog; a value being edited stays at its
 control. These are feedback and interaction, rather than ongoing state indicators.
