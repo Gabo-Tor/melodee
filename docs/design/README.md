@@ -194,9 +194,15 @@ the same stopped-only setting when bank capability version 4 is available.
 
 TAKE JAM: REC held on SONG (elsewhere REC held captures).
 
-Timed master punches: SONG > OCT+ > Punch FX opens the selected section's saved FX lane.
-KNOB 2 selects Punch (1–4), Effect, Start step, Length, or Clear section FX; KNOB 1 changes the selected value.
-Effect Off removes that punch. Start step is one-based; Length counts conductor steps, including its start.
+Timed master punches: tap FX on SONG to open the selected section's punches directly; OCT+ > Punch FX also opens it.
+Reuse the existing punch FX keyboard, family, effect name and illustration from the live FX layer.
+Keys choose an effect silently; KNOB 1 follows the same physical key order. KNOB 2 selects one of four slots;
+KNOB 3 changes START (one-based beat), KNOB 4 changes BEATS (duration). Fractions follow the conductor's grid:
+on a sixteenth-note grid, `1+3/4` starts three quarters into beat 1, and `1/4` lasts a quarter beat.
+SELECT browses sections, OCT+ selects the next empty slot, EDIT removes the selected punch, and EDIT held undoes.
+OCT- returns to SONG. PLAY auditions from the selected section and stops again; edits remain stopped-only.
+Holding FX on SONG retains the existing live punch layer. Timing edits update only the changed placement cards;
+the shared selector redraws only on an effect change. Moving a punch retains its duration at the section edge.
 The first track's pattern defines the step division, swing and section length; rests and continuations use
 16 straight sixteenth-note steps. Timing restarts on every section repeat, including a punch spanning the
 whole section. Overlaps use the latest start, with the later punch slot breaking ties; an earlier punch

@@ -1001,7 +1001,7 @@ static void setup(int s)
         if (s == S_SONG_PUNCH || s == S_SONG_PUNCH_ACTIVE || s == S_SONG_PUNCH_MEMORY) {
             chain_config.fx[62][0] = (chain_fx_t){PX_LPF + 1, 0, 4};
             chain_config.fx[62][1] = (chain_fx_t){PX_MONO + 1, 8, 8};
-            if (s == S_SONG_PUNCH) { song_punch_open(); pop.sel = 1; }
+            if (s == S_SONG_PUNCH) song_punch_open();
             else {
                 chain_prepare_from(62); events_block(1);
                 punch.cur = punch_song_req = PX_LPF;
@@ -2261,6 +2261,35 @@ static void library_note_sweep(const char *out)
 #ifndef UI_RENDER_SHOW
 #define UI_RENDER_SHOW 3u
 #endif
+/* Reuse the live punch selector for every effect, in both fonts and all palettes.
+ * Exercise the narrow placement cards at maximum beat counts and triplets too. */
+static void song_punch_sweep(const char *out)
+{
+    for (uint32_t face = 0; face < 2; face++) for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++) {
+        render_pixel = face;
+        setup(S_SONG_PUNCH); pal(p);
+        for (uint32_t fx = 0; fx < PUNCH_NFX; fx++) {
+            char name[96];
+            chain_config.fx[62][0] = (chain_fx_t){(uint8_t)(fx + 1u), 11, 5};
+            snprintf(name, sizeof name, "%s%s/song FX/%s", face ? "PIXEL/" : "", UI_PALETTES[p].name, PUNCH_NAME[fx]);
+            cur_name = name; draw(-1); lint();
+            if (p == UI_GRAY_INDEX) mono_check();
+        }
+        for (uint32_t div = 0; div < NELEM(N_DIV); div++) {
+            char name[96];
+            chain_patterns[62][0] = 0;
+            trk[0].p[P_SDIV] = (int16_t)div; trk[0].p[P_SLEN] = 64; pattern_commit(&trk[0]);
+            chain_config.fx[62][0] = (chain_fx_t){PX_MONO + 1, 63, 1};
+            snprintf(name, sizeof name, "%s%s/song FX/%s beat timing", face ? "PIXEL/" : "", UI_PALETTES[p].name, N_DIV[div]);
+            cur_name = name; draw(-1); lint();
+            if (p == UI_GRAY_INDEX) mono_check();
+        }
+        chain_config.fx[62][0] = (chain_fx_t){0};
+        cur_name = "song FX/empty"; draw(-1); lint();
+        if (!p) write_ppm(out, face ? "PIXEL" : "NIGHT", "song_punch_empty");
+    }
+    render_pixel = 0; cur_name = 0;
+}
 #ifndef UI_RENDER_NO_MAIN
 int main(int argc, char **argv)
 {
@@ -2310,6 +2339,7 @@ int main(int argc, char **argv)
             for (k = 0; k < UI_RENDER_SHOW; k++)    /* (the suite: NIGHT DAY CONTRAST; -DUI_RENDER_SHOW=8 all) */
                 if (!strcmp(UI_PALETTES[p].name, SHOW[k])) write_ppm(out, SHOW[k], S_NAME[s]);
         }
+    song_punch_sweep(out);
     fx_redesign_sweep(out);
     render_pixel = 1;                               /* every screen again in Melodee Pixel (NIGHT) */
     for (s = 0; s < S_COUNT; s++) {

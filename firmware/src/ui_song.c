@@ -75,6 +75,7 @@ static void song_loop_set(int on)
     song_edit_end();
 }
 static struct { uint8_t row, event; } song_punch;
+static int song_punch_on(void);                       /* ui_popup.c: the visual section FX editor */
 static uint32_t song_punch_steps(void)
 {
     uint32_t bank = chain_patterns[song_punch.row][0];
@@ -83,7 +84,7 @@ static uint32_t song_punch_steps(void)
 static void song_punch_edit(uint32_t field, int32_t delta)
 {
     uint32_t row = song_punch.row, j = song_punch.event;
-    if (row >= chain_config.count) return;
+    if (row >= chain_config.count || j >= CHAIN_FX_EVENTS) return;
     chain_fx_t e = chain_config.fx[row][j];
     uint32_t steps = song_punch_steps();
     if (!field) {
@@ -92,7 +93,9 @@ static void song_punch_edit(uint32_t field, int32_t delta)
         else if (!e.length) e.length = 1;
     } else {
         if (!e.fx) { ui_message("CHOOSE AN EFFECT"); return; }
-        if (field == 1u) e.start = (uint8_t)clamp((int32_t)e.start + delta, 0, steps - 1u);
+        /* Moving a punch retains its duration at the right edge. */
+        if (field == 1u) e.start = (uint8_t)clamp((int32_t)e.start + delta, 0,
+            steps - (e.length < steps ? e.length : steps));
         else e.length = (uint8_t)clamp((int32_t)e.length + delta, 1, steps);
     }
     if (e.fx) {

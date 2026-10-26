@@ -159,6 +159,8 @@ static void head_chip_text(char *b)
     const page_t *pg = cur_page();
     uint32_t e = TSEL->eng_req % NENGINES;
     if (designer_on() && !name_on() && designer_head_chip(b)) {   /* the designer's START, FEATURES, original */
+    } else if (song_punch_on()) {
+        str_cpy(b, "SONG FX", 16);
     } else if (new_on()) {                                     /* NEW SONG */
         str_cpy(b, "NEW SONG", 16);
     } else if (ptc_on()) {                              /* PATTERNS' Copy to: "copy 3 to 5" */
@@ -189,6 +191,7 @@ static void head_chip_text(char *b)
 static void head_pages(int32_t x, int32_t x1)          /* (x: after the transport's marks; x1: where the chip, or the
                                                          * battery, starts) */
 {
+    if (song_punch_on()) return;
     const page_t *pg = cur_page();
     uint32_t i, n = 0, k = 0, sc = sec_on() ? sec_of(ui.page) + 1u : 0u;
     if (designer_on() && !name_on())                    /* the designer: its stage's pages */
@@ -1177,6 +1180,7 @@ static void draw_confirm(void)
 #include "ui_pages.c"                                   /* the redesign's other pages (R5) */
 #include "ui_list.c"                                    /* list pages */
 #include "ui_popup.c"                                   /* action sheets, pickers */
+#include "ui_song_punch.c"                              /* direct master FX lane */
 #include "ui_slots.c"                                   /* PROJECT, USER, the STOREs: their slots */
 #include "ui_motion.c"                                  /* MOTION: its lanes */
 #include "ui_scales.c"                                  /* SCALES: a screen of its own */
@@ -1196,7 +1200,10 @@ static void draw_page(void)
         page_entered();
     }
     cursor_fix();
-    if (designer_screen()) {                            /* the sound designer's START, FEATURES (ui_designer.c) */
+    if (song_punch_on()) {
+        song_punch_draw();
+        return;
+    } else if (designer_screen()) {                            /* the sound designer's START, FEATURES (ui_designer.c) */
         designer_draw();
     } else if (!own_screen() && slot_kind()) {          /* a slot page (ui_slots.c) */
         slot_draw();
@@ -1325,6 +1332,20 @@ static void ui_draw_frame(void)
         return;
     }
     pick_poll();
+    if (song_punch_on()) {
+        song_punch_draw();
+        draw_toast();
+        if (ui.msg_t && !--ui.msg_t && ui.msg2[0]) {
+            str_cpy(ui.msg, ui.msg2, sizeof ui.msg);
+            ui.msg2[0] = 0;
+            ui.msg_t = 60;
+        }
+        if (ui.bpm_t) ui.bpm_t--;
+        if (ui.hot_t) ui.hot_t--;
+        ui.force = 0;
+        scr_shown();
+        return;
+    }
     if (pop.on) {                                       /* a popup over the page, dimmed (ui_popup.c); a knob's picker
                                                          * over it as it is (it comes with every turn of a list knob:
                                                          * dimming sent the whole screen twice, ~150 ms on the SPI) */

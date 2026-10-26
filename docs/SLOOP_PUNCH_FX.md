@@ -11,7 +11,8 @@ used as evidence of authorship.
 
 ## Controls
 
-Tap FX: track rack. Hold FX: silent effect keys. Double tap: lock the layer;
+Tap FX: track rack; on SONG, the section's saved punches using the same visual selector.
+Hold FX: silent effect keys. Double tap: lock the layer;
 tap again: unlock. Last pressed key wins; its release fades dry in 64 samples.
 A previously held musical key remains a musical key. Closing the layer while
 an effect key is still down leaves that effect active until its key releases.

@@ -499,7 +499,7 @@ static void sg_foot(void)                               /* the sections and bars
     char b[32];
     uint32_t n = chain_config.count, r = sg.sel;
     uint32_t sig = n * 7u + sg.bars * 131u + sg.play * 1031u + r * 40503u + (uint32_t)(sg.px + 1) * 613u + ux.gen * 977u +
-                   ux.pal * 31u + song.sel * 19u + (r < n ? (chain_block_end(r, song.sel) - chain_origin(r, song.sel)) * 7919u : 0u) + sg.first * 17u + sg.ncols;
+                   ux.pal * 31u + song.sel * 19u + (r < n ? (chain_block_end(r, song.sel) - chain_origin(r, song.sel)) * 7919u + chain_fx_count(r) * 65537u : 0u) + sg.first * 17u + sg.ncols;
     if (!ui.force && sig == sgv.foot)
         return;
     sgv.foot = sig;

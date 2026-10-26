@@ -77,15 +77,18 @@ static int editing(void)
 {
     int bad = 0; setup(3, 16);
     press(B_OCTUP); sheet_do("Punch FX");
-    bad += check("the section menu opens a timed master punch editor", pop.on == POP_SHEET && pop.rows == SHEET_SONG_PUNCH && song_punch.row == 0);
-    turn(EN_K2, 1); turn(EN_K1, PX_MONO + 1);
-    turn(EN_K2, 1); turn(EN_K1, 3);
-    turn(EN_K2, 1); turn(EN_K1, 4);
+    bad += check("the section menu opens the existing visual punch selector", song_punch_on() && song_punch.row == 0 && song.grid == 2);
+    key_down(punch_key_of_fx(PX_MONO)); keyboard_block(); frame();
+    bad += check("choosing an FX key writes the punch without playing a note or live effect", chain_config.fx[0][0].fx == PX_MONO + 1 && kb_note[punch_key_of_fx(PX_MONO)] == KB_SILENT && punch.req == -1);
+    key_up(punch_key_of_fx(PX_MONO)); keyboard_block(); frame();
+    turn(EN_K3, 3);
+    turn(EN_K4, 4);
     chain_fx_t expected = {PX_MONO + 1, 3, 5};
-    bad += check("Effect, Start step and Length edit a saved timed punch", !memcmp(&expected, &chain_config.fx[0][0], sizeof expected));
+    bad += check("direct start and duration knobs edit a saved timed punch", !memcmp(&expected, &chain_config.fx[0][0], sizeof expected));
     bad += check("a new unsaved song with only punch edits is considered dirty", project_dirty());
-    turn(EN_K1, 100);
+    host_sent = 0; turn(EN_K4, 100);
     bad += check("punch duration cannot run beyond the section pattern", chain_config.fx[0][0].length == 13);
+    bad += check("changing timing sends only placement controls, not the FX selector", host_sent < 6000u);
     press(B_OCTDN); hold(B_EDIT);
     bad += check("song undo restores a punch edit", chain_config.fx[0][0].length == 5);
     song_insert(1);
@@ -101,6 +104,59 @@ static int editing(void)
     chain_prepare(); events_block(1); expected = chain_config.fx[0][0]; song_punch_edit(0, -1);
     bad += check("punch edits are refused during song playback", !memcmp(&expected, &chain_config.fx[0][0], sizeof expected) && msg_is("STOP TO EDIT"));
     seq_stop(); dsp(); return bad;
+}
+static int visual_controls(void)
+{
+    int bad = 0; setup(2, 16);
+    press(B_FX);
+    bad += check("FX tapped on SONG opens its visual punch editor directly", song_punch_on() && song_punch.row == 0);
+    host_sent = 0; frame();
+    bad += check("an idle song FX selector sends no screen redraw", !host_sent);
+    ui_message("FIRST"); str_cpy(ui.msg2, "SECOND", sizeof ui.msg2); ui.msg_t = 1; frame();
+    bad += check("feedback advances its queued message while the FX editor stays open", msg_is("SECOND") && !ui.msg2[0]);
+    ui.msg_t = 0; frame();
+    turn(EN_K1, 1);
+    bad += check("knob 1 uses the existing keyboard's effect order", chain_config.fx[0][0].fx == punch_fx_of_key(0) + 1);
+    turn(EN_K1, 1);
+    bad += check("the next effect follows the next physical key", chain_config.fx[0][0].fx == punch_fx_of_key(1) + 1);
+    press(B_OCTUP);
+    bad += check("Enter selects the next free punch without adding phantom data", song_punch.event == 1 && chain_fx_count(0) == 1);
+    turn(EN_K1, 1); turn(EN_K4, 4); turn(EN_K3, 100);
+    bad += check("moving a punch to the section edge preserves its duration", chain_config.fx[0][1].start == 11 && chain_config.fx[0][1].length == 5);
+    turn(EN_K3, -100);
+    bad += check("moving the punch back retains its original duration", !chain_config.fx[0][1].start && chain_config.fx[0][1].length == 5);
+    press(B_EDIT);
+    bad += check("EDIT removes only the selected punch", !chain_config.fx[0][1].fx && chain_fx_count(0) == 1 && song_punch_on());
+    hold(B_EDIT);
+    bad += check("EDIT held restores the deleted punch through song undo", chain_config.fx[0][1].fx && song_punch_on());
+    char text[32]; song_punch_beats(text, 18, 1);
+    bad += check("start time is a one-based beat plus a musical fraction", !strcmp(text, "1+3/4"));
+    song_punch_beats(text, 8, 0);
+    bad += check("triplet durations display a reduced beat fraction", !strcmp(text, "1/3"));
+    song_punch_beats(text, 30, 0);
+    bad += check("longer durations display whole beats and their fraction", !strcmp(text, "1+1/4"));
+    turn(EN_SELECT, 1);
+    bad += check("SELECT browses sections without leaving the selector", song_punch_on() && song_punch.row == 1 && ui.song_row == 1);
+    press(B_PLAY); events_block(1); frame();
+    bad += check("PLAY auditions the song from the selected section", chain.running && chain.row == 1 && song_punch_on());
+    turn(EN_K1, 1);
+    bad += check("auditioning never changes saved punch data", !chain_fx_count(1) && msg_is("STOP TO EDIT"));
+    press(B_PLAY); events_block(1); frame();
+    bad += check("PLAY stops audition without leaving the editor", !chain.running && song_punch_on());
+    press(B_OCTDN);
+    bad += check("Back returns to SONG and restores ordinary key ownership", !pop.on && cur_page()->graph == GR_SONG && song.grid == keys_mode());
+    press(B_FX); press(B_HOME);
+    bad += check("HOME closes the selector and returns to Stage", !pop.on && ui.home);
+    setup(1, 16); btn_down(B_FX); frames(800);
+    bad += check("holding FX on SONG retains the live layer gesture", ui.layer == LAYER_FX && !song_punch_on() && !pop.on);
+    btn_up(B_FX); frame();
+    setup(1, 16); key_down(2); keyboard_block(); press(B_FX);
+    bad += check("entering the editor keeps an already held musical note's ownership", gates() && kb_note[2] != KB_SILENT);
+    key_up(2); keyboard_block(); frame();
+    bad += check("that musical key releases normally inside the FX selector", !gates());
+    setup(1, 16); song_punch_open(); pattern_epoch++; frame();
+    bad += check("a project/pattern storage reset closes stale section selection", !song_punch_on());
+    return bad;
 }
 static int persistence(void)
 {
@@ -126,6 +182,6 @@ static int persistence(void)
 }
 int main(void)
 {
-    int bad = playback() + overrides_and_restarts() + editing() + persistence();
+    int bad = playback() + overrides_and_restarts() + editing() + visual_controls() + persistence();
     printf("Song punch: %s\n", bad ? "FAILED" : "passed"); return !!bad;
 }

@@ -454,8 +454,9 @@ static void ui_leds(void)
     k = oct_leds();
     led_put(nl, panel.btn[B_OCTDN], (int)(k & 1u));
     led_put(nl, panel.btn[B_OCTUP], (int)(k >> 1));
-    play = !pattern_keys_on() && ui.confirm != CF_PAT_KEY && !(name_on() && !ui.menu) && !ui.layer && !grid_on();
-    c = pattern_keys_on() || ui.confirm == CF_PAT_KEY ? pattern_leds(&pdim, &pbr) : name_on() && !ui.menu ? name_leds() :
+    uint32_t song_fx = song_punch_on() && !ui.menu && !ui.confirm;
+    play = !song_fx && !pattern_keys_on() && ui.confirm != CF_PAT_KEY && !(name_on() && !ui.menu) && !ui.layer && !grid_on();
+    c = song_fx ? song_punch_leds() : pattern_keys_on() || ui.confirm == CF_PAT_KEY ? pattern_leds(&pdim, &pbr) : name_on() && !ui.menu ? name_leds() :
         ui.layer ? layer_leds() : grid_on() ? grid_leds() : fm1_in.notes & ~kb_layer;   /* the patterns (SEQ held, its
                                                          * dialog), NAME's keys, the map, the grid, the keys held */
 #if MELODEE_SLICE
@@ -1657,6 +1658,10 @@ static uint32_t ly_bit(uint32_t l);
 static void page_tap(uint32_t b)
 {
     uint32_t f;
+    if (b == B_FX && !ui.home && cur_page()->graph == GR_SONG) {
+        song_punch_open();
+        return;
+    }
     if (b == B_EDIT && ui.erase_gesture) return;
     if (b == B_EDIT && smap.on) {                       /* the map open: EDIT closes it */
         smap_close();
@@ -2046,6 +2051,8 @@ static void ui_input(void)
         return;
     }
     if(ui.import_refresh){pop.on=0;brw.on=0;ui.import_refresh=0;ui.force=1;}
+    if (song_punch_on() && (song_punch_epoch != pattern_epoch || song_punch.row >= chain_config.count))
+        pop_close();
     if (scr_input(pressed, notes)) return;
     if (designer_on() && !name_on() && !ui.confirm && designer_input(pressed, notes)) return;
     preset_pick_poll();                              /* restore key selection before handling new edges */
@@ -2193,6 +2200,8 @@ static void ui_input(void)
         /* REC does nothing in the menu, a dialog or NAME (no transport start there) */
     } else if (chain_busy() && rec == BT_TAP) {
         ui_message("STOP TO RECORD");
+    } else if (song_punch_on() && rec) {
+        ui_message("FX EDITOR");
     } else if (rec == BT_TAP) {
         rec_tap();
     } else if (rec == BT_HOLD) {
@@ -2248,7 +2257,7 @@ static void ui_input(void)
             } else undo_step(dir == 2u);
         } else if (!(step_page() && step_history_apply(0))) undo_swap();
     } else if (edit == BT_TAP && !(ui.step_mods & ed) && !ui.confirm &&
-               pop.on != POP_SHEET && pop.on != POP_LIST) {
+               pop.on != POP_SHEET && pop.on != POP_LIST && !song_punch_on()) {
         page_tap(B_EDIT);
     }
     if (ui.confirm) {                                   /* OCT- cancels, OCT+ does it; nothing else reacts (SEQ's
@@ -2289,6 +2298,14 @@ static void ui_input(void)
         for (k = 0; k < NE; k++)
             if (!smap.on || (k != EN_K1 && k != EN_K2 && k != EN_SELECT))
                 panel_enc(k);
+        return;
+    }
+    if (song_punch_on()) {
+        if (home == BT_TAP) { pop_close(); go_home(); }
+        else song_punch_input(notes, pressed, oct, edit == BT_TAP);
+        ui.pg_down = 0;
+        enc_drop();
+        song.grid = (uint8_t)keys_mode();
         return;
     }
     if (pop.on == POP_SHEET || pop.on == POP_LIST) {   /* an action sheet, a value's list: KNOB 1 / 2, OCT+ / OCT-

@@ -18,7 +18,7 @@ typedef struct {
                                                          * SR_RED: no question, red (a destructive act) */
 } sheet_row_t;
 #define SR_RED 0xFFu
-enum { POP_NONE, POP_SHEET, POP_PICK, POP_LIST, POP_PRESET };
+enum { POP_NONE, POP_SHEET, POP_PICK, POP_LIST, POP_PRESET, POP_SONG_PUNCH };
 #define PAT_AUDITION_MS 2000u
 #define POP_X BOX_X                                     /* a sheet (large type): 236 wide, its title row 34, its rows
                                                          * 32 px, 34 apart (ui_list.c row_draw), five at most shown */
@@ -33,6 +33,8 @@ static struct {
     const sheet_row_t *rows;
     uint32_t t, sig;
 } pop;
+static int song_punch_on(void) { return pop.on == POP_SONG_PUNCH; }
+static uint16_t song_punch_epoch;
 
 static void confirm_open(uint32_t kind, uint32_t trk);  /* ui_input.c */
 static void edit_param(uint32_t slot, int32_t steps);
@@ -146,30 +148,15 @@ static void ps_dup(void) { ps_row_insert(1); }
 static void ps_song_loop_v(char *b) { str_cpy(b, chain_config.rsv[CHAIN_LOOP] ? "On" : "Off", 4); }
 static void ps_song_loop_turn(int32_t s) { song_loop_set(s > 0); }
 static void ps_song_loop(void) { song_loop_set(!chain_config.rsv[CHAIN_LOOP]); }
-static void ps_punch_event_v(char *b) { fmt_int(b, song_punch.event + 1u); }
-static void ps_punch_event_turn(int32_t s) { song_punch.event = (uint8_t)clamp((int32_t)song_punch.event + s, 0, CHAIN_FX_EVENTS - 1u); ui.force = 1; }
-static void ps_punch_fx_v(char *b) {
-    uint32_t fx = chain_config.fx[song_punch.row][song_punch.event].fx;
-    str_cpy(b, fx ? PUNCH_NAME[fx - 1u] : "Off", 16);
-}
-static void ps_punch_start_v(char *b) { fmt_int(b, chain_config.fx[song_punch.row][song_punch.event].start + 1u); }
-static void ps_punch_length_v(char *b) { fmt_int(b, chain_config.fx[song_punch.row][song_punch.event].length); }
-static void ps_punch_fx_turn(int32_t s) { song_punch_edit(0, s); }
-static void ps_punch_start_turn(int32_t s) { song_punch_edit(1, s); }
-static void ps_punch_length_turn(int32_t s) { song_punch_edit(2, s); }
-static const sheet_row_t SHEET_SONG_PUNCH[] = {
-    {"Punch", ps_punch_event_v, ps_punch_event_turn, 0, 0},
-    {"Effect", ps_punch_fx_v, ps_punch_fx_turn, 0, 0},
-    {"Start step", ps_punch_start_v, ps_punch_start_turn, 0, 0},
-    {"Length", ps_punch_length_v, ps_punch_length_turn, 0, 0},
-    {"Clear section FX", 0, 0, song_punch_clear, SR_RED}};
 static void song_punch_open(void)
 {
-    if (!ps_song_free()) return;
     if (ui.song_row >= chain_config.count) { ui_message("ADD A SONG ROW"); return; }
     song_punch.row = ui.song_row; song_punch.event = 0;
-    char b[20] = "Master / Section "; fmt_int(b + str_len(b), song_punch.row + 1u);
-    sheet_open("Punch FX", b, SHEET_SONG_PUNCH, NELEM(SHEET_SONG_PUNCH));
+    song_punch_epoch = pattern_epoch;
+    pop.on = POP_SONG_PUNCH;
+    song.grid = 2;                                  /* keys choose effects immediately, without musical notes */
+    se.pending = se.range = 0;
+    ui.force = 1;
 }
 static void ps_jam_v(char *b)
 {
