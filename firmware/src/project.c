@@ -47,7 +47,7 @@ typedef struct {
                                                 * 0 (a reserved byte before 1.0): MODEL 2 was DUST */
     uint8_t rsv;
     proj_trk_t t[PROJ_TRK];
-    chain_config_t chain;
+    chain_legacy_t chain;
     motion_store_t motion;
     uint8_t fm6[PROJ_TRK][FM6_PACKED];             /* each track's FM6 patch, packed (eng_fm6.c) */
     uint8_t fm6_fn[PROJ_TRK][FM6_NFN];             /* .. and its function settings (fm6_fn_ok; else Dexed's): not in
@@ -160,7 +160,7 @@ static int proj_ok(const project_t *q)
 {
     if (q->magic != PROJ_MAGIC || q->size != sizeof *q || q->sum != proj_sum(q) ||
         q->sel >= NTRK || q->parts > NTRK || q->phys > PROJ_PHYS ||
-        !chain_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
+        !chain_legacy_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
     for (uint32_t k = 0; k < PROJ_TRK; k++) if (q->t[k].engine >= NENGINES || q->t[k].mpc_octave < -3 || q->t[k].mpc_octave > 3 || q->pattern[k] >= NPAT || !drum_patch_valid(&q->drum[k]) || !p5_patch_valid(&q->p5[k])) return 0;
     for (uint32_t i = 0; i < RECORD_MAX; i++) if (!recording_valid(&q->recording[i])) return 0;
     return 1;
@@ -301,7 +301,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
     for (t = 0; t < PROJ_TRK; t++)
         for (i = 0; i < FM6_PACKED; i++)
             if (q->fm6[t][i] > 127u) return 0;
-    if (q->g[G_FXRETURN]<0 || q->g[G_FXRETURN]>127 || q->g[G_FXMODE]<0 || q->g[G_FXMODE]>1 || !chain_valid(&q->chain) || !motion_valid(&q->motion) || P_COUNT > 127u) return 0;
+    if (q->g[G_FXRETURN]<0 || q->g[G_FXRETURN]>127 || q->g[G_FXMODE]<0 || q->g[G_FXMODE]>1 || !chain_legacy_valid(&q->chain) || !motion_valid(&q->motion) || P_COUNT > 127u) return 0;
     memset(out, 0, sizeof *out); memcpy(b, &magic, 4); memcpy(b + 4, &size, 4);
     memcpy(b + 8, q->g, 2u*PROJ_GLOBALS);
     b[PROJ_FX_MODE_OFF]=(uint8_t)q->g[G_FXMODE];b[PROJ_FX_MODE_OFF+1u]=0;
@@ -438,7 +438,7 @@ static int proj_unpack(project_t *q, const uint8_t *b)
         if (!mpc_octaves_unpack(oct, b[PROJ_MPC_OCT_WIRE] | (uint32_t)b[PROJ_MPC_OCT_WIRE+1u] << 8)) return 0;
         for (t = 0; t < PROJ_TRK; t++) q->t[t].mpc_octave = oct[t];
     }
-    if (!chain_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
+    if (!chain_legacy_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
     for (t = 0; t < PROJ_TRK; t++)
         for (i = 0; i < FM6_PACKED; i++)
             q->fm6[t][i] = b[end + t * FM6_PACKED + i] & 0x7Fu;
@@ -674,9 +674,14 @@ static void project_capture(project_t *p)
     p->sel = song.sel;
     p->parts = (uint8_t)cap_tracks();
     p->phys = PROJ_PHYS;
-    p->chain = chain_config;
+    chain_legacy_defaults(&p->chain);
+    p->chain.count = chain_config.count < CHAIN_LEGACY_ROWS ? chain_config.count : CHAIN_LEGACY_ROWS;
+    for (uint32_t r = 0; r < p->chain.count; r++) {
+        p->chain.row[r] = chain_config.row[r];
+        if (p->chain.row[r].slot >= NPAT) p->chain.row[r].slot = 0;
+    }
     for (uint32_t r = 0; r < p->chain.count && cap_map(0) != 0u && cap_map(0) < NTRK; r++)
-        p->chain.row[r].slot = chain_patterns[r][cap_map(0)];   /* (track 1 removed: a row's slot, the new 1's there) */
+        p->chain.row[r].slot = chain_patterns[r][cap_map(0)] < NPAT ? chain_patterns[r][cap_map(0)] : 0u;   /* (track 1 removed: a row's slot, the new 1's there) */
     for (i = 0; i < PROJ_TRK; i++) {
         uint32_t src = cap_map(i), own = src < NPART ? src : i;   /* the patches: a part's own, else the place's */
         if (src < NTRK) {
@@ -848,7 +853,7 @@ static int project_rename(uint32_t slot, const char *name)
 #if MELODEE_FLASH
     if(n==BANK_STORE_SIZE)memcpy(proj_image_tail()+bank_motion_off()-BANK_ACTIVE_OFF,bank_import_tags,sizeof bank_import_tags);
     else {
-        proj_bound(p);chain_defaults(&p->chain);
+        proj_bound(p);chain_legacy_defaults(&p->chain);
         if(!bank_pack_tail(proj_image_tail(),p,0))return 2;
     }
     if(proj_save_image(slot)){ui_message("SAVE ERROR");return 2;}
@@ -859,7 +864,7 @@ static int project_rename(uint32_t slot, const char *name)
         if (!proj_pack((project_store_t *)(proj_wire_u.raw + 8u), p)) return 2;
         bank_checksum(proj_wire_u.raw);
     } else {
-        proj_bound(p); chain_defaults(&p->chain);
+        proj_bound(p); chain_legacy_defaults(&p->chain);
         if (!bank_pack(proj_wire_u.raw, p, 0)) return 2;
     }
     if (proj_write_slot(slot, proj_wire_u.raw, BANK_STORE_SIZE)) { ui_message("SAVE ERROR"); return 2; }
@@ -1241,7 +1246,7 @@ static void template_load(void)
     p->sel = tmpl.sel;
     p->parts = tmpl.ntrk ? tmpl.ntrk : NPART;
     p->phys = PROJ_PHYS;
-    chain_defaults(&p->chain);
+    chain_legacy_defaults(&p->chain);
     int8_t oct[PROJ_TRK];
     mpc_octaves_unpack(oct,(uint16_t)tmpl.g[TMPL_MPC_OCT_G]);
     for (k = 0; k < PROJ_TRK; k++) {
@@ -1500,20 +1505,27 @@ static int project_used(uint32_t slot)
 }
 
 /* Main loop only: no flash access or copies when the ISR changes rows. */
-static uint32_t chain_prepare(void)
+static uint32_t chain_prepare_from(uint32_t start)
 {
     if (transport_busy()) return 2;
-    if (!chain_valid(&chain_config) || !chain_config.count) return 1;
+    if (!chain_valid(&chain_config) || !chain_config.count || start >= chain_config.count) return 1;
     for (uint32_t i = 0; i < chain_config.count; i++)
-        for (uint32_t k = 0; k < NTRK; k++) if (chain_patterns[i][k] >= NPAT) return 1;
+        for (uint32_t k = 0; k < NTRK; k++) if (chain_patterns[i][k] > CHAIN_HOLD || (chain_patterns[i][k] == CHAIN_HOLD && chain_bank(i, k) >= NPAT)) return 1;
     uint32_t f = motion_guard();
     if (transport_busy()) { motion_unguard(f); return 2; }
     for (uint32_t k = 0; k < NTRK; k++) { pattern_commit(&trk[k]); trk[k].pattern_next = 0xff; }
     chain.config = chain_config;
+    chain.start = (uint8_t)start;
+    for (uint32_t k = 0; k < NTRK; k++) {
+        chain.seek_samples[k] = 0;
+        for (uint32_t row = chain_origin(start, k); row < start; row++) chain.seek_samples[k] += chain_row_samples(row);
+    }
     RING_PUBLISH(); chain.armed = 1; transport_req = 1;
     motion_unguard(f);
     return 0;
 }
+
+static uint32_t chain_prepare(void) { return chain_prepare_from(0); }
 
 static void settings_poll(void)
 {

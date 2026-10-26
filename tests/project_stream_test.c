@@ -60,6 +60,38 @@ static void midi_tracks_stream(void)
     assert(!bank_valid(oracle,sizeof oracle));
     puts("Project stream: eight-track FBKL oracle, all 64 recording owners, save/load and MIDI removal passed");
 }
+
+static void extended_songs_stream(void)
+{
+    reset(); song.ntrk = NTRK;
+    for (uint32_t k = NPART; k < NTRK; k++) trk[k].p[P_E0] = (int16_t)(k + 1u);
+    chain_config.count = CHAIN_ROWS;
+    for (uint32_t r = 0; r < CHAIN_ROWS; r++) {
+        chain_config.row[r] = (chain_row_t){r % NPAT, (r % 16u) + 1u};
+        for (uint32_t k = 0; k < NTRK; k++) chain_patterns[r][k] = (uint8_t)((r + k) % (NPAT + 1u));
+        chain_config.row[r].slot = chain_patterns[r][0];
+    }
+    chain_config.rsv[CHAIN_LOOP] = 1;
+    chain_patterns[1][1] = CHAIN_HOLD; chain_patterns[63][2] = CHAIN_HOLD;
+    chain_config_t expected = chain_config;
+    uint8_t patterns[CHAIN_ROWS][NTRK]; memcpy(patterns, chain_patterns, sizeof patterns);
+    project_capture(&proj_scratch); assert(bank_pack(oracle, &proj_scratch, 1));
+    assert(proj_image_capture(1)); st_stream_t w;
+    assert(!proj_stream_generate(&w, OBJ_BANK0)); assert(!st_stream_publish(&w));
+    assert(st_load(OBJ_BANK0, actual, sizeof actual) == BANK_STORE_SIZE);
+    assert(!memcmp(oracle, actual, sizeof oracle));
+    project_new_blank(); project_load(0);
+    assert(!memcmp(&expected, &chain_config, sizeof expected));
+    assert(!memcmp(patterns, chain_patterns, sizeof patterns));
+    assert(!project_dirty());
+    assert(!project_rename(0, "LONG SONG"));
+    project_new_blank(); project_load(0);
+    assert(!memcmp(patterns, chain_patterns, sizeof patterns));
+    assert(!track_remove(2));
+    for (uint32_t r = 0; r < CHAIN_ROWS; r++) for (uint32_t k = 2; k < NTRK - 1u; k++)
+        assert(chain_patterns[r][k] == patterns[r][k + 1u]);
+    puts("Project stream: extended FBKM songs, eight-track rests, dirty hashes, rename and track removal passed");
+}
 static void workload(uint32_t count,uint32_t spread,uint32_t tail,uint32_t quant,uint32_t engine)
 {
     reset();song.ntrk=NPART;
@@ -135,6 +167,7 @@ int main(void)
     legacy[at+8u]=25;sum=proj_hash(legacy,len-4u);memcpy(legacy+len-4u,&sum,4);
     assert(!st_save(OBJ_BANK0+3u,legacy,len));assert(!proj_read_slot(3)&&proj_meta[3].old);
     midi_tracks_stream();
+    extended_songs_stream();
     printf("Project stream: %u complete RAM-codec comparisons, hash/dirty/save/load/rename, failed save and track removal passed\n",cases);
     return 0;
 }

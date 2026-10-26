@@ -338,8 +338,11 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
     case ED_MOTION:
         return (n == 1u || (n == 2u && a[1] == 2u) || (n == 3u && a[1] == 1u && a[2] <= 1u) ||
                 (n == 6u && a[1] == 3u) || ((n == 4u || n == 6u) && a[1] == 4u)) && a[0] < NPART;
-    case ED_BANK_SONG: case ED_SONG:
-        return n && (a[0] == 1u || n == 1u);
+    case ED_BANK_SONG:
+        if (n && a[0] == 4u) return n == 2u;
+        /* fall through */
+    case ED_SONG:
+        return n && (a[0] == 1u || n == 1u || (a[0] == 2u && n == 2u));
     default:
         return 1;                                  /* variable payloads validate in their handler */
     }
@@ -719,7 +722,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0x55); ed_b(1); ed_b(ed_ui_caps());             /* tagged preferences v1: commands 34..38 */
         ed_b(0x4d); ed_b(2); ed_b(MOTION_MAX); ed_b(1); /* motion v2: native ids, chance v1 */
         ed_b(0x42); ed_b(1); ed_b(3); /* bounded full-backup read + restore */
-        ed_b(0x50); ed_b(1); ed_b(NPAT); ed_b(CHAIN_ROWS);     /* bank controls: 73/74 */
+        ed_b(0x50); ed_b(4); ed_b(NPAT); ed_b(CHAIN_ROWS);     /* bank controls: 73/74 */
         ed_b(0x46); ed_b(1); ed_b(FM6_NFAC); ed_b(0);   /* FM6 patches: cmds 68..71 */
         ed_b(0x43); ed_b(1); ed_b(CZ_BYTES & 127u); ed_b(CZ_BYTES >> 7); ed_b(0); ed_b(0); /* old CZ bank controls retired */
         ed_b(0x35);ed_b(1);ed_b(ENGI_PROPHET);ed_b(USER_GENERAL);ed_b(USER_NATIVE_FM);ed_b(USER_NATIVE_CZ);ed_b(USER_NATIVE_P5);ed_b(0);ed_b(1); /* legacy native clients see their addressable prefix */
@@ -1060,18 +1063,19 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         break;
     }
     case ED_BANK_SONG: {
-        if (!na || a[0] > 3u) return;
+        if (!na || a[0] > 4u) return;
         uint32_t rc = 0;
         if (a[0] == 1u) {
             if (na < 2u || a[1] > CHAIN_ROWS || na != 2u + a[1] * 5u) rc = 1;
             else if (chain_busy()) rc = 2;
             else {
                 for (uint32_t row = 0; row < a[1]; row++) {
-                    for (uint32_t k = 0; k < ED_TRK; k++) if (a[2u + row * 5u + k] >= NPAT) rc = 1;
+                    for (uint32_t k = 0; k < ED_TRK; k++) if (a[2u + row * 5u + k] > CHAIN_HOLD || (a[2u + row * 5u + k] == CHAIN_HOLD && (!row || a[2u + (row-1u) * 5u + k] == CHAIN_REST))) rc = 1;
                     if (!a[6u + row * 5u] || a[6u + row * 5u] > 16u) rc = 1;
                 }
                 if (!rc) {
-                    chain_defaults(&chain_config); memset(chain_patterns, 0, sizeof chain_patterns);
+                    uint8_t loop = chain_config.rsv[CHAIN_LOOP];
+                    chain_defaults(&chain_config); chain_config.rsv[CHAIN_LOOP] = loop; memset(chain_patterns, 0, sizeof chain_patterns);
                     chain_config.count = a[1];
                     for (uint32_t row = 0; row < a[1]; row++) {
                         memcpy(chain_patterns[row], a + 2u + row * 5u, ED_TRK);
@@ -1080,13 +1084,19 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                     ui.song_row = 0; ui.force = 1;
                 }
             }
-        } else if (a[0] == 2u) rc = chain_prepare();
+        } else if (a[0] == 2u) rc = chain_prepare_from(na == 2u ? a[1] : 0u);
         else if (a[0] == 3u) transport_req = 2;
+        else if (a[0] == 4u) {
+            if (a[1] > 1u) rc = 1;
+            else if (chain_busy()) rc = 2;
+            else song_loop_set(a[1]);
+        }
         ed_b(a[0]); ed_b(rc); ed_b(chain_config.count); ed_b(chain.running); ed_b(chain.row); ed_b(chain.remaining);
         for (uint32_t row = 0; row < chain_config.count; row++) {
             for (uint32_t k = 0; k < ED_TRK; k++) ed_b(chain_patterns[row][k]);
             ed_b(chain_config.row[row].repeat);
         }
+        ed_b(chain_config.rsv[CHAIN_LOOP]);
         break;
     }
     case ED_SONG: {
@@ -1111,7 +1121,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                     ui.song_row = 0; ui.force = 1;
                 }
             }
-        } else if (op == 2u) rc = chain_prepare();
+        } else if (op == 2u) rc = chain_prepare_from(na == 2u ? a[1] : 0u);
         else if (op == 3u) transport_req = 2;
         ed_b(op); ed_b(rc); ed_b(chain_config.count);
         ed_b(chain.running); ed_b(chain.row); ed_b(chain.remaining);

@@ -433,12 +433,22 @@ static int step_acc_valid(const step_t *s) { return s->hit ? !(s->acc & ~s->hit)
 typedef struct { uint8_t place, param; int16_t value; } motion_event_t;
 typedef struct { uint8_t count, on, rsv[2]; motion_event_t event[MOTION_MAX]; } motion_store_t;
 _Static_assert(sizeof(motion_store_t) == 260u, "motion disk layout");
-#define CHAIN_ROWS 16u
+#define CHAIN_ROWS 64u
+#define CHAIN_LEGACY_ROWS 16u
+#define CHAIN_REST NPAT
+#define CHAIN_HOLD (NPAT + 1u)
+#define CHAIN_LOOP 0u /* chain_config_t.rsv index; persisted by FBKM */
 typedef struct { uint8_t slot, repeat; } chain_row_t;
 typedef struct {
     uint8_t count, rsv[3];
     chain_row_t row[CHAIN_ROWS];
 } chain_config_t;
+/* FUN records and raw snapshots retain their original arrangement extent. */
+typedef struct {
+    uint8_t count, rsv[3];
+    chain_row_t row[CHAIN_LEGACY_ROWS];
+} chain_legacy_t;
+_Static_assert(sizeof(chain_legacy_t) == 36u, "legacy song disk layout");
 
 typedef struct track {
     int16_t p[P_COUNT];

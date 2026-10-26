@@ -748,7 +748,7 @@
 
         <section id="songs">
           <h3>Songs</h3>
-          <p>On <strong>SEQ → SONG</strong>, the knobs select section, track, that track’s pattern, and how many times the section repeats (up to 16 rows, repeats 1–16).</p>
+          <p>On <strong>SEQ → SONG</strong>, the knobs select section, track, that track’s pattern, and the selected block’s length across sections (up to 64 sections).</p>
           <div class="shots">
             <figure class="shot"><img src="song.png" alt="Song arrangement" width="240" height="240"><figcaption>SONG: sections of patterns.</figcaption></figure>
             <figure class="shot"><img src="ref_sheet_song.png" alt="Song action sheet" width="240" height="240"><figcaption>Song sheet.</figcaption></figure>
@@ -756,8 +756,15 @@
           <ul>
             <li>While you jam with no song playing, every loop of track 1 logs the tracks’ patterns as a section (same patterns again: a repeat).</li>
             <li>Hold <kbd>REC</kbd> on SONG (or use Take jam on the sheet) to turn that log into the arrangement. Overwrite asks for confirmation.</li>
-            <li>PLAY runs the arrangement; sections change every track at track 1’s loop boundary; the final section stops. STOP returns to the patterns selected before SONG.</li>
-            <li>Sheet actions: Insert / Duplicate / Delete section, Take jam, Clear song.</li>
+            <li>PLAY runs the arrangement; PLAY starts from the selected section with its full repeats; sections change every track at track 1’s loop boundary; the final section stops. STOP returns to the patterns selected before SONG.</li>
+            <li>The ruler above the blocks shows elapsed <strong>minutes:seconds</strong>. <kbd>KNOB 4</kbd> extends the selected block into following sections on its own track, or trims its right edge. Notes and automation continue through the extended block; trimming leaves rests. Extension stops at another occupied block and can append empty sections at the end.</li>
+            <li><kbd>KNOB 3</kbd> chooses <strong>REST</strong> below P1. A rest leaves that track silent while release, delay and reverb tails decay. Track 1 rests and continued blocks retain one straight four-beat bar per section repeat.</li>
+            <li><kbd>OCT+</kbd> opens cell actions: Set rest, Copy to…, Move to…, Add empty section. Add empty section inserts a section of rests at the cursor. For copy and move, choose a destination on the grid, then <kbd>OCT+</kbd> applies or <kbd>OCT−</kbd> cancels. Copy and move act on the whole block. Destinations must be empty. Copies reuse the pattern; editing its notes changes every occurrence.</li>
+            <li>Hold <kbd>OCT+</kbd> for Insert empty section, Duplicate section, Move section, Copy sections, Delete section, Take jam, and Clear song. Inserted empty sections contain rests on every track.</li>
+            <li>Hold <kbd>OCT+</kbd> and turn <kbd>KNOB 1</kbd> to select a phrase, then tap <kbd>OCT+</kbd> to copy, move, duplicate or delete its sections. Copy and move insert before the destination. Duplication inserts after the source.</li>
+            <li>Hold <kbd>EDIT</kbd> to undo song edits; <kbd>EDIT</kbd> + <kbd>OCT−</kbd>/<kbd>OCT+</kbd> undo/redo. Up to eight edits are retained while edit memory is available.</li>
+            <li><strong>Loop song</strong> in the tapped or held <kbd>OCT+</kbd> menu returns the final section to section 1. Set it while stopped; it saves with the project and defaults off. The header shows LOOP, or SONG LOOP while playing. PLAY still stops the song.</li>
+            <li><kbd>PLAY</kbd> starts at the cursor and stops playback; moving the cursor while playing does not jump. PLAY on the add-section column starts from section 1. <kbd>OCT+</kbd> is for editing.</li>
           </ul>
         </section>
 

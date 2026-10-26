@@ -155,7 +155,7 @@ One way to move on every screen with something to move through (Kerem, 2026-10-1
 | Browser | list (category) | sound | FAV / engine | keep | back (revert) |
 | Settings | value | row | - | open / step | close |
 | PROJECT, USER, STORE | slot | slot | - | the slot's sheet | Stage |
-| SONG | section | track | pattern / repeats | play / stop | Stage |
+| SONG | section | track | REST or pattern / selected block length | cell actions / apply destination | cancel, then Stage |
 | PATTERNS | track 1's pattern | track 2's | track 3's / 4's | the pattern's sheet | the queue, Stage |
 | PATTERNS: Copy to | the place | the place | the place | copy there | leave |
 | MOD | source (its picker) | route | destination / amount | - | Stage |
@@ -165,6 +165,32 @@ One way to move on every screen with something to move through (Kerem, 2026-10-1
 | SCALES | family | scale | - | pick | Stage |
 | NAME | place | letter | - | save | cancel |
 | NEW SONG | (as its page) | | | next / create | back |
+
+SONG arrangements hold 64 sections. PLAY starts at step zero of the selected section with its full repeat count,
+continues to the end, and stops; PLAY while running or armed stops/cancels. The add-section column starts at section 1.
+Starting inside a continued block seeks that block to the selected section, including held and recorded notes and motion.
+Moving the cursor during playback does not seek. OCT+ opens the selected cell's sheet (Set rest, Copy to…, Move to…, Add empty section),
+or inserts an empty section at the add column. Copy/move choose a destination on the grid; OCT+ applies, OCT- cancels.
+Copy/move acts on the entire selected block, including its continued sections, and keeps the note pattern shared.
+Moves leave REST at the source. Occupied destinations must be cleared first.
+Hold OCT+ for section insertion, duplication, movement, deletion and the existing song actions. Hold OCT+ and turn
+KNOB 1 (or SELECT) to select consecutive sections; tap OCT+ for phrase copy, move, duplicate and delete. Section copy
+and move insert before the destination; duplication inserts after the source. EDIT held undoes up to eight song
+edits; EDIT + OCT-/OCT+ undo/redo. History is acquired on demand and may be reclaimed for audio.
+Rests display `--` and suppress sequence notes, recorded notes and motion while allowing releases and FX tails.
+Pattern starts on track 1 retain the existing section timing; a rest or continuation on track 1 uses one straight
+four-beat bar per retained section repeat. Growing/trimming a block therefore preserves following section times.
+The ruler above the blocks shows elapsed minutes:seconds; the footer shows the section position and selected block length.
+KNOB 4 grows/shrinks that block into following sections on its own track. Continued sections do not restart notes,
+recorded playback or motion. Shrinking leaves rests; extension appends empty sections if needed, and stops at an
+occupied block. The underlying note pattern stays unchanged. Section timing/repeats from existing projects are retained. Persistent destination/range status stays
+in the shared header until applied/cancelled or leaving SONG. Transport remains on PLAY.
+
+Loop song is available in the tapped and held OCT+ sheets and is saved per project (default Off). Set it while
+stopped. A looping song returns from its final section to section 1 with the residual sample phase preserved,
+even if PLAY began at a later cursor section. PLAY still stops and restores the original patterns. The shared
+header shows LOOP on SONG while enabled, and SONG LOOP during playback on every page. The web editor exposes
+the same stopped-only setting when bank capability version 4 is available.
 
 TAKE JAM: REC held on SONG (elsewhere REC held captures).
 

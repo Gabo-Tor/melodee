@@ -230,7 +230,7 @@ static int head_shared_status(void)
 #endif
         ;
 }
-static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : ""; }
+static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : song_edit_status(); }
 static const char *head_punch(void)                     /* (the FX layer names it itself: [FX] HOLD, its key below) */
 {
     int32_t fx=punch.cur;
@@ -273,14 +273,14 @@ static void draw_head(void)
     char ble_text[24]; ble_head_text(ble_text);
 #endif
     int32_t x;
-    uint32_t low = !(usb.config && !usb.suspended) && batt_level() <= 1, msg = ui.msg_t || ui.layer;
+    uint32_t low = !(usb.config && !usb.suspended) && batt_level() <= 1, msg = ui.msg_t || ui.layer || song_edit_status()[0];
     uint32_t sig, moved = 0;
     int16_t bpm = song.g[G_BPM];                        /* (read once: what is noted is what is drawn) */
     int32_t octave = input_octave(TSEL);
     head_chip_text(chip);
     const char *px=head_punch();
     sig = (uint32_t)seq_erase_active(TSEL) * 8191u + (uint32_t)song.playing * 3u + song.rec * 5u + song.rec_wait * 65537u + (uint32_t)(octave + 8) * 11u +
-          song.sel * 13131u + (msg ? str_hash(7u, ui.msg_t ? ui.msg : layer_head()) : str_hash(5u, chip)) +
+          song.sel * 13131u + (msg ? str_hash(7u, head_msg()) : str_hash(5u, chip)) +
           (ui.bpm_t != 0) * 31u + low * 7777u + (chain.running ? (chain.row + 1u) * 104729u : 0u) + ux.gen * 977u +
           (ui.home ? ui.home_pg * 40503u : ui.page * 2654435761u) + page_sheet() * 524287u;
     sig ^= str_hash(13u,px);
@@ -335,7 +335,7 @@ static void draw_head(void)
         cv_text_r(236, ty_y(H_HEAD / 2, f), f, ble_text, T_THEME, T_BG);
 #endif
     } else if (msg) {                                   /* a message, or the layer's name (may hold a keycap) */
-        cv_free_hint(x + 6, ty_y(H_HEAD / 2, TY_TX), ui.msg_t ? ui.msg : layer_head(), T_TEXT, T_BG, 236 - x - 6);
+        cv_free_hint(x + 6, ty_y(H_HEAD / 2, TY_TX), head_msg(), T_TEXT, T_BG, 236 - x - 6);
     } else {
         const aafont_t *cf = TY_TX;                     /* (where you are: plain words in the track's colour;
                                                          * PATTERNS plain, the grid is in colour) */

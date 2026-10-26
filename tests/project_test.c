@@ -27,7 +27,7 @@ static void blank(project_t *a)
         memcpy(a->fm6[k], FM6_INIT, FM6_PACKED);
     }
     a->magic = PROJ_MAGIC; a->size = sizeof *a; a->parts = NPART; a->phys = PROJ_PHYS;
-    chain_defaults(&a->chain);
+    chain_legacy_defaults(&a->chain);
     a->sum = proj_sum(a);
 }
 
@@ -93,7 +93,7 @@ int main(void)
         uint32_t i, zero = 1;
         bad += check("FUN16: the name at the end of the record, the FM6 patches before the tones, after the data",
                      PROJ_NAME_OFF == PROJ_STORE_SIZE - 16u && PROJ_FM6_OFF == 3104u && 68u + NPART * (P_COUNT + 2u + NSTEP * 8u) +
-                     sizeof(chain_config_t) + sizeof(motion_store_t) + 188u == PROJ_FM6_OFF);
+                     sizeof(chain_legacy_t) + sizeof(motion_store_t) + 188u == PROJ_FM6_OFF);
         blank(&a);
         a.t[1].p[P_LEVEL] = 99;
         a.sum = proj_sum(&a);

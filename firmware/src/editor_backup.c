@@ -178,7 +178,7 @@ static uint32_t ed_bk_commit_inner(void)
             return 0;
         }
         if(!full){
-            proj_bound(&proj_scratch);chain_defaults(&proj_scratch.chain);
+            proj_bound(&proj_scratch);chain_legacy_defaults(&proj_scratch.chain);
             if(!bank_pack_tail(proj_image_tail(),&proj_scratch,0))return 2;
             if(proj_stream_generate(&ed_bk_stage,ed_bk_stage.obj))return 4;
         }
@@ -204,7 +204,7 @@ static uint32_t ed_bk_commit_inner(void)
             return 0;
         }
         if (ed_bk_len && !full) {
-            proj_bound(&proj_scratch); chain_defaults(&proj_scratch.chain);
+            proj_bound(&proj_scratch); chain_legacy_defaults(&proj_scratch.chain);
             if (!bank_pack(raw, &proj_scratch, 0)) return 2;
             ed_bk_len = BANK_STORE_SIZE;
         }

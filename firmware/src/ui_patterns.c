@@ -15,7 +15,7 @@
  * patterns as blocks in its colour, one pattern over sections in a row as one block; the row picked marked, the
  * selected track's block in it outlined; a song playing: its playhead. At the foot the sections and bars, the row's
  * letter and repeats, how far the song has played. KNOB 1 the row, 2 the track, 3 its pattern in the row, 4 the
- * row's repeats; OCT+ plays, REC held takes the jam (ui_input.c).
+ * selected block's span; OCT+ edits, PLAY starts at the cursor, REC held takes the jam (ui_input.c).
  * Each part remembers what it drew. Included by ui_draw.c */
 
 static int ptc_on(void);                                /* PATTERNS' Copy to (below) */
@@ -26,6 +26,7 @@ static uint32_t ptc_next(uint32_t from, int32_t dir);
 /* pattern b of track k holds something: a note, a hit, a recorded note's step */
 static int pattern_used(uint32_t k, uint32_t b)
 {
+    if (b >= NPAT) return 0;
     pattern_t p;
     pattern_read(k, b, &p);
     uint32_t i;
@@ -54,6 +55,7 @@ static void pat_timing(uint32_t k, uint32_t b, uint32_t *len, uint32_t *div)
 /* its bars, whole ones up (N_DIV: a step of 1/4 .. 4BAR; steps in 4 bars) */
 static uint32_t pat_bars(uint32_t k, uint32_t b)
 {
+    if (b == CHAIN_REST) return 1;
     static const uint8_t SPB4[] = {16, 32, 64, 128, 48, 96, 8, 4, 2, 1};
     uint32_t len, div, s;
     pat_timing(k, b, &len, &div);
@@ -334,21 +336,23 @@ static void ptc_paste(int asked)                        /* OCT+: copy it there (
 #define SG_COL_W 56                                     /* a section: x 8 + 56 j, four shown */
 #define SG_COLS 4u
 static struct { uint32_t top, lab, row[NTRK], foot; } sgv;
-static struct { uint32_t first, ncols, sel, total, bars, play; int32_t px; } sg;   /* this frame's */
+static struct { uint32_t first, ncols, sel, bars, play; uint64_t total; int32_t px; } sg;   /* this frame's */
 
-static uint32_t sg_row_bars(uint32_t r)                 /* a row's bars: its longest pattern's (x its repeats) */
+static uint32_t sg_row_bars(uint32_t r)                 /* the conductor pattern defines a section */
 {
-    uint32_t k, b = 1;
-    for (k = 0; k < trk_n(); k++)
-        if (pat_bars(k, chain_patterns[r][k]) > b)
-            b = pat_bars(k, chain_patterns[r][k]);
-    return b * chain_config.row[r].repeat;
+    return (chain_patterns[r][0] >= NPAT ? 1u : pat_bars(0, chain_patterns[r][0])) * chain_config.row[r].repeat;
+}
+static void sg_time_text(char *text, uint64_t samples)
+{
+    uint32_t seconds = chain_div_samples(samples + FS / 2u, FS, 0);
+    fmt_int(text, seconds / 60u); str_cpy(text + str_len(text), seconds % 60u < 10u ? ":0" : ":", 3);
+    fmt_int(text + str_len(text), seconds % 60u);
 }
 /* the window (four sections around the row picked or playing), the song's bars, the playhead's x (-1 none) */
 static void sg_frame(void)
 {
     uint32_t n = chain_config.count, r;
-    sg.ncols = n < CHAIN_ROWS ? n + 1u : CHAIN_ROWS;     /* (and one to add a row) */
+    sg.ncols = n < CHAIN_ROWS || se.pending == SONG_SECTIONS_MOVE ? n + 1u : CHAIN_ROWS;
     sg.sel = ui.song_row < sg.ncols ? ui.song_row : sg.ncols - 1u;
     r = chain.running ? chain.row : sg.sel;
     sg.first = r > 1u ? r - 1u : 0u;
@@ -356,8 +360,9 @@ static void sg_frame(void)
         sg.first = sg.ncols - SG_COLS;
     if (sg.ncols <= SG_COLS)
         sg.first = 0;
-    for (r = 0, sg.bars = 0, sg.play = 0; r < n; r++) {
+    for (r = 0, sg.bars = 0, sg.play = 0, sg.total = 0; r < n; r++) {
         uint32_t b = sg_row_bars(r);
+        sg.total += chain_row_samples(r);
         if (chain.running && r < chain.row)
             sg.play += b;
         sg.bars += b;
@@ -366,7 +371,9 @@ static void sg_frame(void)
     if (chain.running && chain.row < n) {               /* how far through its row, its repeats */
         const track_t *t = &trk[0];
         uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u, rep = chain_config.row[chain.row].repeat;
-        uint32_t done = rep > chain.remaining ? rep - chain.remaining : 0u, at = done * len + t->seq_idx % len;
+        uint32_t done = rep > chain.remaining ? rep - chain.remaining : 0u, at;
+        if (chain_patterns[chain.row][0] >= NPAT) { len = 16u; at = done * len + chain.rest_pos / seq_div_samples(2u); }
+        else at = done * len + t->seq_idx % len;
         if (chain.row >= sg.first && chain.row < sg.first + SG_COLS)
             sg.px = 8 + SG_COL_W * (int32_t)(chain.row - sg.first) + (int32_t)(at * SG_COL_W / (rep * len));
         sg.play += sg_row_bars(chain.row) * at / (rep * len);
@@ -380,9 +387,9 @@ static void sg_lines(int32_t y, int32_t h)              /* the sections' rules a
 }
 static void sg_head(void)
 {
-    if (head_shared_status()) { draw_head(); return; }
+    if (head_shared_status() || song_edit_status()[0]) { draw_head(); return; }
     char b[24], t[12];
-    uint32_t secs = sg.bars * 240u / (uint32_t)(song.g[G_BPM] > 0 ? song.g[G_BPM] : 120), jam_on = song.playing && !chain.running;
+    uint32_t secs = chain_div_samples(sg.total + FS / 2u, FS, 0), jam_on = song.playing && !chain.running;
     uint32_t sig = secs * 7u + jam.n * 131u + jam_on * 3u + (uint32_t)(ui.act == 4u) * 5u + ux.gen * 977u + ux.pal * 31u +
                    (ui.msg_t ? str_hash(3u, ui.msg) : 0u);
     int32_t x;
@@ -416,32 +423,28 @@ static void sg_head(void)
     }
     cv_blit(0, 0);
 }
-static void sg_labels(void)                             /* the sections' letters (repeats after them), the playhead */
+static void sg_labels(void)                             /* elapsed-time ruler and the playhead */
 {
     uint32_t j, sig = sg.first * 7u + sg.ncols * 131u + sg.sel * 1031u + (uint32_t)(sg.px + 1) * 40503u + ux.gen * 977u +
-                      ux.pal * 31u;
+                      ux.pal * 31u + (uint32_t)song.g[G_BPM] * 43u;
     for (j = 0; j < chain_config.count; j++)
-        sig = fnv1(sig, chain_config.row[j].repeat + 32u * (uint32_t)row_letter((const uint8_t (*)[NTRK])chain_patterns, j));
+        sig = fnv1(sig, chain_row_samples(j) + 32u * (uint32_t)song_range_has(j));
     if (!ui.force && sig == sgv.lab)
         return;
     sgv.lab = sig;
     cv_begin(240, SG_LAB_H, T_BG);
     sg_lines(2, SG_LAB_H - 2);
+    uint64_t elapsed = 0;
+    for (j = 0; j < sg.first && j < chain_config.count; j++) elapsed += chain_row_samples(j);
     for (j = 0; j < SG_COLS && sg.first + j < sg.ncols; j++) {
         uint32_t r = sg.first + j;
         int32_t x = 11 + SG_COL_W * (int32_t)j;
         int sel = r == sg.sel;
-        char l[8] = {'+', 0};
-        if (r < chain_config.count) {
-            l[0] = row_letter((const uint8_t (*)[NTRK])chain_patterns, r);
-            if (chain_config.row[r].repeat > 1u) {
-                l[1] = ' ';
-                l[2] = 'x';
-                fmt_int(l + 3, chain_config.row[r].repeat);
-            }
-        }
-        x = cv_text_on(x, ty_y(10, TY_LB), TY_LB, l, sel ? T_TEXT : r < chain_config.count ? T_MID : T_DIM, T_BG);
-        if (sel)                                        /* the row picked: marked in the track's colour */
+        char l[16]; sg_time_text(l, elapsed);
+        const aafont_t *font = ty_fit(TY_LB, l, SG_COL_W - 6);
+        x = cv_text_on(x, ty_y(10, font), font, l, sel ? T_TEXT : r < chain_config.count ? T_MID : T_DIM, T_BG);
+        if (r < chain_config.count) elapsed += chain_row_samples(r);
+        if (sel || song_range_has(r))                    /* selection remains visible across the range */
             cv_rrect(11 + SG_COL_W * (int32_t)j, 19, 14, 3, 1, T_THEME, T_BG);
         (void)x;
     }
@@ -460,29 +463,30 @@ static void sg_row(uint32_t k)
                                      65536u * (uint32_t)(t->p[P_MUTE] != 0) + 131072u * live);
     h = fnv1(fnv1(h, (uint32_t)(sg.px + 1)), ux.gen * 977u + ux.pal * 31u + t->pattern_gen);
     for (j = 0; j < cols && sg.first + j < chain_config.count; j++)
-        h = fnv1(h, chain_patterns[sg.first + j][k] + 16u * (uint32_t)pattern_used(k, chain_patterns[sg.first + j][k]));
+        h = fnv1(h, chain_patterns[sg.first + j][k] + 16u * chain_bank(sg.first + j, k) + 256u * (uint32_t)pattern_used(k, chain_bank(sg.first + j, k)));
     if (!ui.force && h == sgv.row[k])
         return;
     sgv.row[k] = h;
     cv_begin(240, SG_ROW_H, T_BG);
     sg_lines(0, SG_ROW_H);
     for (j = 0; j < cols && sg.first + j < chain_config.count; ) {
-        uint32_t r = sg.first + j, p = chain_patterns[r][k], e = j + 1u, pick = k == song.sel && r == sg.sel;
+        uint32_t r = sg.first + j, p = chain_bank(r, k), e = j + 1u;
+        uint32_t origin = chain_origin(r, k), end = chain_block_end(origin, k);
+        int pick = k == song.sel && sg.sel >= origin && sg.sel < end;
         int used = pattern_used(k, p);
         int32_t x = 9 + SG_COL_W * (int32_t)j, w;
         char l[4] = {'P', (char)('1' + p % NPAT), 0, 0};
-        while (!pick && used && e < SG_COLS && sg.first + e < chain_config.count &&
-               chain_patterns[sg.first + e][k] == p && !(k == song.sel && sg.first + e == sg.sel))
-            e++;
+        if (p == CHAIN_REST) str_cpy(l, "--", sizeof l);
+        while (e < SG_COLS && sg.first + e < end) e++;
         w = SG_COL_W * (int32_t)(e - j) - 2;
         if (used) {
             if (pick)                                   /* the selected track's, in the row picked: outlined */
                 cv_rrect(x - 1, 1, w + 2, 30, 6, T_TEXT, T_BG);
             cv_rrect(x, 2, w, 28, 5, tc, pick ? T_TEXT : T_BG);
             cv_text_on(x + 6, ty_y(16, TY_LB), TY_LB, l, T_INK, tc);
-        } else if (pick) {
-            cv_dashed(x, 2, w, 28, 5, tc);
-            cv_text_on(x + 6, ty_y(16, TY_LB), TY_LB, l, tc, T_BG);
+        } else {
+            if (p < NPAT || pick) cv_dashed(x, 2, w, 28, 5, tc);
+            cv_text_on(x + 6, ty_y(16, TY_LB), TY_LB, l, pick ? tc : T_DIM, T_BG);
         }
         j = e;
     }
@@ -493,9 +497,9 @@ static void sg_row(uint32_t k)
 static void sg_foot(void)                               /* the sections and bars, the row's letter x repeats, how far */
 {
     char b[32];
-    uint32_t n = chain_config.count, r = chain.running ? chain.row : sg.sel;
+    uint32_t n = chain_config.count, r = sg.sel;
     uint32_t sig = n * 7u + sg.bars * 131u + sg.play * 1031u + r * 40503u + (uint32_t)(sg.px + 1) * 613u + ux.gen * 977u +
-                   ux.pal * 31u + (r < n ? chain_config.row[r].repeat * 7919u : 0u) + sg.first * 17u + sg.ncols;
+                   ux.pal * 31u + song.sel * 19u + (r < n ? (chain_block_end(r, song.sel) - chain_origin(r, song.sel)) * 7919u : 0u) + sg.first * 17u + sg.ncols;
     if (!ui.force && sig == sgv.foot)
         return;
     sgv.foot = sig;
@@ -506,17 +510,15 @@ static void sg_foot(void)                               /* the sections and bars
     if (!n) {
         cv_text_on(8, ty_y(17, TY_TX), TY_TX, "No sections yet", T_MID, T_BG);
     } else {
-        fmt_int(b, (int32_t)n);
-        str_cpy(b + str_len(b), n > 1u ? " sections \xb7 " : " section \xb7 ", 14);
-        fmt_int(b + str_len(b), (int32_t)sg.bars);
-        str_cpy(b + str_len(b), sg.bars > 1u ? " bars" : " bar", 6);
+        fmt_int(b, r + 1u); str_cpy(b + str_len(b), "/", 2); fmt_int(b + str_len(b), n);
         cv_text_on(8, ty_y(17, TY_LB), TY_LB, b, T_MID, T_BG);
         if (r < n) {
-            b[0] = row_letter((const uint8_t (*)[NTRK])chain_patterns, r);
-            str_cpy(b + 1, " x", 3);
-            fmt_int(b + 3, chain_config.row[r].repeat);
+            uint32_t bank = chain_bank(r, song.sel);
+            str_cpy(b, bank < NPAT ? "LEN " : "REST", sizeof b);
+            if (bank < NPAT) fmt_int(b + 4, chain_block_end(r, song.sel) - chain_origin(r, song.sel));
             cv_text_r(232, ty_y(17, TY_TX), TY_TX, b, T_TEXT, T_BG);
         }
+
     }
     cv_rrect(8, 32, 224, 6, 3, T_SURF, T_BG);
     if (chain.running && sg.bars) {

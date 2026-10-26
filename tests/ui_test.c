@@ -2639,7 +2639,7 @@ static int test_chain(void)
     chain_config.count = 2;
     chain_config.row[0] = (chain_row_t){0, 2}; chain_config.row[1] = (chain_row_t){1, 1};
     memset(chain_patterns[0], 0, NPART); memset(chain_patterns[1], 1, NPART);
-    chain_patterns[1][3] = NPAT;
+    chain_patterns[1][3] = CHAIN_HOLD + 1u;
     bad += check("SONG invalid bank refuses before changing any track", chain_prepare() == 1 && !chain.armed &&
         !memcmp(trk[0].step, before[0], sizeof before[0]));
     chain_patterns[1][3] = 1;
@@ -2698,31 +2698,34 @@ static int test_chain(void)
     bad += check("SONG page empty PLAY explains how to start", msg_is("ADD A SONG ROW") && !transport_req);
     turn(EN_K3, 1);
     bad += check("SONG KNOB 3 (pattern) adds the first row with one repeat", chain_config.count == 1 && !chain_config.row[0].slot && chain_config.row[0].repeat == 1);
-    turn(EN_K1, 1); turn(EN_K3, 1); turn(EN_K3, 1); turn(EN_K4, 2);
-    bad += check("SONG KNOB 1 row, 3 pattern, 4 repeats build a chain", chain_config.count == 2 && ui.song_row == 1 &&
-        chain_config.row[1].slot == 1 && chain_config.row[1].repeat == 3);
+    turn(EN_K1, 1); turn(EN_K3, 1); turn(EN_K3, 1);
+    bad += check("SONG KNOB 1 section and KNOB 3 pattern build a chain", chain_config.count == 2 && ui.song_row == 1 &&
+        chain_config.row[1].slot == 1 && chain_config.row[1].repeat == 1);
     turn(EN_K2, 1);
     bad += check("SONG KNOB 2 picks the track (2), the song unchanged", song.sel == 1u && chain_config.count == 2);
     turn(EN_K2, -1);
-    turn(EN_K4, 30);
     project_save(0);
     chain_config.count = 1;
     chain_config.row[0] = (chain_row_t){0, 1};
+    ui.song_row = 0;
     fm1_in.buttons |= (1u << panel.btn[B_OCTUP]) | (1u << panel.btn[B_OCTDN]);
     host_pressed |= fm1_in.buttons; frame();
     fm1_in.buttons = 0; frame();
     bad += check("SONG OCT chord does not start playback or leave the page", !transport_req && !ui.home);
     press(B_OCTUP);
-    bad += check("SONG OCT+ on release starts, pending start blocks SAVE", chain.armed && transport_req == 1);
+    bad += check("SONG OCT+ opens cell actions without starting transport", pop.on == POP_SHEET && !chain.armed && !transport_req);
+    press(B_OCTDN); press(B_PLAY);
+    bad += check("SONG PLAY starts at the selected section", chain.armed && transport_req == 1);
     project_save(3);
     bad += check("SONG pending start cannot write a project", msg_is("STOP TO SAVE") && !project_used(3));
     press(B_PLAY); events_block(32);
     bad += check("SONG PLAY cancels a pending start", !chain.running && !chain.armed && !song.playing);
     uint32_t old_count = chain_config.count;
+    ui.song_row = chain_config.count;
     turn(EN_K4, 30);
-    bad += check("SONG KNOB 4 (repeats) cannot add or clear rows", chain_config.count == old_count);
+    bad += check("SONG KNOB 4 on the add column does not create a block", chain_config.count == old_count);
     for (k = chain_config.count; k < CHAIN_ROWS; k++) { turn(EN_K1, 1); turn(EN_K3, 1); }
-    bad += check("SONG append row stays bounded at 16", chain_config.count == CHAIN_ROWS && chain_valid(&chain_config));
+    bad += check("SONG append row stays bounded at 64", chain_config.count == CHAIN_ROWS && chain_valid(&chain_config));
     go_title("SONG"); hold(B_OCTUP); sheet_do("Clear song");
     bad += check("Clear song (the song's sheet) requires explicit confirmation", ui.confirm == CF_CLEAR_SONG &&
                  chain_config.count == CHAIN_ROWS);

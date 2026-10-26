@@ -18,7 +18,7 @@ static int proj_image_valid(const project_t *q)
 {
     int8_t oct[PROJ_TRK];uint8_t step[8];
     if(q->sel>=NTRK||q->parts>NTRK||q->phys>PROJ_PHYS)return 0;
-    if(P_COUNT>127u||!chain_valid(&q->chain)||!motion_valid(&q->motion)||q->g[G_FXRETURN]<0||q->g[G_FXRETURN]>127||q->g[G_FXMODE]<0||q->g[G_FXMODE]>1)return 0;
+    if(P_COUNT>127u||!chain_legacy_valid(&q->chain)||!motion_valid(&q->motion)||q->g[G_FXRETURN]<0||q->g[G_FXRETURN]>127||q->g[G_FXMODE]<0||q->g[G_FXMODE]>1)return 0;
     for(uint32_t i=0;i<FX_SLOTS*FX_PARAMS;i++)if(q->g[G_MFXTYPE+i]<GP[G_MFXTYPE+i].min||q->g[G_MFXTYPE+i]>GP[G_MFXTYPE+i].max)return 0;
     for(uint32_t i=0;i<FX_SLOTS;i++)if(q->g[G_MFXTONE+i]<-FX_TONE_MAX||q->g[G_MFXTONE+i]>FX_TONE_MAX)return 0;
     for(uint32_t k=0;k<PROJ_TRK;k++){
@@ -48,7 +48,7 @@ static int proj_image_capture(int runtime)
 static int proj_image_hash(int runtime,uint32_t *result)
 {
     project_t *q=&proj_scratch;
-    bank_wide=(uint8_t)(runtime && cap_tracks()>PROJ_TRK);   /* (the FUN record's takes: as the tail's kind) */
+    bank_capture_kind(runtime);
     if(!proj_pack(proj_image_store(),q))return 0;
     uint32_t header[2]={bank_magic(),BANK_STORE_SIZE};
     uint32_t hash=fnv(fnv(2166136261u,header,sizeof header),proj_image_store(),sizeof(project_store_t));
@@ -95,11 +95,12 @@ static int proj_stream_generate(st_stream_t *w,uint32_t obj)
 static int proj_stream_load(uint32_t obj,uint32_t copy,uint32_t len)
 {
     project_t *q=&proj_scratch;uint32_t hash=2166136261u;
-    proj_source_hash=0;bank_wide=0;
+    proj_source_hash=0;bank_wide=0;bank_song64=0;
     if(bank_full(len)){
         uint32_t header[2];
-        if(st_read_range(obj,copy,0,header,sizeof header)||(header[0]!=BANK_MAGIC&&header[0]!=BANKL_MAGIC)||header[1]!=len)return 0;
-        bank_wide=(uint8_t)(header[0]==BANKL_MAGIC);
+        if(st_read_range(obj,copy,0,header,sizeof header)||(header[0]!=BANK_MAGIC&&header[0]!=BANKL_MAGIC&&header[0]!=BANKM_MAGIC)||header[1]!=len)return 0;
+        bank_song64=(uint8_t)(header[0]==BANKM_MAGIC);
+        bank_wide=(uint8_t)(header[0]!=BANK_MAGIC);
         if(bank_wide&&st_read_range(obj,copy,BANKL_REC_OFF,proj_rec_ext,sizeof proj_rec_ext))return 0;
         if(st_read_range(obj,copy,8u,proj_image_store(),sizeof(project_store_t)))return 0;
         hash=fnv(fnv(hash,header,sizeof header),proj_image_store(),sizeof(project_store_t));

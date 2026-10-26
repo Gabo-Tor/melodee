@@ -936,6 +936,8 @@ static void seq_start(void)
     memset(seq_erase_seen, 0, sizeof seq_erase_seen);
     motion_begin();
     chain_start();
+    chain.seek_chase = 0;
+    memset(chain.seek_phase, 0, sizeof chain.seek_phase);
     song.rec_wait = 0;
     song.rec_pass = song.rec;
     for (i = 0; i < NTRK; i++) {                   /* every track from its step 0, together */
@@ -943,6 +945,17 @@ static void seq_start(void)
         if (t->p[P_LTRIG] && t->p[P_LSYNC]) t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
         t->seq_idx = (uint16_t)(t->p[P_SLEN] - 1);
         t->seq_pos = 0x7FFFFFFF;                   /* step 0 fires on the first block */
+        if (chain.running && chain.seek_samples[i]) {
+            uint32_t period = seq_div_samples((uint32_t)t->p[P_SDIV]), loop = recording_loop(t, period);
+            uint32_t phase = 0, idx = 0;
+            if (loop) chain_div_samples(chain.seek_samples[i], loop, &phase);
+            if (chain.seek_samples[i] >= loop) chain.seek_chase |= (uint8_t)(1u << i);
+            while (idx + 1u < (uint32_t)t->p[P_SLEN] && phase >= step_samples(t, period, idx)) {
+                phase -= step_samples(t, period, idx); idx++;
+            }
+            t->seq_idx = (uint16_t)((idx + t->p[P_SLEN] - 1u) % t->p[P_SLEN]);
+            chain.seek_phase[i] = phase;
+        }
         t->rskip_n = 0;
         t->rh_n = 0;
         cap_step[i] = 0xFFFFu;                     /* (capture: step 0 is the first) */
@@ -1160,6 +1173,9 @@ static void seq_grid_tick(track_t *t, uint32_t n)
         uint32_t starting = t->seq_pos >= 0x7FFFFFFFu;
         uint32_t punch_in = 0;
         t->seq_pos = starting ? (chain.running ? chain.carry : 0u) : t->seq_pos - cur_len;
+        if (starting && chain.running) {
+            t->seq_pos += chain.seek_phase[trk_index(t)]; chain.seek_phase[trk_index(t)] = 0;
+        }
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % (len ? len : 1u));
         if (!t->seq_idx && !starting && !chain.running) {
             uint8_t bit = (uint8_t)(1u << trk_index(t));
@@ -1186,7 +1202,12 @@ static void seq_grid_tick(track_t *t, uint32_t n)
         cap_step[trk_index(t)]++;
         if (!t->seq_idx && t == &trk[0] && !chain.running)
             jam_loop();
-        motion_step(t, t->seq_idx, &motion);
+        if (starting && chain.running && chain.seek_samples[trk_index(t)] && !chain_rest(t)) {
+            if (chain.seek_chase & (1u << trk_index(t)))
+                for (uint32_t j = 0; j < len; j++) motion_step(t, j, &motion);
+            for (uint32_t j = 0; j < t->seq_idx; j++) motion_step(t, j, &motion);
+        }
+        if (!chain_rest(t)) motion_step(t, t->seq_idx, &motion);
         if (punch_in) rec_begin_held(t);
         seq_erase_pass(t, t->seq_idx, 1);
         if (!seq_erase_active(t)) rec_hold(t, t->seq_idx, len ? len : 1u);
@@ -1204,9 +1225,15 @@ static void seq_grid_tick(track_t *t, uint32_t n)
                 }
                 t->rskip_n = 0;
             }
-            if ((seq_hush >> trk_index(t)) & 1u)
+            if (chain_rest(t) || ((seq_hush >> trk_index(t)) & 1u))
                 s = &SEQ_HUSH_STEP;
+            if (starting && chain.running && chain.seek_samples[trk_index(t)] && s->time == ST_TIE) {
+                uint32_t j = t->seq_idx;
+                for (uint32_t count = 0; count < len && seq_steps(t)[j].time == ST_TIE; count++) j = (j + len - 1u) % len;
+                if (seq_steps(t)[j].time == ST_NOTE) seq_step(t, &seq_steps(t)[j], period, skip);
+            }
             seq_step(t, s, step_gate(s) ? step_samples(t, period, t->seq_idx) : period, skip);
+            if (starting && chain.running) chain.seek_samples[trk_index(t)] = 0;
         }
     }
 }
@@ -1215,6 +1242,7 @@ static void seq_grid_tick(track_t *t, uint32_t n)
  * loop zero once. MIDI batches may cross several boundaries in one call. */
 static void seq_tick(track_t *t, uint32_t n)
 {
+    if (chain_rest(t)) { seq_grid_tick(t, n); return; }
     seq_erase_pass(t, t->seq_idx, 0);
     if (!((recording_tracks | song.rec) & (1u << trk_index(t)))) { seq_grid_tick(t, n); return; }
     if (!song.playing) { seq_grid_tick(t, n); return; }

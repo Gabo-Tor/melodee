@@ -117,7 +117,7 @@ static int preferences(void)
     uint8_t a[4] = {0, 2, 0, 0};
     reset();
     uint32_t n = request(ED_INFO, a, 0);
-    const uint8_t caps[]={0,0x55,1,57,0x4d,2,MOTION_MAX,1,0x42,1,3,0x50,1,NPAT,CHAIN_ROWS,0x46,1,FM6_NFAC,0,0x43,1,16,1,0,0,0x35,1,19,16,17,18,20,0,1,0x4e,1,64,0,0,1,0x55,1,0,3};
+    const uint8_t caps[]={0,0x55,1,57,0x4d,2,MOTION_MAX,1,0x42,1,3,0x50,4,NPAT,CHAIN_ROWS,0x46,1,FM6_NFAC,0,0x43,1,16,1,0,0,0x35,1,19,16,17,18,20,0,1,0x4e,1,64,0,0,1,0x55,1,0,3};
     bad+=check("INFO preserves existing IDs and advertises the shared 384-slot library",ED_SONG==33&&ED_FAV_SET==38&&n>sizeof caps&&!memcmp(host_wire+n-sizeof caps-1,caps,sizeof caps));
     request(ED_UI_SET, a, 2);
     bad += check("UI_SET updates the actual palette and reports RAM-only saving",
@@ -278,7 +278,8 @@ static int song_protocol(void)
     bad += check("SONG cannot replace a chain while its start is pending",
                  request(ED_SONG, a, sizeof a) == 14u && host_wire[6] == 2 && !memcmp(&before, &chain_config, sizeof before));
     chain.armed = 0; a[0] = 2;
-    bad += check("SONG PLAY refuses extra argument bytes", !request(ED_SONG, a, 2) && !transport_req);
+    bad += check("SONG PLAY rejects a start row beyond the arrangement", request(ED_SONG, a, 2) == 14u && host_wire[6] == 1 && !transport_req);
+    bad += check("SONG PLAY refuses malformed extra argument bytes", !request(ED_SONG, a, 3) && !transport_req);
     return bad;
 }
 
@@ -398,9 +399,21 @@ static int bank_protocol(void)
     a[2]=8;
     bad += check("PATTERN rejects out-of-range bank IDs", request(ED_PATTERN,a,3)==12 && host_wire[7] && trk[2].pattern==7);
     uint8_t row[] = {1,1,0,2,4,7,3};
-    bad += check("bank SONG independently assigns four track banks", request(ED_BANK_SONG,row,sizeof row)==17 && !host_wire[6] && chain_patterns[0][3]==7 && chain_config.row[0].repeat==3);
-    row[4]=8;
-    bad += check("malformed bank SONG leaves the arrangement unchanged", request(ED_BANK_SONG,row,sizeof row)==17 && host_wire[6]==1 && chain_patterns[0][2]==4);
+    bad += check("bank SONG independently assigns four track banks", request(ED_BANK_SONG,row,sizeof row)==18 && !host_wire[6] && chain_patterns[0][3]==7 && chain_config.row[0].repeat==3);
+    row[4]=10;
+    bad += check("malformed bank SONG leaves the arrangement unchanged", request(ED_BANK_SONG,row,sizeof row)==18 && host_wire[6]==1 && chain_patterns[0][2]==4);
+    uint8_t long_song[2u + CHAIN_ROWS * 5u] = {1, CHAIN_ROWS};
+    for (uint32_t r = 0; r < CHAIN_ROWS; r++) {
+        long_song[2u + r * 5u] = 0; long_song[3u + r * 5u] = CHAIN_REST;
+        long_song[4u + r * 5u] = 2; long_song[5u + r * 5u] = 7; long_song[6u + r * 5u] = 16;
+    }
+    bad += check("bank SONG transfers 64 sections with explicit resting tracks", request(ED_BANK_SONG,long_song,sizeof long_song) == 13u + 5u * CHAIN_ROWS && !host_wire[6] && chain_config.count == CHAIN_ROWS && chain_patterns[63][1] == CHAIN_REST);
+    const uint8_t start[] = {2, 63};
+    bad += check("bank SONG starts from an optional selected section", request(ED_BANK_SONG,start,sizeof start) == 13u + 5u * CHAIN_ROWS && !host_wire[6] && chain.armed && chain.start == 63);
+    transport_req = 2; events_block(1);
+    const uint8_t loop_on[]={4,1},loop_bad[]={4,2};
+    bad+=check("bank SONG exposes the saved loop option",request(ED_BANK_SONG,loop_on,sizeof loop_on)==13u+5u*CHAIN_ROWS&&!host_wire[6]&&host_wire[host_wire_n-2u]==1&&chain_config.rsv[CHAIN_LOOP]);
+    bad+=check("bank SONG rejects invalid loop values",request(ED_BANK_SONG,loop_bad,sizeof loop_bad)==13u+5u*CHAIN_ROWS&&host_wire[6]==1&&chain_config.rsv[CHAIN_LOOP]);
     a[0]=0; uint32_t writes=host_writes;
     bad += check("sample upload and erase commands cannot write into pattern storage", request(ED_SMP_BEGIN,a,1)==0 && request(ED_SMP_ERASE,a,1)==0 && host_writes==writes && !host_erases);
     request(ED_SMP_INFO,a,0);

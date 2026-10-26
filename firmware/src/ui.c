@@ -20,6 +20,7 @@ static int template_used(void);                 /* SLOT TMPL (PROJ_TMPL): projec
 static void template_save(void);
 static void template_load(void);
 static uint32_t chain_prepare(void);
+static uint32_t chain_prepare_from(uint32_t start);
 static int up_used(uint32_t k);              /* user presets: upreset.c */
 static int up_load(uint32_t k);
 static int up_favorite(uint32_t k);
@@ -344,7 +345,8 @@ static int transport_busy(void)
 }
 static void chain_play_ui(void)
 {
-    uint32_t rc = chain_prepare();
+    uint32_t row = ui.song_row < chain_config.count ? ui.song_row : 0u;
+    uint32_t rc = chain_prepare_from(row);
     if (!rc) {
         ui.force = 1;
     } else if (rc >= 3u) {
@@ -1175,7 +1177,7 @@ static int slice_page_ok(void) { return 0; }
 static int slice_page_on(void) { return 0; }
 
 /* ---------------------------------------------------- action pages --- */
-/* Pages whose purpose is an action (SONG, EDIT > SLICES, CZ TOOLS): the knobs pick, OCT+ does it, OCT- cancels
+/* Pages whose purpose is an action (EDIT > SLICES, CZ TOOLS): the knobs pick, OCT+ does it, OCT- cancels
  * the picked action or goes HOME (ui_input.c). The slot pages (PROJECT, USER, the STOREs: ui_slots.c) do their
  * actions from a slot's sheet, through act_do too */
 static uint32_t act_cols(void)                   /* the columns that are actions, a bit each; 0 = not such a page */
@@ -1183,8 +1185,6 @@ static uint32_t act_cols(void)                   /* the columns that are actions
     const page_t *pg = cur_page();
     if (ui.home)
         return 0;
-    if (pg->graph == GR_SONG)
-        return 1u;                               /* PLAY / STOP (also the PLAY button; TAKE JAM: REC held) */
     if (pg->graph == GR_SLICES)
         return slice_page_ok() ? 12u : 0u;       /* SPLIT JOIN (a SLICE track only) */
     if (pg->graph == GR_CZTOOLS)
@@ -1195,14 +1195,11 @@ static uint32_t act_cols(void)                   /* the columns that are actions
 /* the action OCT+ does: its column + 1, 0 = none picked yet */
 static uint32_t act_col(void)
 {
-    if (!ui.home && cur_page()->graph == GR_SONG) return 1u;
     return ui.act;
 }
 
 static const char *act_name(uint32_t c)          /* column c's action (the footer hint) */
 {
-    if (cur_page()->graph == GR_SONG)
-        return song.playing || chain_busy() ? "STOP" : "PLAY";
     if (cur_page()->graph == GR_SLICES)
         return c == 3u ? "JOIN" : "SPLIT";
     return CZ_ACTIONS[c & 3u].label;             /* (CZ TOOLS) */
@@ -1214,8 +1211,6 @@ static int act_ready(void)
     uint32_t c = act_col();
     if (!c--)
         return 0;
-    if (cur_page()->graph == GR_SONG)
-        return song.playing || chain_busy() || chain_config.count;
 #if MELODEE_SLICE
     if (cur_page()->graph == GR_SLICES)
         return slice_act_ready(c);
@@ -1239,6 +1234,7 @@ static void confirm_open(uint32_t kind, uint32_t trk)
 #include "sysex_library.c"                       /* staged imports and USB library exports */
 
 #include "note_tools.c"
+#include "ui_song.c"
 
 #define TL_MAX 4u
 /* s wrapped into at most m lines of w px in face f (at spaces, always at a '\n'; a word wider than the line: at the

@@ -743,6 +743,7 @@ static void jam_take(void)
 {
     uint32_t i, k;
     if (chain_busy()) { ui_message("STOP TO EDIT"); return; }
+    if (!song_edit_begin()) return;
     chain_defaults(&chain_config);
     memset(chain_patterns, 0, sizeof chain_patterns);
     for (i = 0; i < jam.n; i++) {
@@ -754,6 +755,7 @@ static void jam_take(void)
     chain_config.count = jam.n;
     ui.song_row = 0;
     ui.act = 0;
+    song_edit_cancel(); song_edit_end();
     ui_message("SONG FROM JAM");
     ui.force = 1;
 }
@@ -1016,10 +1018,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         return;
     }
     if (pg->graph == GR_SONG) {                       /* KNOB 1 the section, 2 the track, 3 its pattern there, 4 the
-                                                       * section's repeats (TAKE JAM: REC held) */
+                                                       * selected block's span (TAKE JAM: REC held) */
         if (slot == 0u) {
             ui.song_row = (uint8_t)clamp((int32_t)ui.song_row + steps, 0,
-                chain_config.count < CHAIN_ROWS ? chain_config.count : CHAIN_ROWS - 1u);
+                chain_config.count < CHAIN_ROWS || se.pending == SONG_SECTIONS_MOVE ? chain_config.count : CHAIN_ROWS - 1u);
             return;
         }
         if (slot == 1u) {
@@ -1027,22 +1029,9 @@ static void edit_param(uint32_t slot, int32_t steps)
             return;
         }
         if (chain_busy()) { ui_message("STOP TO EDIT"); return; }
-        if (slot == 3u && ui.song_row >= chain_config.count)
-            return;                                 /* (repeats of the column to add: none yet; KNOB 3 adds it) */
-        if (ui.song_row >= chain_config.count) {
-            chain_row_t *r = &chain_config.row[ui.song_row];
-            r->slot = 0;
-            if (ui.song_row) memcpy(chain_patterns[ui.song_row], chain_patterns[ui.song_row - 1u], NTRK);
-            else for (uint32_t k = 0; k < NTRK; k++) chain_patterns[ui.song_row][k] = trk[k].pattern;
-            r->repeat = 1;
-            chain_config.count = ui.song_row + 1u;
-            if (slot == 2u) return;
-        }
-        if (slot == 2u)
-            chain_patterns[ui.song_row][song.sel] = (uint8_t)clamp((int32_t)chain_patterns[ui.song_row][song.sel] + steps, 0, NPAT - 1u);
-        chain_config.row[ui.song_row].slot = chain_patterns[ui.song_row][0];
-        if (slot == 3u)
-            chain_config.row[ui.song_row].repeat = (uint8_t)clamp((int32_t)chain_config.row[ui.song_row].repeat + steps, 1, 16);
+        if (se.pending && slot >= 2u) return;
+        if (slot == 2u) song_cell_pattern(steps);
+        if (slot == 3u) song_block_resize(steps);
         return;
     }
     if (chain_busy() && (pg->scope == SC_STEP || pg->graph == GR_STEPS ||
@@ -1243,11 +1232,6 @@ static void act_do(void)
         }
         ui.act = 0;
         ui.force = 1;
-        return;
-    }
-    if (cur_page()->graph == GR_SONG) {
-        if (song.playing || seq_counting() || chain_busy()) transport_req = 2;
-        else chain_play_ui();
         return;
     }
 #if MELODEE_SLICE
@@ -1899,6 +1883,18 @@ static int bulk_jog(int32_t delta)
     if(slots==SK_FM6)fm6_bslot=(uint16_t)to;else if(slots==SK_P5)p5_store_slot=(uint16_t)(to+1u);else if(slots)ui.uslot=(uint16_t)to;else cursor_set((int32_t)to);
     bulk.end=(uint16_t)to;ui.bulk_hold=0;oct_eat|=2u;ui.oct_t0|=2u;ui.force=1;ui_message(slots?"PRESETS SELECTED":"Moving..");return 1;
 }
+static int song_range_jog(int32_t delta)
+{
+    if (ui.home || cur_page()->graph != GR_SONG || pop.on || ui.confirm || ui.menu || ui.layer ||
+        !(fm1_in.buttons & (1u << panel.btn[B_OCTUP]))) return 0;
+    if (chain_busy()) { ui_message("STOP TO EDIT"); return 1; }
+    if (!chain_config.count) return 1;
+    if (!se.range) se.anchor = ui.song_row < chain_config.count ? ui.song_row : chain_config.count - 1u;
+    se.pending = 0; se.range = 1;
+    se.end = (uint8_t)clamp((int32_t)ui.song_row + delta, 0, chain_config.count - 1u);
+    ui.song_row = se.end; ui.bulk_hold = 0;
+    oct_eat |= 2u; ui.oct_t0 |= 2u; ui.force = 1; return 1;
+}
 static void notes_bulk_copy(void){note_copy_arm();}
 static const sheet_row_t SHEET_NOTE_BULK[]={{"Move: KNOB 1",0,0,note_move_arm,0},{"Copy: KNOB 1",0,0,notes_bulk_copy,0},{"Quantize",nt_quantize_v,nt_quantize_grid,nt_quantize,0},{"Delete selected",0,0,notes_bulk_delete,0},{"Clear selection",0,0,bulk_clear,0}};
 static void notes_bulk_sheet_open(void){sheet_open("Selected notes","",SHEET_NOTE_BULK,NELEM(SHEET_NOTE_BULK));}
@@ -2008,13 +2004,8 @@ static void ui_confirm_accept(void)
             dq_do(kind, k, trk[k].pattern, 0);
     } else if (kind == CF_DEL_ROW) {
         uint32_t r = ui.confirm_trk;
-        if (!chain_busy() && r < chain_config.count) {
-            for (; r + 1u < chain_config.count; r++) {
-                chain_config.row[r] = chain_config.row[r + 1u];
-                memcpy(chain_patterns[r], chain_patterns[r + 1u], NTRK);
-            }
-            chain_config.count--;
-            if (ui.song_row > chain_config.count) ui.song_row = chain_config.count;
+        if (r < chain_config.count && song_edit_begin()) {
+            song_rows_remove(r, 1); song_edit_cancel(); song_edit_end();
             ui_message("ROW DELETED");
         }
     } else if (kind == CF_DEL_TRACK) {
@@ -2024,7 +2015,7 @@ static void ui_confirm_accept(void)
     } else if (kind == CF_NEW_SONG) {
         new_open();
     } else if (kind == CF_CLEAR_SONG) {
-        if (!chain_busy()) { chain_defaults(&chain_config); memset(chain_patterns, 0, sizeof chain_patterns); ui.song_row = 0; ui_message("SONG CLEARED"); }
+        if (song_edit_begin()) { chain_defaults(&chain_config); memset(chain_patterns, 0, sizeof chain_patterns); ui.song_row = 0; song_edit_cancel(); song_edit_end(); ui_message("SONG CLEARED"); }
     } else if (kind == CF_PASTE_PAT) {          /* PATTERNS' Copy to over a pattern in use */
         if (ui.ptc_on && ui.ptc_trk == ui.confirm_trk)
             ptc_paste(1);
@@ -2082,14 +2073,16 @@ static void ui_input(void)
     if (octup == BT_HOLD) {
         oct_eat |= 2u;                                  /* (its release is no OCT+) */
         oct_deferred = 0;
-        if(bulk_context())ui.bulk_hold=1;else page_sheet_open();
+        if (!ui.home && cur_page()->graph == GR_SONG) ui.bulk_hold = 1;
+        else if(bulk_context())ui.bulk_hold=1;else page_sheet_open();
     } else if (octup == BT_TAP && oct_deferred) {
         *oct_deferred_value += *oct_deferred_value < 3 ? 1 : 0;
     }
     if (octup != BT_NONE || !((fm1_in.buttons >> panel.btn[B_OCTUP]) & 1u))
         oct_deferred = 0;
     if(ui.bulk_hold && !(fm1_in.buttons&(1u<<panel.btn[B_OCTUP]))){
-        if(bulk_context()){if(bulk.on&&!slot_kind())notes_bulk_sheet_open();else if(!bulk.on)page_sheet_open();}ui.bulk_hold=0;
+        if (!ui.home && cur_page()->graph == GR_SONG) { if (se.range) song_range_sheet_open(); else page_sheet_open(); }
+        else if(bulk_context()){if(bulk.on&&!slot_kind())notes_bulk_sheet_open();else if(!bulk.on)page_sheet_open();}ui.bulk_hold=0;
     }
     oct = oct_taps(pressed, oct_nav());
     uint32_t lay, knob_layer, glo_select_layer, combo = 0, lytap, lkeys;
@@ -2177,6 +2170,8 @@ static void ui_input(void)
         if (ui.seen_pattern_gen) { seq_midi_reset(); ui.entry_open = ui.step_move = ui.note_move = ui.note_copy = 0; cursor_set(0); ui.force = 1; }
         ui.seen_pattern_gen = TSEL->pattern_gen;
     }
+    song_edit_sync();
+    if (ui.home || cur_page()->graph != GR_SONG) se.pending = se.range = 0;
     if(bulk.on && (ui.home || slot_kind()==SK_PROJECT || bulk.track!=song.sel || bulk.pattern!=TSEL->pattern || bulk.engine!=library_engine() ||
        (!slot_kind() && (cur_page()->graph!=GR_ROLL || (bulk.on==1u?bulk.generation!=TSEL->pattern_gen:bulk.generation!=recording_generation)))))bulk_clear();
     step_history_sync();                                /* (seq_undo.c: a change from elsewhere: a fresh history) */
@@ -2246,6 +2241,7 @@ static void ui_input(void)
         step_history_end();
         if (chain_busy()) ui_message("STOP TO UNDO");
         else if (dir == 3u) ui_message("USE ONE OCT BUTTON");
+        else if (!ui.home && cur_page()->graph == GR_SONG) song_edit_history(edit_oct && dir == 2u);
         else if (edit_oct) {
             if (step_page()) {
                 if (!step_history_apply(dir == 2u)) ui_message(dir == 2u ? "NOTHING TO REDO" : "NOTHING TO UNDO");
@@ -2297,6 +2293,9 @@ static void ui_input(void)
     }
     if (pop.on == POP_SHEET || pop.on == POP_LIST) {   /* an action sheet, a value's list: KNOB 1 / 2, OCT+ / OCT-
                                                          * (ui_popup.c) */
+        if (!ui.home && cur_page()->graph == GR_SONG && (pressed & (1u << panel.btn[B_PLAY]))) {
+            if (song.playing || seq_counting() || chain_busy()) transport_req = 2; else chain_play_ui();
+        }
         int32_t k1 = panel_enc(EN_K1), k2 = panel_enc(EN_K2);
         if (pop.on == POP_LIST) vlist_input(k1, k2, oct);
         else sheet_input(k1, k2, oct);
@@ -2409,7 +2408,13 @@ static void ui_input(void)
     if(bulk.on && !slot_kind() && !ui.home && cur_page()->graph==GR_ROLL && (oct&2u)){
         notes_bulk_sheet_open();oct=0;
     } else if((bulk.on||ui.note_move||ui.note_copy)&&(oct&1u)){bulk_clear();oct=0;}
-    if (list_on() && (oct & 2u)) {                      /* a list page: OCT+ the row's list, OCT- Stage */
+    if (!ui.home && cur_page()->graph == GR_SONG && !ui.layer && (oct & 2u)) {
+        if (se.pending) song_apply_destination();
+        else if (se.range) song_range_sheet_open();
+        else song_cell_sheet_open();
+    } else if (!ui.home && cur_page()->graph == GR_SONG && (oct & 1u) && (se.pending || se.range)) {
+        song_edit_cancel();
+    } else if (list_on() && (oct & 2u)) {                      /* a list page: OCT+ the row's list, OCT- Stage */
         list_enter();
     } else if (list_on() && (oct & 1u)) {
         go_home();
@@ -2514,7 +2519,7 @@ static void ui_input(void)
     }
     if (!glo_select_layer && (s = panel_enc(EN_SELECT)) != 0) { /* SELECT: pages; with SEQ / a step key / ENV / SCL: below */
         step_edit_combo();
-        if(bulk_jog(s)) {
+        if(song_range_jog(s) || bulk_jog(s)) {
         } else if (pattern_keys_on() && (fm1_in.buttons & (1u << panel.btn[B_SEQ]))) {
             ui.seq_t0 |= 2u;
             uint32_t from = TSEL->pattern_next < NPAT ? TSEL->pattern_next : TSEL->pattern;
@@ -2532,6 +2537,7 @@ static void ui_input(void)
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
         step_edit_combo();
+        if(k == 0u && song_range_jog(s)) continue;
         if(k<2u && bulk_jog(s))continue;
         if (k == 0u && cur_page()->graph == GR_ROLL && step_gesture(s))   /* KNOB 1 too, as SELECT (ENV / SCL / a key
                                                                          * held) */

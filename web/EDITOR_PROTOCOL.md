@@ -427,6 +427,22 @@ choices. Copy retains four-note chords, ties, drum data, chance, timing and moti
 bank requires STOP; SONG blocks bank changes/copies. All pattern IDs on the wire are zero-based.
 
 BANK_SONG switches all four tracks at track 1's loop boundary, preserves the current sounds and mix,
+
+Bank capability tag `50 02 08 40` advertises 64 sections and REST bank id 8. Version 1 remains 16 sections,
+bank ids 0..7. BANK_SONG op 1 accepts up to 64 rows on version 2; its reply has the same five bytes per row.
+Op 2 optionally accepts a zero-based start row (`02 row`); omitted means row 0. Invalid start rows are rejected.
+Playback starts at step zero with that section's complete repeat count and continues to the final section.
+A resting track suppresses grid notes, recorded notes and motion; track 1 rests and continuations use a four-beat bar per repeat.
+Existing FUN and FBKK/FBKL codecs retain their fixed 16-row layout. Songs requiring longer arrangements or rests
+use FBKM, a new sparse bank container of the same extent: FBKL fixed fields, then count + three zero bytes,
+64 × (repeat, eight bank ids), then sparse patterns. Active FUN metadata retains the first 16 sections, with rests
+mapped to bank zero in that compatibility prefix. FBKM validators check both representations before publication.
+Capability tag `50 03 08 40` additionally supports continuation id 9. It extends the preceding pattern block
+without restarting sequence phase, held notes, recorded playback or motion at the section boundary. A continuation
+cannot start a track or follow REST. FBKM stores it in the same assignment byte; its legacy prefix maps it to zero.
+Older firmware does not read FBKM. Sparse saves retain the existing PROJECT FULL capacity check and never truncate
+patterns to make a song fit. Normal songs continue to save as FBKK/FBKL.
+
 pauses recording and sequence edits, and restores the original bank selections on STOP or the song's end.
 Each bank has LEN/DIV/SWING/GATE. Automation has a project-wide limit of 64 events; events belong to a
 track and bank, while the ON switch remains track-wide. WATCH sends RELOAD when a bank changes.
@@ -685,6 +701,9 @@ Both u28 signatures are four least-significant-first 7-bit bytes; compare them
 to refresh changed favorites and user slots. Factory references use stable
 engine/preset ids; engine NENGINES denotes a user slot. An empty user slot
 cannot be marked. Factory DRUM sounds use the same favorite path.
+MIDI Track (engine 21) has a loadable preset but no factory favorite storage;
+1.5 firmware rejects FAV_GET/FAV_SET for it with rc 1. Editors must skip its
+favorite requests and leave its star control disabled.
 
 rc 0 = applied and saved; 1 = invalid arguments; 2 = unsupported feature;
 3 = applied in RAM but not saved (no flash or a failed write);
@@ -1287,3 +1306,9 @@ The division is the complete first-to-last sweep, with an immediate first tone
 and evenly spaced remaining tones. Input release and STOP cancel pending tones;
 MIDI sustain follows existing ownership. ARP bypasses strumming. Live recording
 captures the staggered onsets; STEP entry continues to write a complete chord.
+
+
+Bank capability `50 04 08 40` adds song looping. BANK_SONG op 4 takes `[4, loop]` with loop 0 or 1;
+it is refused while armed/running. Version 4 replies append the loop byte after all rows (older replies omit it).
+Op 1 preserves the existing loop choice. FBKM byte 1 of its arrangement extension stores the loop flag;
+bytes 2 and 3 remain zero. A loop returns to section 1, preserves fractional boundary time, and PLAY still stops.

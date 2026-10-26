@@ -139,28 +139,13 @@ static int ps_song_free(void)
 }
 static void ps_row_insert(int dup)                     /* a section at the row picked: its copy, or the patterns now */
 {
-    uint32_t r = ui.song_row < chain_config.count ? ui.song_row : chain_config.count, i, k;
-    if (!ps_song_free())
-        return;
-    if (chain_config.count >= CHAIN_ROWS) {
-        ui_message("SONG FULL");
-        return;
-    }
-    for (i = chain_config.count; i > r; i--) {
-        chain_config.row[i] = chain_config.row[i - 1u];
-        memcpy(chain_patterns[i], chain_patterns[i - 1u], NTRK);
-    }
-    if (!dup || r >= chain_config.count) {
-        for (k = 0; k < NTRK; k++)
-            chain_patterns[r][k] = trk[k].pattern;
-        chain_config.row[r].repeat = 1;
-        chain_config.row[r].slot = chain_patterns[r][0];
-    }
-    chain_config.count++;
-    ui_message(dup ? "SECTION DUPLICATED" : "SECTION INSERTED");
+    song_insert((uint32_t)dup);
 }
 static void ps_insert(void) { ps_row_insert(0); }
 static void ps_dup(void) { ps_row_insert(1); }
+static void ps_song_loop_v(char *b) { str_cpy(b, chain_config.rsv[CHAIN_LOOP] ? "On" : "Off", 4); }
+static void ps_song_loop_turn(int32_t s) { song_loop_set(s > 0); }
+static void ps_song_loop(void) { song_loop_set(!chain_config.rsv[CHAIN_LOOP]); }
 static void ps_jam_v(char *b)
 {
     fmt_int(b, jam.n);
@@ -178,8 +163,32 @@ static void ps_jam(void)
         jam_take();
 }
 static const sheet_row_t SHEET_SONG[] = {
-    {"Insert section", 0, 0, ps_insert, 0}, {"Duplicate section", 0, 0, ps_dup, 0}, {"Delete section", 0, 0, 0, CF_DEL_ROW},
+    {"Insert empty section", 0, 0, ps_insert, 0}, {"Duplicate section", 0, 0, ps_dup, 0}, {"Move section", 0, 0, song_sections_move, 0}, {"Copy sections", 0, 0, song_sections_copy, 0}, {"Delete section", 0, 0, 0, CF_DEL_ROW},
+    {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0},
     {"Take jam", ps_jam_v, 0, ps_jam, 0}, {"Clear song", 0, 0, 0, CF_CLEAR_SONG}};
+
+static const sheet_row_t SHEET_SONG_CELL[] = {
+    {"Set rest", 0, 0, song_cell_rest, 0}, {"Copy to\x85", 0, 0, song_cell_copy, 0},
+    {"Move to\x85", 0, 0, song_cell_move, 0}, {"Add empty section", 0, 0, ps_insert, 0},
+    {"Loop song", ps_song_loop_v, ps_song_loop_turn, ps_song_loop, 0}};
+static const sheet_row_t SHEET_SONG_RANGE[] = {
+    {"Copy sections", 0, 0, song_sections_copy, 0}, {"Move sections", 0, 0, song_sections_move, 0},
+    {"Duplicate sections", 0, 0, ps_dup, 0}, {"Delete sections", 0, 0, song_sections_delete, SR_RED},
+    {"Clear selection", 0, 0, song_edit_cancel, 0}};
+static void song_cell_sheet_open(void)
+{
+    if (chain_busy()) { ui_message("STOP TO EDIT"); return; }
+    if (ui.song_row >= chain_config.count) { song_insert(0); return; }
+    char b[20] = "T1 / Section "; b[1] = (char)('1' + song.sel);
+    fmt_int(b + str_len(b), ui.song_row + 1u);
+    sheet_open("Song cell", b, SHEET_SONG_CELL, NELEM(SHEET_SONG_CELL));
+}
+static void song_range_sheet_open(void)
+{
+    char b[20]; fmt_int(b, song_range_last() - song_range_first() + 1u);
+    str_cpy(b + str_len(b), " sections", 10);
+    sheet_open("Selected sections", b, SHEET_SONG_RANGE, NELEM(SHEET_SONG_RANGE));
+}
 
 /* the pattern's (NOTES, the drum grid, PATTERN: OCT+ held; TOOLS' Clear pattern lives here) */
 static void nt_quantize_v(char *b){str_cpy(b,ui.note_grid==2u?"0.25 step":ui.note_grid==1u?"0.5 step":"1 step",16);}
