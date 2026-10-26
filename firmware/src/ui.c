@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* MELODEE user interface.
- * Flat: SURF cards and panels on the palette's background, no rules, one type family (Rubik, three sizes), tracks
+ * Flat: SURF cards and panels on the palette's background, no rules, one type family (Melodee Pixel, four roles), tracks
  * named by circled numerals. Four columns <-> KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 static int live_rec_sel(void);
@@ -67,16 +67,17 @@ static uint32_t user_of(const track_t *t)    /* user preset slot its sound came 
 }
 static uint32_t up_gen;                      /* bumped on every user bank change (redraws) */
 static uint8_t browse_loads, browse_mark;    /* sound loads so far; at the browser's opening (ui_browser.c: back) */
+static struct { uint8_t active, row, track, return_page; uint16_t epoch; } song_picker;
+static void song_preset_cancel(void);
+static void song_preset_finish(int keep);
+static void sound_name(const track_t *t, char *b);
 #include "favorites.c"
 /* MENU settings in favorites.factory[15][30]: bit 0 retired, bit 1 KNOB ACCEL OFF, bits 2..4 retired (OVERCLOCK until
- * 1.3.4 / 1.4: left as saved, never read), bit 5 PICKER OFF, bit 6 FONT PIXEL, bit 7 retired
+ * 1.3.4 / 1.4: left as saved, never read), bit 5 PICKER OFF, bit 6 retired (FONT PIXEL), bit 7 retired
  * (STAGE EFFECTS OFF in 1.4.0-rc.4: left as saved, never read). */
 #define PREF_BITS (favorites.factory[15][30])
 #define PREF_ACCEL_OFF 2u
 #define PREF_PICK_OFF 32u
-#define PREF_PIXEL 64u                         /* Settings > FONT: PIXEL (else RUBIK) */
-#define TY_PIXEL ty_pixel()
-static uint32_t ty_pixel(void) { return (PREF_BITS & PREF_PIXEL) != 0u; }   /* (gfx.c TY_*: the type's roles) */
 /* HOME SELECT (the menu): what SELECT turns on HOME, kept in favorites.factory[15][25] (0, any other: BPM) */
 enum { HS_BPM, HS_MOD, HS_LEVEL, HS_SWING, HS_TRANS, HS_CHORD, HS_ARATE, HS_PATTERN, HS_OFF, HS_N };
 static const char *const HS_NAME[HS_N] = {"BPM", "MOD WHEEL", "LEVEL", "SWING", "TRANSPOSE", "CHORD", "ARP RATE", "PATTERN",
@@ -349,6 +350,8 @@ static void chain_play_ui(void)
     uint32_t rc = chain_prepare_from(row);
     if (!rc) {
         ui.force = 1;
+    } else if (rc == 67u) {
+        ui_message("NO SOUND MEMORY");
     } else if (rc >= 3u) {
         char b[8] = "A EMPTY";
         b[0] = (char)('A' + rc - 3u);
@@ -372,6 +375,7 @@ static void seq_midi_reset(void)                    /* a new page/track ends MID
 static void undo_seal(void);
 static void page_entered(void)
 {
+    if (song_picker.active && cur_page()->graph != GR_BROWSE) song_preset_cancel();
     ui.preset_audition = 0;
     const page_t *pg = cur_page();
     if (pg->graph == GR_SCALE_PICKER && !ui.scale_picker_seen) {
@@ -614,6 +618,7 @@ static void open_global(void)
 
 static void go_home(void)
 {
+    if (song_picker.active) song_preset_cancel();
     ui.home = 1;
     ui.entry_open = 0;
     ui.hot_t = 0;
@@ -763,6 +768,7 @@ static void load_begin_guarded(track_t *t, uint32_t what)
     if (undo_depth++)
         return;
     browse_loads++;
+    if (song_picker.active) return;
     motion_restore(t);
     undo_levels();
     u = undo_last();
@@ -810,6 +816,7 @@ static void load_end_guarded(track_t *t)
     undo_refresh();
     if (--undo_depth || !undo_top)
         return;
+    if (song_picker.active) return;
     motion_rebase(t);
     undo.after = track_sig(t);
     undo.keep = 1;
@@ -962,11 +969,6 @@ static void track_defaults_steps(track_t *t)
  * TOOLS INIT) leaves alone. The mix (LEVEL, PAN, MUTE: the TRACKS faders), the arpeggiator (ARP, ARP 2),
  * the scale and key map (SCL), the pattern parameters (LEN, DIV, SWING, GATE),
  * which chops whatever the track plays in time with its sequencer */
-static int param_kept(uint32_t i)
-{
-    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_AMODE && i <= P_SGATE) ||
-           i == P_CHRD || i == P_VOIC || i == P_STRUM || i == P_STROKE || i == P_MPCDEG || i == P_RECQ || param_fx(i) || param_fx_send(i);
-}
 
 /* ROOT, SCL, scale QNT, recording QNT and the MPC degree are the project's: kept the same in each track's own slots
  * for compatibility with the project format and editor protocol. TRN stays the track's. */
@@ -1156,6 +1158,7 @@ static void track_select(uint32_t i)
 {
     if (i >= trk_n() || i == song.sel)
         return;
+    if (song_picker.active) song_preset_cancel();
     ui.preset_audition = 0;
     browse_commit();                             /* (a sound still pending loads into the track it was meant for) */
     momentary_restore();
@@ -1235,6 +1238,7 @@ static void confirm_open(uint32_t kind, uint32_t trk)
 
 #include "note_tools.c"
 #include "ui_song.c"
+#include "ui_song_sound.c"
 
 #define TL_MAX 4u
 /* s wrapped into at most m lines of w px in face f (at spaces, always at a '\n'; a word wider than the line: at the

@@ -1101,11 +1101,11 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     }
     case ED_SONG: {
         uint32_t rc = 0, op;
-        chain_config_t c;
+        struct { uint8_t count; chain_row_t row[CHAIN_ROWS]; } c;
         if (!na || a[0] > 3u) return;
         op = a[0];
         if (op == 1u) {
-            chain_defaults(&c);
+            memset(&c, 0, sizeof c);
             if (na < 2u || a[1] > CHAIN_ROWS || na != 2u + 2u * a[1]) rc = 1;
             else {
                 c.count = a[1];
@@ -1113,10 +1113,13 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                     c.row[i].slot = a[2u + 2u * i];
                     c.row[i].repeat = a[3u + 2u * i];
                 }
-                if (!chain_valid(&c)) rc = 1;
-                else if (chain_busy()) rc = 2;
-                else {
-                    chain_config = c;
+                for (i = 0; i < c.count; i++)
+                    if (c.row[i].slot > CHAIN_HOLD || !c.row[i].repeat || c.row[i].repeat > 16u ||
+                        (c.row[i].slot == CHAIN_HOLD && (!i || c.row[i-1u].slot == CHAIN_REST))) rc = 1;
+                if (!rc && chain_busy()) rc = 2;
+                if (!rc) {
+                    chain_defaults(&chain_config); chain_config.count = c.count;
+                    memcpy(chain_config.row, c.row, c.count * sizeof(chain_row_t));
                     for (uint32_t row = 0; row < c.count; row++) memset(chain_patterns[row], c.row[row].slot, NTRK);
                     ui.song_row = 0; ui.force = 1;
                 }

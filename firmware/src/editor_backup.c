@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Kerem Kilic (Ellic Studio)
  * Portions Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Complete musical archive: no raw addresses are accepted. Objects are staged
- * in bounded RAM or an unpublished A/B copy, then validated before publication.
+ * in bounded RAM or the shared unpublished project workspace, then validated before publication.
  * Runtime and saved projects include all 32 pattern banks. Retired user sample
  * slots are absent from the inventory and cannot be restored over project data.
  */
@@ -83,7 +83,7 @@ static const uint8_t *ed_bk_object(uint32_t id,uint32_t *len)
         int copy = st_current(obj, &h);
         if (copy >= 0) {
             *len = h.len; ed_bk_source_obj = obj; ed_bk_source_copy = (uint32_t)copy; ed_bk_source_crc = h.crc;
-            return ED_BK_FLASH_PTR(st_sector(obj, (uint32_t)copy) + ST_PAYLOAD_OFF);
+            return ED_BK_FLASH_PTR(st_sector(obj, (uint32_t)copy) + st_payload_off_header(obj, &h));
         }
         return ED_BK_RAW;                   /* empty: a valid pointer, zero length */
 #else
@@ -355,6 +355,7 @@ static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             n != 8u || a[5] > 15u || !p || !count || count > 256u || off > len || count > len - off ? 1u : 0u;
         uint32_t data_off = off;
 #if MELODEE_FLASH
+        if (!rc && !a[0] && !ed_bk_ram_only() && ed_bk_stage.generation != st_stream_generation) rc = 5;
         if (!rc && ed_bk_source_obj < OBJ_COUNT) {
             if (st_read_range(ed_bk_source_obj, ed_bk_source_copy, off, ed_transfer_buf, count)) rc = 4;
             p = ed_transfer_buf; data_off = 0;

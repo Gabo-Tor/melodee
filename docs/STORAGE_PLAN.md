@@ -5,6 +5,45 @@ and protection for unreadable records are part of **Melodee 1.2.0**. Merge the c
 `next`; there is no separate bridge release or 2.0 release for this work. Started from `next` 2598876.
 The flash-map v2 / XIP hardware probe remains parked on `feat/xip-probe`.
 
+## Project storage update (2026-10-26)
+
+Current firmware keeps Melodee Pixel only. Rubik remains in this source tree for historical mockups,
+with its licence; no Rubik glyphs, kerning tables or icon numerals enter the firmware image.
+The FONT menu entry is removed, and old font preference bits are ignored without rewriting settings.
+The measured nightly app shrinks from 575,084 to 543,016 bytes (32,068 bytes recovered), leaving
+34,232 bytes below the firmware body limit. The update package remains padded to its fixed app slot.
+
+The existing 56 project sectors (`0xA0000..0xC7FFF`, `0xEA000..0xF9FFF`) now form one pool.
+Each of the four project slots owns one committed record. A save allocates free sectors, writes and
+verifies the complete payload, then publishes the header last. Only after publication may the old
+record's sectors be reused. Working space rotates through the pool rather than reserving a full
+permanent duplicate for each slot.
+
+- Maximum storage payload per project: **41,888 bytes**, formerly **27,904 bytes** (+50.1%).
+- Four maximum-sized records use 44 sectors. Eleven sectors remain available for a maximum-sized
+  save, with one additional sector spare. Small projects allocate fewer sectors.
+- A record's header authenticates a 56-bit sector bitmap, length, object, sequence and payload CRC.
+  Every sector reserves 32 leading bytes and leaves its last 256 bytes erased for the SPL scan.
+- Legacy A/B projects remain readable. The first save migrates only that slot into free space;
+  interruption cannot erase the last committed version of any slot. Unknown musical formats with
+  valid storage checksums are protected and remain available to the existing archive reader.
+- The existing project format, notes, patterns, steps, RAM allocation, four slot identities and web
+  protocol remain unchanged. The larger storage budget is available for future project-format growth;
+  this update does not raise musical limits.
+- Settings and preset banks retain their existing A/B protection. App, update-loader staging,
+  boot, settings, preset and key/MAC boundaries stay unchanged. All firmware image savings remain
+  firmware headroom; no app sectors are transferred to the data pool.
+
+This storage layout is read by the new firmware. Export projects before downgrading to an older
+Melodee version, which only understands fixed A/B locations. Stock installation and recovery retain
+their existing boundaries; a stock round trip is not a project-preservation guarantee.
+
+Validation includes four fully occupied slots, repeated saves, legacy migration, program/byte
+cutoffs, every allocated erase boundary, stale-stage rejection, readback verification, region guards,
+archive round trips and layout rendering. Hardware power-cut and flash-latency qualification is pending.
+
+The older whole-device flash-map v2 proposal below remains unimplemented.
+
 ## Decisions (Kerem, 2026-10-11)
 
 - **2 sub-pixel phases for the fonts: yes.** Item 4.

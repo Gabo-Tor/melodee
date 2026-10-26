@@ -197,7 +197,7 @@ static int full_pattern_archive(void)
     /* GET emits pack7; the XIP payload itself remains byte-identical after other object reads. */
     ok &= !memcmp(saved,archive,sizeof saved) && (st_load(OBJ_BANK0,saved,sizeof saved)==sizeof saved && !memcmp(saved,archive,sizeof saved)) && get(0,0,64)==0;
     bad+=check("saved-bank GET and interleaved screen draws preserve the frozen runtime snapshot",ok);
-    bad+=check("full archive restores a saved slot through the A/B path",put_all(3,archive,sizeof archive,st_crc32(archive,sizeof archive))==0);
+    bad+=check("full archive restores a saved slot through the shared workspace",put_all(3,archive,sizeof archive,st_crc32(archive,sizeof archive))==0);
     pattern_init(); memset(&motion,0,sizeof motion); memset(proj_meta,0,sizeof proj_meta); memset(proj_slot,0,sizeof proj_slot);
     proj_fetch(1); project_load(1); ok=1;
     for (uint32_t k=0; k<NPART; k++) for (uint32_t b=0; b<NPAT; b++) {

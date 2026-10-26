@@ -6,7 +6,7 @@
  * BG, rounded corners, no rules, colours from the theme tokens only (gfx.c T_*); THEME is the selected track's
  * colour (labels, gauges, curves), values in TEXT. Type: the large type's roles (gfx.c TY_*; docs/design/README.md
  * "Large type"): labels 16 px, text and the strip's values 20 px, values 28 px, the hero (the chord, big names) 48 px,
- * in Rubik or Melodee Pixel. A value too wide for its cell is set a role smaller (never under the label face); free text (names, messages)
+ * in Melodee Pixel. A value too wide for its cell is set a role smaller (never under the label face); free text (names, messages)
  * is ellipsised. */
 static void draw_menu(void);
 static int name_on(void);                              /* NAME (ui_name.c) */
@@ -159,6 +159,8 @@ static void head_chip_text(char *b)
     const page_t *pg = cur_page();
     uint32_t e = TSEL->eng_req % NENGINES;
     if (designer_on() && !name_on() && designer_head_chip(b)) {   /* the designer's START, FEATURES, original */
+    } else if (song_punch_on()) {
+        str_cpy(b, "SONG FX", 16);
     } else if (new_on()) {                                     /* NEW SONG */
         str_cpy(b, "NEW SONG", 16);
     } else if (ptc_on()) {                              /* PATTERNS' Copy to: "copy 3 to 5" */
@@ -189,6 +191,7 @@ static void head_chip_text(char *b)
 static void head_pages(int32_t x, int32_t x1)          /* (x: after the transport's marks; x1: where the chip, or the
                                                          * battery, starts) */
 {
+    if (song_punch_on()) return;
     const page_t *pg = cur_page();
     uint32_t i, n = 0, k = 0, sc = sec_on() ? sec_of(ui.page) + 1u : 0u;
     if (designer_on() && !name_on())                    /* the designer: its stage's pages */
@@ -231,14 +234,6 @@ static int head_shared_status(void)
         ;
 }
 static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : song_edit_status(); }
-static const char *head_punch(void)                     /* (the FX layer names it itself: [FX] HOLD, its key below) */
-{
-    if (ui.layer != LAYER_FX && punch.req < 0 && punch_song_req >= 0 &&
-        punch_needs_ring(punch_song_req) && punch_memory_failed) return "FX MEMORY";
-    int32_t fx=punch.cur;
-    if(ui.layer!=LAYER_FX && fx>=0 && fx<(int32_t)PUNCH_NFX)return PUNCH_NAME[fx];
-    return "";
-}
 static int head_toast(int32_t x)
 {
     const char *m = head_msg();
@@ -248,7 +243,7 @@ static int head_toast(int32_t x)
         w = kc_w((uint32_t)id) + KH_GAP + text_w(TY_TX, m + n + (m[n] == ' '));
     else if (m[0] && str_len(m) > 6u && m[str_len(m) - 1u] == ']')
         w += 40;                                        /* (a keycap: its pill wider than its word) */
-    return !head_punch()[0] && m[0] && w > 236 - x;
+    return m[0] && w > 236 - x;
 }
 #if MELODEE_BLE
 static void ble_head_text(char text[24])
@@ -280,12 +275,10 @@ static void draw_head(void)
     int16_t bpm = song.g[G_BPM];                        /* (read once: what is noted is what is drawn) */
     int32_t octave = input_octave(TSEL);
     head_chip_text(chip);
-    const char *px=head_punch();
     sig = (uint32_t)seq_erase_active(TSEL) * 8191u + (uint32_t)song.playing * 3u + song.rec * 5u + song.rec_wait * 65537u + (uint32_t)(octave + 8) * 11u +
           song.sel * 13131u + (msg ? str_hash(7u, head_msg()) : str_hash(5u, chip)) +
           (ui.bpm_t != 0) * 31u + low * 7777u + (chain.running ? (chain.row + 1u) * 104729u : 0u) + ux.gen * 977u +
           (ui.home ? ui.home_pg * 40503u : ui.page * 2654435761u) + page_sheet() * 524287u;
-    sig ^= str_hash(13u,px);
 #if MELODEE_BLE
     sig ^= str_hash(mel_ble_signature() + 17u, ble_text);
 #endif
@@ -328,9 +321,6 @@ static void draw_head(void)
         cv_text_r(236, ty_y(H_HEAD / 2, TY_TX), TY_TX, "ERASING", T_REC, T_BG);
     } else if (head_waiting()) {
         cv_text_r(236, ty_y(H_HEAD / 2, TY_TX), TY_TX, "WAIT LOOP", T_REC, T_BG);
-    } else if (px[0]) {
-        const aafont_t *f=ty_fit(TY_TX,px,236-x-6);
-        cv_text_r(236,ty_y(H_HEAD/2,f),f,px,T_ACCENT,T_BG);
 #if MELODEE_BLE
     } else if (ble_text[0] && (!msg || mel_ble_code() != BLE_NO_PASSKEY)) {
         const aafont_t *f = ty_fit(TY_TX, ble_text, 236 - x - 6);
@@ -610,6 +600,14 @@ static void foot_hint(char *a, char *b)
 /* the sound's name on the track: a user preset or the engine's preset (b holds 16) */
 static void sound_name(const track_t *t, char *b)
 {
+    if (song_picker.active && t == &trk[song_picker.track] && browse_loads == browse_mark) {
+        const song_sound_t *s = song_sound_get(chain_config.sound[song_picker.row][song_picker.track]);
+        if (s) { str_cpy(b, s->name, 16); return; }
+    }
+    if (chain.running) {
+        const song_sound_t *s = song_sound_get(chain.config.sound[chain.row][t - trk]);
+        if (s) { str_cpy(b, s->name, 16); return; }
+    }
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
     b[0] = 0;
     if(t->eng_req==ENGI_PROPHET)p5_short_name(t,b,16);
@@ -1177,6 +1175,7 @@ static void draw_confirm(void)
 #include "ui_pages.c"                                   /* the redesign's other pages (R5) */
 #include "ui_list.c"                                    /* list pages */
 #include "ui_popup.c"                                   /* action sheets, pickers */
+#include "ui_song_punch.c"                              /* direct master FX lane */
 #include "ui_slots.c"                                   /* PROJECT, USER, the STOREs: their slots */
 #include "ui_motion.c"                                  /* MOTION: its lanes */
 #include "ui_scales.c"                                  /* SCALES: a screen of its own */
@@ -1196,7 +1195,10 @@ static void draw_page(void)
         page_entered();
     }
     cursor_fix();
-    if (designer_screen()) {                            /* the sound designer's START, FEATURES (ui_designer.c) */
+    if (song_punch_on()) {
+        song_punch_draw();
+        return;
+    } else if (designer_screen()) {                            /* the sound designer's START, FEATURES (ui_designer.c) */
         designer_draw();
     } else if (!own_screen() && slot_kind()) {          /* a slot page (ui_slots.c) */
         slot_draw();
@@ -1325,6 +1327,20 @@ static void ui_draw_frame(void)
         return;
     }
     pick_poll();
+    if (song_punch_on()) {
+        song_punch_draw();
+        draw_toast();
+        if (ui.msg_t && !--ui.msg_t && ui.msg2[0]) {
+            str_cpy(ui.msg, ui.msg2, sizeof ui.msg);
+            ui.msg2[0] = 0;
+            ui.msg_t = 60;
+        }
+        if (ui.bpm_t) ui.bpm_t--;
+        if (ui.hot_t) ui.hot_t--;
+        ui.force = 0;
+        scr_shown();
+        return;
+    }
     if (pop.on) {                                       /* a popup over the page, dimmed (ui_popup.c); a knob's picker
                                                          * over it as it is (it comes with every turn of a list knob:
                                                          * dimming sent the whole screen twice, ~150 ms on the SPI) */

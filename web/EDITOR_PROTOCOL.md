@@ -1324,3 +1324,15 @@ Bank capability `50 04 08 40` adds song looping. BANK_SONG op 4 takes `[4, loop]
 it is refused while armed/running. Version 4 replies append the loop byte after all rows (older replies omit it).
 Op 1 preserves the existing loop choice. FBKM byte 1 of its arrangement extension stores the loop flag;
 bytes 2 and 3 remain zero. A loop returns to section 1, preserves fractional boundary time, and PLAY still stops.
+
+Songs with local preset copies use **FBKO** (`0x4f4b4246`). The FBKM song and FBKN
+punch tails are both present, followed by a sound extension: count (1–64), parameter
+count, little-endian sound-record size, then 64 × 8 one-byte sound IDs (0 means the
+normal track sound), then `count` immutable `song_sound_t` records. IDs are compacted
+when saved. Records hold biased parameters, engine/preset/origin, FM6 operator mask,
+a terminated 16-byte name and a 156-byte native-patch union. The full extension and
+its references validate before restore; insufficient memory refuses the load before
+replacing the current project. Sparse pattern bytes follow the extension. The bank
+extent and checksum stay unchanged. Earlier containers load without overrides, and
+saves without overrides retain their earlier container. Backup transfers preserve
+FBKO unchanged. Preset assignment editing currently uses the device's SONG browser.

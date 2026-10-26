@@ -358,6 +358,7 @@ if core && [ $TABLES = 1 ]; then
     t "32 pattern banks: chords, ties, independent loop switching, copy and persistence" pattern_test \
         -O1 -DMELODEE_USB_AUDIO=1 $FW
     t "song: 64 sections, rests, cursor playback, grid edits, phrases and undo" song_mode_test -O1 $FW
+    t "song presets: local sounds, browser restoration, section playback, edits and persistence" song_preset_test -O1 $FW
     t "song punch: timed master FX, repeats, live overrides, edits and persistence" song_punch_test -O1 $FW
     t "compressed pattern pool: dense capacity, prepared switches and state-machine oracle" pattern_pool_test -O1 $FW
     t "16 x 128 shared pool: old dense capacity, atomic exhaustion and switching" pattern_capacity_test -O1 $FW
@@ -386,9 +387,9 @@ if core && [ $TABLES = 1 ]; then
     t "Concert pitch: A4 frequency, engines, modulation, held notes and project-independent settings" tuning_test \
         -DMELODEE_LEGACY_EXTRAS=1 -O1 -DMELODEE_USB_AUDIO=1 $FW
     t "themes: contrast, text blending and font metrics" theme_test -O1 $FW
-    t "text: pens, kerning and pixels equal the reference renderer" text_ref_test -O1 $FW
+    t "text: pixel pens and pixels equal the reference renderer" text_ref_test -O1 $FW
     if [ $PIL = 1 ]; then
-        run "text spacing: glyph gaps against the font's own (16x supersampled), S M <= 0.25 px, L <= 0.5 px" \
+        run "text spacing: all Pixel glyphs and metrics match source; no Rubik tables" \
             python3 tests/text_spacing_test.py build/gen/ui_fonts.h
     fi
     t "settings: PER5 records, palette ids and preference preservation" settings_test -O1 -w -Ibuild/gen

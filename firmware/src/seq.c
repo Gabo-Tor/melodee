@@ -246,6 +246,12 @@ static void recording_undo_clear(void);
 static void seq_release(track_t *t);
 
 #include "motion.c"
+/* A section-local sound starts a new automation base without seeking the
+ * continued note block. Restore the lane values held at its current step. */
+static void song_sound_motion_chase(track_t *t)
+{
+    for (uint32_t step = 0; step <= t->seq_idx && step < (uint32_t)t->p[P_SLEN]; step++) motion_step(t, step, &motion);
+}
 
 static void arp_off(track_t *t)                  /* the sounding arp note ends (a recorded one too) */
 {
