@@ -138,8 +138,48 @@ static void automation_and_failures(void)
     song_preset_finish(0); assert(chain_config.sound[ui.song_row][0] == before);
     puts("Song presets: automation bases, missing snapshot rejection and safe cancellation passed");
 }
+static void whole_pattern_sound(void)
+{
+    setup(6); track_t *t = &trk[1];
+    trk[0].p[P_SLEN] = 16; pattern_commit(&trk[0]);
+    t->p[P_SLEN] = 64;
+    for (uint32_t j = 1; j < 64; j++) t->step[j] = (step_t){{0}, 0, ST_TIE};
+    pattern_commit(t);
+    for (uint32_t r = 1; r < 4; r++) chain_patterns[r][1] = CHAIN_HOLD;
+    chain_patterns[5][1] = CHAIN_REST;
+    song.sel = 1; uint8_t base = t->eng_req;
+    uint32_t id = choose(2, ENGI_PROPHET, 13); /* select in the middle of the 64-step occurrence */
+    for (uint32_t r = 0; r < 4; r++) assert(chain_config.sound[r][1] == id);
+    assert(!chain_config.sound[4][1]); /* another occurrence of the same note pattern stays independent */
+    uint32_t step = seq_div_samples(t->p[P_SDIV]);
+    assert(!chain_prepare_from(0)); events_block(1);
+    for (uint32_t r = 0; r < 4; r++) {
+        assert(chain.row == r && t->eng_req == ENGI_PROPHET && t->seq_idx == r * 16u && t->seq_n == 1);
+        for (uint32_t j = 0; j < 16; j++) events_block(step);
+    }
+    assert(chain.row == 4 && t->eng_req == base); seq_stop();
+    assert(!chain_prepare_from(2)); events_block(1);
+    assert(t->eng_req == ENGI_PROPHET && t->seq_idx == 32 && t->seq_n == 1); seq_stop();
+    ui.song_row = 3; song_preset_remove();
+    for (uint32_t r = 0; r < 4; r++) assert(!chain_config.sound[r][1]);
+    song_edit_history(0);
+    for (uint32_t r = 0; r < 4; r++) assert(chain_config.sound[r][1] == id);
+    chain_patterns[4][1] = CHAIN_REST; song_edit_sync(); ui.song_row = 1;
+    song_block_resize(1); assert(chain_config.sound[4][1] == id);
+    song_block_resize(-3);
+    for (uint32_t r = 2; r < 5; r++) assert(!chain_config.sound[r][1]);
+    song_block_resize(2);
+    for (uint32_t r = 0; r < 4; r++) assert(chain_config.sound[r][1] == id);
+    /* Older saved assignments only named the first section: inherit through HOLD. */
+    for (uint32_t r = 1; r < 4; r++) chain_config.sound[r][1] = 0;
+    assert(!project_save(0)); project_load(0); t = &trk[1];
+    assert(!chain_prepare_from(0)); events_block(1);
+    for (uint32_t r = 0; r < 4; r++) { assert(t->eng_req == ENGI_PROPHET); for (uint32_t j = 0; j < 16; j++) events_block(step); }
+    assert(t->eng_req == base); seq_stop();
+    puts("Song presets: all 64 steps, continued notes, middle selection/start, independent occurrences, resize, undo and legacy inheritance passed");
+}
 int main(void)
 {
-    browser_and_history(); playback(); native_and_persistence(); arrangement_edits(); automation_and_failures();
+    browser_and_history(); playback(); native_and_persistence(); arrangement_edits(); automation_and_failures(); whole_pattern_sound();
     puts("Song presets: passed"); return 0;
 }

@@ -14,6 +14,7 @@ static struct { uint8_t mask, active[NTRK]; } song_sounds;
 static int16_t motion_base_value(const track_t *t, uint32_t id);
 static void motion_restore(track_t *t);
 static void motion_rebase(track_t *t);
+static uint32_t chain_sound_id(uint32_t row, uint32_t track);
 static song_sound_t *song_sound_pool(void) { return resource[RES_SONG_SOUNDS].ptr; }
 static const song_sound_t *song_sound_get(uint32_t id)
 { return id && id <= song_sound_count ? song_sound_pool() + id - 1u : 0; }
@@ -85,10 +86,10 @@ static int song_sound_prepare(void)
     return 1;
 }
 static int song_sound_changed(uint32_t row, uint32_t k)
-{ return (song_sounds.mask >> k & 1u) && song_sounds.active[k] != chain_config.sound[row][k]; }
+{ return (song_sounds.mask >> k & 1u) && song_sounds.active[k] != chain_sound_id(row, k); }
 static void song_sound_section(uint32_t row, uint32_t k)
 {
-    uint32_t id = chain_config.sound[row][k];
+    uint32_t id = chain_sound_id(row, k);
     const song_sound_t *s = id ? song_sound_get(id) : (song_sound_t *)resource[RES_SONG_BASE].ptr + k;
     song_sound_apply(k, s); song_sounds.active[k] = (uint8_t)id;
 }

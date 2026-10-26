@@ -601,11 +601,11 @@ static void foot_hint(char *a, char *b)
 static void sound_name(const track_t *t, char *b)
 {
     if (song_picker.active && t == &trk[song_picker.track] && browse_loads == browse_mark) {
-        const song_sound_t *s = song_sound_get(chain_config.sound[song_picker.row][song_picker.track]);
+        const song_sound_t *s = song_sound_get(chain_sound_id(song_picker.row, song_picker.track));
         if (s) { str_cpy(b, s->name, 16); return; }
     }
     if (chain.running) {
-        const song_sound_t *s = song_sound_get(chain.config.sound[chain.row][t - trk]);
+        const song_sound_t *s = song_sound_get(chain_sound_id(chain.row, t - trk));
         if (s) { str_cpy(b, s->name, 16); return; }
     }
     const engine_t *e = ENGINES[t->eng_req % NENGINES];

@@ -133,7 +133,10 @@ static void song_materialize(uint32_t row)
 {
     if (row >= chain_config.count) return;
     for (uint32_t k = 0; k < NTRK; k++)
-        if (chain_patterns[row][k] == CHAIN_HOLD) chain_patterns[row][k] = (uint8_t)chain_bank(row, k);
+        if (chain_patterns[row][k] == CHAIN_HOLD) {
+            chain_config.sound[row][k] = (uint8_t)chain_sound_id(row, k);
+            chain_patterns[row][k] = (uint8_t)chain_bank(row, k);
+        }
     chain_config.row[row].slot = chain_patterns[row][0];
 }
 static uint32_t song_snapshot_bank(const song_edit_snapshot_t *s, uint32_t row, uint32_t track)
@@ -156,6 +159,7 @@ static void song_cell_rest(void)
     if (!song_edit_begin()) return;
     for (uint32_t r = first; r < end; r++) {
         chain_patterns[r][song.sel] = CHAIN_REST;
+        chain_config.sound[r][song.sel] = 0;
         chain_config.row[r].slot = chain_patterns[r][0];
     }
     song_edit_end();
@@ -176,7 +180,7 @@ static void song_cell_pattern(int32_t steps)
     if (value == old || !song_edit_begin()) return;
     chain_patterns[first][song.sel] = (uint8_t)(value < 0 ? CHAIN_REST : value);
     for (uint32_t r = first; r < end; r++) {
-        if (value < 0) chain_patterns[r][song.sel] = CHAIN_REST;
+        if (value < 0) { chain_patterns[r][song.sel] = CHAIN_REST; chain_config.sound[r][song.sel] = 0; }
         chain_config.row[r].slot = chain_patterns[r][0];
     }
     song_edit_end();
@@ -192,9 +196,11 @@ static void song_block_resize(int32_t steps)
     for (uint32_t r = end; r < next && r < chain_config.count; r++)
         if (chain_patterns[r][song.sel] != CHAIN_REST) { ui_message("NEXT BLOCK OCCUPIED"); return; }
     if (!song_edit_begin()) return;
+    uint8_t sound = (uint8_t)chain_sound_id(first, song.sel);
     song_extend_rows(next > chain_config.count ? next : chain_config.count);
     for (uint32_t r = first + 1u; r < (next > end ? next : end); r++) {
         chain_patterns[r][song.sel] = r < next ? CHAIN_HOLD : CHAIN_REST;
+        chain_config.sound[r][song.sel] = r < next ? sound : 0;
         chain_config.row[r].slot = chain_patterns[r][0];
     }
     ui.song_row = (uint8_t)first; song_edit_end();
@@ -331,7 +337,7 @@ static const char *song_edit_status(void)
     if (se.pending) return se.pending == SONG_CELL_MOVE || se.pending == SONG_SECTIONS_MOVE ? "MOVE TO..." : "COPY TO...";
     if (se.range) return "SELECTED";
     if (chain_config.rsv[CHAIN_LOOP]) return "LOOP";
-    const song_sound_t *sound = ui.song_row < chain_config.count ? song_sound_get(chain_config.sound[ui.song_row][song.sel]) : 0;
+    const song_sound_t *sound = ui.song_row < chain_config.count ? song_sound_get(chain_sound_id(ui.song_row, song.sel)) : 0;
     if (sound) return sound->name;
     return "";
 }
