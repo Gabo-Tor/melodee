@@ -5,6 +5,7 @@
 import concurrent.futures
 import os
 import re
+import shlex
 from pathlib import Path
 import subprocess
 
@@ -35,7 +36,7 @@ CASES = [
 def run(case):
     i, (name, flags) = case
     exe = OUT / f'{name}-{i}'
-    cmd = [os.environ.get('CC', 'cc'), '-O1', '-w', '-fsanitize=address,undefined',
+    cmd = shlex.split(os.environ.get('CC', 'cc')) + ['-O1', '-w', '-fsanitize=address,undefined',
            '-fno-sanitize-recover=all', f'tests/{name}.c', *flags, '-o', str(exe)]
     build = subprocess.run(cmd, capture_output=True, text=True)
     result = build if build.returncode else subprocess.run([str(exe)], capture_output=True, text=True)
