@@ -58,6 +58,15 @@ const E = vm.runInNewContext(proto + `
   const named={state:{caps:8,filter:0},slots:await E.bank.list(rq,info),favorites:[]};const names=info.engines.map(()=>[]);names[15]=["CZ FACTORY"];
   const grouped=E.devicePresetRows(info,names,named),factoryAt=grouped.findIndex(r=>!r.user&&r.engine===15),czAt=grouped.findIndex(r=>r.user&&r.actualEngine===15);
   ok(factoryAt>=0&&czAt===factoryAt+1,"shared: tone picker groups user slots under their actual engine");
+  const factoryNames=mock.tables.ENG.map(engine=>engine.presets.map(preset=>preset.name));
+  const prefs=await E.readDevicePreferences(rq,info,factoryNames);
+  ok(prefs.slots.total===384 && prefs.favorites[info.namespace.general].length===384 && prefs.favorites[19].length===factoryNames[19].length,
+     "shared: 1.5 startup reads the complete factory and shared-slot favorites");
+  const midi=E.devicePresetRows(info,factoryNames,prefs).find(row=>row.engine===21);
+  ok(midi && midi.canFavorite===false && !prefs.favorites[21],
+     "shared: MIDI Track remains loadable without unsupported favorites");
+  ok(E.devicePresetRows(info,factoryNames,prefs).filter(row=>row.engine!==21).every(row=>row.canFavorite),
+     "shared: factory sounds and saved slots retain their star controls");
   link.close();
 }
 
