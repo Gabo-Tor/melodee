@@ -196,7 +196,7 @@ static void song_cell_sheet_open(void)
     if (ui.song_row >= chain_config.count) { song_insert(0); return; }
     char b[20] = "T1 / Section "; b[1] = (char)('1' + song.sel);
     fmt_int(b + str_len(b), ui.song_row + 1u);
-    const song_sound_t *sound = song_sound_get(chain_config.sound[ui.song_row][song.sel]);
+    const song_sound_t *sound = song_sound_get(chain_sound_id(ui.song_row, song.sel));
     sheet_open(sound ? sound->name : "Song cell", b, SHEET_SONG_CELL, NELEM(SHEET_SONG_CELL));
 }
 static void song_range_sheet_open(void)

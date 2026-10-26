@@ -1336,3 +1336,9 @@ replacing the current project. Sparse pattern bytes follow the extension. The ba
 extent and checksum stay unchanged. Earlier containers load without overrides, and
 saves without overrides retain their earlier container. Backup transfers preserve
 FBKO unchanged. Preset assignment editing currently uses the device's SONG browser.
+
+SONG preset selection applies one snapshot to the entire selected block, from
+its start through all HOLD continuations. Set/remove and block resizing update
+all covered sound IDs atomically. Earlier FBKO copies that only named the block's
+first section inherit that sound through empty HOLD cells. Other occurrences of
+the same pattern retain independent assignments. The FBKO byte layout is unchanged.

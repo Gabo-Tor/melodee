@@ -192,16 +192,18 @@ even if PLAY began at a later cursor section. PLAY still stops and restores the 
 header shows LOOP on SONG while enabled, and SONG LOOP during playback on every page. The web editor exposes
 the same stopped-only setting when bank capability version 4 is available.
 
-SONG cell presets: while stopped, select a section and track, then OCT+ > Set preset.
-The normal browser auditions that track; OCT+ saves an independent sound copy in that exact
-section and returns to SONG, OCT- cancels. Navigation away also restores the normal track sound.
-Remove preset returns the cell to the track's normal sound. The assignment includes native
-FM6, CZ, Prophet and drum data; overwriting a library preset does not change it.
-An assignment lasts for that section and its repeats only, including a section inside a
-continued block. Unassigned sections and STOP restore the sound from before song playback.
+SONG block presets: while stopped, select a pattern block and track, then OCT+ > Set preset.
+The normal browser auditions that track; OCT+ saves an independent sound copy across the
+whole selected block and returns to SONG, OCT- cancels. Selecting any continued section
+edits the same block. Navigation away also restores the normal track sound.
+Remove preset clears the whole block. The assignment includes native FM6, CZ, Prophet
+and drum data; overwriting a library preset does not change it. Other occurrences of the
+same note pattern retain their own sounds. A 64-step block spanning four 16-step sections
+keeps its sound through all four; unassigned blocks and STOP restore the normal track sound.
+Growing a block extends its sound assignment; trimming clears it from the removed sections.
 Track mix, FX routing, scale, arp, notes, timing and motion lanes stay track-owned.
-Changing a sound releases the old sequence notes; a continued block keeps its playback
-position and automation, and subsequent note onsets use the new sound.
+Changing between block sounds releases the old sequence notes; continued sections of a
+block retain held notes and automation without reloading the sound at each section edge.
 Section and cell copy/move, section duplication/deletion, project backups and song undo include
 the sound assignments. Copies share an immutable song snapshot; replacing one cell leaves
 other cells unchanged. Up to 64 distinct snapshots can live in a project/history, subject to

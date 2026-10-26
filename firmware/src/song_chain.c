@@ -83,6 +83,13 @@ static uint32_t chain_origin(uint32_t row, uint32_t track)
     while (row && chain_patterns[row][track] == CHAIN_HOLD) row--;
     return row;
 }
+/* Earlier song copies may name only the first section of a spanning block.
+ * Empty continued cells inherit that block's sound instead of restoring early. */
+static uint32_t chain_sound_id(uint32_t row, uint32_t track)
+{
+    uint32_t id = chain_config.sound[row][track];
+    return id ? id : chain_config.sound[chain_origin(row, track)][track];
+}
 static uint32_t chain_bank(uint32_t row, uint32_t track)
 {
     return chain_patterns[chain_origin(row, track)][track];
