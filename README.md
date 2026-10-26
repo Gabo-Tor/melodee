@@ -34,8 +34,8 @@ For a black-screen device already in ROM UBOOT, use the
 [direct USB recovery tool](BUILDING.md#recover-a-black-screen-fm-1).
 
 Multi-engine synthesizer and sequencer firmware for the M-VAVE FM-1. Current stable release:
-**[Melodee 1.5.0](https://github.com/keremimo/melodee/releases/tag/v1.5.0)**
-([release notes](docs/RELEASE_1.5.0.md)).
+**[Melodee 1.5.1](https://github.com/keremimo/melodee/releases/tag/v1.5.1)**
+([release notes](docs/RELEASE_1.5.1.md)).
 
 Four internal synth/MIDI parts plus four dedicated MIDI tracks, USB Host input/output,
 AUTO/AUTO2 harmony, master punch effects and a shared audio rack. Stable is the default
@@ -56,6 +56,14 @@ Tagged releases from 1.4.4 use the [FM-1 shared build workflow](https://github.c
 to build and attest firmware from the tagged source. See [release verification](BUILDING.md#releases)
 for the process and the command to check a downloaded package. An attestation establishes
 build provenance; hardware validation is a separate check.
+
+## What's new in 1.5.1
+
+- **Web editor connection hotfix:** fixes “Error: Invalid favorites reply” when connecting to 1.5 firmware.
+- MIDI Track remains selectable; its unsupported favorite star is disabled. Sound and user-slot favorites still sync.
+- The updated web editor also works with installed 1.5.0 firmware; no reflash is needed for this fix.
+
+See the [1.5.1 release notes](docs/RELEASE_1.5.1.md).
 
 ## What's new in 1.5.0
 
