@@ -195,14 +195,21 @@ the same stopped-only setting when bank capability version 4 is available.
 TAKE JAM: REC held on SONG (elsewhere REC held captures).
 
 Timed master punches: tap FX on SONG to open the selected section's punches directly; OCT+ > Punch FX also opens it.
-Reuse the existing punch FX keyboard, family, effect name and illustration from the live FX layer.
-Keys choose an effect silently; KNOB 1 follows the same physical key order. KNOB 2 selects one of four slots;
-KNOB 3 changes START (one-based beat), KNOB 4 changes BEATS (duration). Fractions follow the conductor's grid:
-on a sixteenth-note grid, `1+3/4` starts three quarters into beat 1, and `1/4` lasts a quarter beat.
-SELECT browses sections, OCT+ selects the next empty slot, EDIT removes the selected punch, and EDIT held undoes.
+Keys choose an effect silently; KNOB 1 follows the same physical key order. The selected effect is named
+above four lanes, each labelled with its slot and effect name. Each lane shows the section's numbered step grid;
+coloured cells show the applied range and a white outline marks the selected punch. KNOB 2 selects a slot,
+KNOB 3 moves START, and KNOB 4 sets END (the last included step). Both values are one-based step numbers:
+START 5 / END 8 colours steps 5 through 8 directly. No beat fractions or duration subtraction are needed.
+SELECT browses sections, OCT+ selects the next free slot. KNOB 1 has OFF before the first effect; selecting it
+clears only the selected punch and its timing. EDIT also removes that punch, and EDIT held undoes either action.
 OCT- returns to SONG. PLAY auditions from the selected section and stops again; edits remain stopped-only.
-Holding FX on SONG retains the existing live punch layer. Timing edits update only the changed placement cards;
-the shared selector redraws only on an effect change. Moving a punch retains its duration at the section edge.
+A playhead crosses the lanes while the displayed section plays. Holding FX on SONG retains the existing live
+punch layer. Timing edits redraw only the changed lane and placement cards. Moving a punch retains its duration
+at the section edge. SONG shows vertical effect-coloured spans through the filled part of each pattern block,
+clipped to its exact rounded outline. Repeat ranges repeat within the section; overlapping spans use the same
+latest-start/slot priority as playback. Pattern labels and the selection rim stay in front. Empty, dashed and
+rest cells receive no effect colour. The footer keeps its normal section/length information and progress bar;
+effect names and numbered slots remain in the punch editor.
 The first track's pattern defines the step division, swing and section length; rests and continuations use
 16 straight sixteenth-note steps. Timing restarts on every section repeat, including a punch spanning the
 whole section. Overlaps use the latest start, with the later punch slot breaking ties; an earlier punch
@@ -210,8 +217,7 @@ resumes if its duration remains. Events outside a subsequently shortened pattern
 timing is retained. These are master effects, shared by all tracks, and are local to the song section;
 referencing the same note pattern elsewhere does not copy them. Section copy, move, duplicate, delete and
 song undo include the FX lane. Cell operations change only the selected track's pattern reference.
-The footer's `FX n` counts saved punches in the selected section. Active effects and allocation failures
-use the shared header (`FX MEMORY` for a buffered effect that cannot allocate). A live FX key overrides
+Song punches do not replace the footer or shared header with effect names or FX status indicators. A live FX key overrides
 the lane until released. Buffered song effects warm their history from PLAY and keep the optional 32 KiB
 history until STOP or song end. Filter-only songs require no punch history. Editing remains stopped-only.
 Projects with punches use FBKN; projects without punches keep their existing compatible formats.
@@ -241,14 +247,11 @@ place status cards over knobs, lists, waveforms, or notes.
 - **Left:** transport, BPM, then the REC mark. A filled REC mark means the selected track is ready/recording;
   an outline means it is waiting or another track is armed.
 - **Right:** the active transport status replaces the page/engine title and optional navigation marks. Priority:
-  `ERASING`, then `WAIT LOOP` (waiting for the selected track's loop boundary), then master punch status, then brief action feedback, then
+  `ERASING`, then `WAIT LOOP` (waiting for the selected track's loop boundary), then brief action feedback, then
   the normal context. Keep transport, BPM, and REC visible. Use REC colour for recording states.
-- **Master punch:** show the active effect's compact SLOOP name through its final
-  wet fade, once its layer has closed; while the layer is open its own header
-  says [FX] HOLD, [FX] LOCK or [FX] MEMORY (a requested buffered effect cannot
-  allocate) and the layer names the key. Clear on release,
-  cancellation or layer close, as appropriate. Use the label font if necessary;
-  never turn this ongoing state into a toast.
+- **Master punch:** keep the normal page/transport header during song punches and their wet fades.
+  Show effect names in the punch editor; keep the song footer for position and progress.
+  The live FX layer retains its own HOLD / LOCK / MEMORY context and names the selected key.
 - **Optional context:** octave, song row, page dots, and the low-battery glyph use the remaining header space in
   the normal layout. Never overlap or truncate a status to preserve optional context. Use a concise, documented
   label that fits both Rubik and Melodee Pixel; `WAIT LOOP` is the header label for “waiting for loop”.
@@ -276,7 +279,7 @@ place status cards over knobs, lists, waveforms, or notes.
   including leading zeros. `BLE WAIT` means the peer has not subscribed to MIDI;
   `BLE SETUP` means outgoing discovery/subscription, and `BLE TIMEOUT` a failed
   attempt held until user action. Transport, BPM and REC remain visible; erasing,
-  WAIT LOOP and active PUNCH retain their existing priority. Settings > Bluetooth
+  WAIT LOOP retains its existing priority. Settings > Bluetooth
   uses the same header above its list. No ongoing BLE state uses a timed toast.
 
 

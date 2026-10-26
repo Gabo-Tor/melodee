@@ -2261,8 +2261,8 @@ static void library_note_sweep(const char *out)
 #ifndef UI_RENDER_SHOW
 #define UI_RENDER_SHOW 3u
 #endif
-/* Reuse the live punch selector for every effect, in both fonts and all palettes.
- * Exercise the narrow placement cards at maximum beat counts and triplets too. */
+/* Every named punch lane and endpoint, in both fonts and all palettes.
+ * Include long patterns, triplets, overlaps, repeats, rests and continuations. */
 static void song_punch_sweep(const char *out)
 {
     for (uint32_t face = 0; face < 2; face++) for (uint32_t p = 0; p < UI_PAL_ENTRIES; p++) {
@@ -2284,9 +2284,32 @@ static void song_punch_sweep(const char *out)
             cur_name = name; draw(-1); lint();
             if (p == UI_GRAY_INDEX) mono_check();
         }
-        chain_config.fx[62][0] = (chain_fx_t){0};
+        for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++)
+            chain_config.fx[62][j] = (chain_fx_t){PX_LOOP8T + 1u, (uint8_t)(j * 2u), 8};
+        chain_patterns[62][0] = CHAIN_REST;
+        cur_name = "song FX/four overlapping lanes"; draw(-1); lint();
+        if (p == UI_GRAY_INDEX) mono_check();
+        if (!p) write_ppm(out, face ? "PIXEL" : "NIGHT", "song_punch_four");
+        pop_close(); chain_config.row[62].repeat = 3;
+        cur_name = "song FX/repeated vertical spans"; draw(-1); lint();
+        if (p == UI_GRAY_INDEX) mono_check();
+        if (!p) write_ppm(out, face ? "PIXEL" : "NIGHT", "song_punch_grid");
+        chain_patterns[62][0] = CHAIN_HOLD;
+        cur_name = "song FX/continued vertical spans"; draw(-1); lint();
+        if (p == UI_GRAY_INDEX) mono_check();
+        song_punch_open();
+        memset(chain_config.fx[62], 0, sizeof chain_config.fx[62]);
         cur_name = "song FX/empty"; draw(-1); lint();
         if (!p) write_ppm(out, face ? "PIXEL" : "NIGHT", "song_punch_empty");
+        setup(S_REF_SONG); pal(p);
+        chain_config.fx[0][0] = (chain_fx_t){PX_REV + 1, 0, 4};
+        chain_config.fx[1][0] = (chain_fx_t){PX_LPF + 1, 4, 4};
+        chain_config.fx[2][0] = (chain_fx_t){PX_GATE + 1, 4, 8};
+        chain_config.fx[2][1] = (chain_fx_t){PX_REV + 1, 6, 3};
+        chain_config.fx[3][0] = (chain_fx_t){PX_ECHO + 1, 8, 8};
+        cur_name = "song FX/rounded vertical spans, overlap and progress"; draw(-1); lint();
+        if (p == UI_GRAY_INDEX) mono_check();
+        if (!p) write_ppm(out, face ? "PIXEL" : "NIGHT", "song_punch_bars");
     }
     render_pixel = 0; cur_name = 0;
 }

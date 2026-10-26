@@ -234,14 +234,6 @@ static int head_shared_status(void)
         ;
 }
 static const char *head_msg(void) { return ui.msg_t ? ui.msg : ui.layer ? layer_head() : song_edit_status(); }
-static const char *head_punch(void)                     /* (the FX layer names it itself: [FX] HOLD, its key below) */
-{
-    if (ui.layer != LAYER_FX && punch.req < 0 && punch_song_req >= 0 &&
-        punch_needs_ring(punch_song_req) && punch_memory_failed) return "FX MEMORY";
-    int32_t fx=punch.cur;
-    if(ui.layer!=LAYER_FX && fx>=0 && fx<(int32_t)PUNCH_NFX)return PUNCH_NAME[fx];
-    return "";
-}
 static int head_toast(int32_t x)
 {
     const char *m = head_msg();
@@ -251,7 +243,7 @@ static int head_toast(int32_t x)
         w = kc_w((uint32_t)id) + KH_GAP + text_w(TY_TX, m + n + (m[n] == ' '));
     else if (m[0] && str_len(m) > 6u && m[str_len(m) - 1u] == ']')
         w += 40;                                        /* (a keycap: its pill wider than its word) */
-    return !head_punch()[0] && m[0] && w > 236 - x;
+    return m[0] && w > 236 - x;
 }
 #if MELODEE_BLE
 static void ble_head_text(char text[24])
@@ -283,12 +275,10 @@ static void draw_head(void)
     int16_t bpm = song.g[G_BPM];                        /* (read once: what is noted is what is drawn) */
     int32_t octave = input_octave(TSEL);
     head_chip_text(chip);
-    const char *px=head_punch();
     sig = (uint32_t)seq_erase_active(TSEL) * 8191u + (uint32_t)song.playing * 3u + song.rec * 5u + song.rec_wait * 65537u + (uint32_t)(octave + 8) * 11u +
           song.sel * 13131u + (msg ? str_hash(7u, head_msg()) : str_hash(5u, chip)) +
           (ui.bpm_t != 0) * 31u + low * 7777u + (chain.running ? (chain.row + 1u) * 104729u : 0u) + ux.gen * 977u +
           (ui.home ? ui.home_pg * 40503u : ui.page * 2654435761u) + page_sheet() * 524287u;
-    sig ^= str_hash(13u,px);
 #if MELODEE_BLE
     sig ^= str_hash(mel_ble_signature() + 17u, ble_text);
 #endif
@@ -331,9 +321,6 @@ static void draw_head(void)
         cv_text_r(236, ty_y(H_HEAD / 2, TY_TX), TY_TX, "ERASING", T_REC, T_BG);
     } else if (head_waiting()) {
         cv_text_r(236, ty_y(H_HEAD / 2, TY_TX), TY_TX, "WAIT LOOP", T_REC, T_BG);
-    } else if (px[0]) {
-        const aafont_t *f=ty_fit(TY_TX,px,236-x-6);
-        cv_text_r(236,ty_y(H_HEAD/2,f),f,px,T_ACCENT,T_BG);
 #if MELODEE_BLE
     } else if (ble_text[0] && (!msg || mel_ble_code() != BLE_NO_PASSKEY)) {
         const aafont_t *f = ty_fit(TY_TX, ble_text, 236 - x - 6);

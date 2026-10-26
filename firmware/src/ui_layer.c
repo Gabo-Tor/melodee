@@ -474,6 +474,7 @@ static uint16_t punch_fam_col(uint32_t f)               /* (as the effects' fami
     return f == PF_DIRT ? p->knob[0][2] : f == PF_SPACE ? p->knob[3][2] : f == PF_MIX ? T_MID :
            p->trk[f == PF_REPEAT ? 0 : f == PF_TAPE ? 1 : f == PF_FILTER ? 2 : 3];
 }
+static uint16_t punch_color(uint32_t fx) { return punch_fam_col(PUNCH_FAM[fx]); }
 static int32_t pk_sin(int32_t turns) { return sine_i((uint32_t)turns << 16); }   /* turns Q16 */
 static int32_t pk_pow(int32_t u, uint32_t n) { int32_t v = 65536; while (n--) v = (int32_t)((int64_t)v * u >> 16); return v; }
 /* fx's picture in the box x0, y0, w, h: c its colour, gh the dim one (what it was) */

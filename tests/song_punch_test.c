@@ -77,18 +77,18 @@ static int editing(void)
 {
     int bad = 0; setup(3, 16);
     press(B_OCTUP); sheet_do("Punch FX");
-    bad += check("the section menu opens the existing visual punch selector", song_punch_on() && song_punch.row == 0 && song.grid == 2);
+    bad += check("the section menu opens the named punch timeline", song_punch_on() && song_punch.row == 0 && song.grid == 2);
     key_down(punch_key_of_fx(PX_MONO)); keyboard_block(); frame();
     bad += check("choosing an FX key writes the punch without playing a note or live effect", chain_config.fx[0][0].fx == PX_MONO + 1 && kb_note[punch_key_of_fx(PX_MONO)] == KB_SILENT && punch.req == -1);
     key_up(punch_key_of_fx(PX_MONO)); keyboard_block(); frame();
     turn(EN_K3, 3);
     turn(EN_K4, 4);
     chain_fx_t expected = {PX_MONO + 1, 3, 5};
-    bad += check("direct start and duration knobs edit a saved timed punch", !memcmp(&expected, &chain_config.fx[0][0], sizeof expected));
+    bad += check("direct start and end knobs edit a saved timed punch", !memcmp(&expected, &chain_config.fx[0][0], sizeof expected));
     bad += check("a new unsaved song with only punch edits is considered dirty", project_dirty());
     host_sent = 0; turn(EN_K4, 100);
     bad += check("punch duration cannot run beyond the section pattern", chain_config.fx[0][0].length == 13);
-    bad += check("changing timing sends only placement controls, not the FX selector", host_sent < 6000u);
+    bad += check("changing timing redraws only the changed lane and placement cards", host_sent < 22000u);
     press(B_OCTDN); hold(B_EDIT);
     bad += check("song undo restores a punch edit", chain_config.fx[0][0].length == 5);
     song_insert(1);
@@ -129,12 +129,19 @@ static int visual_controls(void)
     bad += check("EDIT removes only the selected punch", !chain_config.fx[0][1].fx && chain_fx_count(0) == 1 && song_punch_on());
     hold(B_EDIT);
     bad += check("EDIT held restores the deleted punch through song undo", chain_config.fx[0][1].fx && song_punch_on());
-    char text[32]; song_punch_beats(text, 18, 1);
-    bad += check("start time is a one-based beat plus a musical fraction", !strcmp(text, "1+3/4"));
-    song_punch_beats(text, 8, 0);
-    bad += check("triplet durations display a reduced beat fraction", !strcmp(text, "1/3"));
-    song_punch_beats(text, 30, 0);
-    bad += check("longer durations display whole beats and their fraction", !strcmp(text, "1+1/4"));
+    turn(EN_K3, 6); turn(EN_K4, -100);
+    bad += check("END stops at START and retains one visible step", chain_config.fx[0][1].start == 6 && chain_config.fx[0][1].length == 1);
+    turn(EN_K4, 3);
+    bad += check("END extends the visible range to the inclusive last step", chain_config.fx[0][1].start + chain_config.fx[0][1].length == 10);
+    turn(EN_K1, -100);
+    bad += check("the FX knob has an explicit OFF before its first effect", !chain_config.fx[0][1].fx && !chain_config.fx[0][1].start && !chain_config.fx[0][1].length && chain_fx_count(0) == 1);
+    hold(B_EDIT);
+    bad += check("setting OFF is undoable and preserves the other punches", chain_config.fx[0][1].fx && chain_config.fx[0][1].start == 6 && chain_config.fx[0][1].length == 4 && chain_fx_count(0) == 2);
+    turn(EN_K1, -100); turn(EN_K1, 1);
+    bad += check("turning right from OFF adds the first effect with fresh timing", chain_config.fx[0][1].fx == punch_fx_of_key(0) + 1 && !chain_config.fx[0][1].start && chain_config.fx[0][1].length == 1);
+    bad += check("the visual grid follows the conductor pattern length", song_punch_steps_at(0) == 16);
+    chain_patterns[1][0] = CHAIN_HOLD;
+    bad += check("continued sections show their own sixteen-step punch grid", song_punch_steps_at(1) == 16);
     turn(EN_SELECT, 1);
     bad += check("SELECT browses sections without leaving the selector", song_punch_on() && song_punch.row == 1 && ui.song_row == 1);
     press(B_PLAY); events_block(1); frame();
@@ -156,6 +163,79 @@ static int visual_controls(void)
     bad += check("that musical key releases normally inside the FX selector", !gates());
     setup(1, 16); song_punch_open(); pattern_epoch++; frame();
     bad += check("a project/pattern storage reset closes stale section selection", !song_punch_on());
+    return bad;
+}
+static int timeline_pixels(void)
+{
+    int bad = 0; setup(1, 16); palette_set(0);
+    const uint8_t effect[] = {PX_LPF, PX_MONO, PX_REV, PX_LOOP16};
+    for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++)
+        chain_config.fx[0][j] = (chain_fx_t){effect[j] + 1u, (uint8_t)(j * 2u), 4};
+    song_punch_open(); frame();
+    uint32_t wrong = 0;
+    for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++) for (uint32_t i = 0; i < 16; i++) {
+        uint16_t c = i >= j * 2u && i < j * 2u + 4u ? punch_color(effect[j]) : T_SURF;
+        wrong += host_screen[(122u + j * 25u) * 240u + 10u + i * 14u] != swap16(c);
+    }
+    bad += check("all four named lanes colour exactly their saved steps, including overlaps", !wrong);
+    turn(EN_K3, 2); turn(EN_K4, -1);
+    static uint16_t saved[240 * 240];
+    memcpy(saved, host_screen, sizeof saved); ui.force = 1; frame();
+    bad += check("moving the endpoints leaves the same pixels as a complete redraw", !memcmp(saved, host_screen, sizeof saved));
+    press(B_PLAY); events_block(1); frame();
+    bad += check("audition draws the current step across the four punch lanes", host_screen[117u * 240u + 8u] == swap16(T_TEXT) && host_screen[192u * 240u + 8u] == swap16(T_TEXT));
+    events_block(seq_div_samples(trk[0].p[P_SDIV])); frame();
+    bad += check("the audition playhead advances to the next grid cell", host_screen[117u * 240u + 22u] == swap16(T_TEXT) && host_screen[117u * 240u + 8u] != swap16(T_TEXT));
+    seq_stop(); dsp(); press(B_OCTDN);
+    memset(chain_config.fx[0], 0, sizeof chain_config.fx[0]);
+    chain_config.row[0].repeat = 2;
+    chain_config.fx[0][0] = (chain_fx_t){PX_LPF + 1, 2, 4}; ui.force = 1; frame();
+    for (uint32_t k = 0; k < trk_n() && k < NPART; k++) {
+        trk[k].step[0] = (step_t){.time = ST_NOTE, .n = 1, .note = {60}, .vel = 96};
+        pattern_commit(&trk[k]);
+    }
+    ui.force = 1; frame();
+    uint16_t bar = ux_mix(punch_color(PX_LPF), T_TEXT, 30);
+    wrong = 0;
+    for (uint32_t k = 0; k < trk_n() && k < NPART; k++) {
+        uint32_t y = SG_ROW_Y + k * SG_ROW_H + 6u;
+        wrong += host_screen[y * 240u + 15u] != swap16(bar);
+        wrong += host_screen[y * 240u + 41u] != swap16(bar);
+        wrong += host_screen[y * 240u + 25u] != swap16(T_TRK(k));
+    }
+    bad += check("vertical punch ranges repeat inside each filled pattern block", !wrong);
+    bad += check("the song progress track stays visible when punches are present", host_screen[(SG_FOOT_Y + 34u) * 240u + 20u] == swap16(T_SURF));
+    /* A whole-section punch must leave the rounded corners, selection rim,
+     * empty grid and complete footer exactly as the original screen drew. */
+    memset(chain_config.fx[0], 0, sizeof chain_config.fx[0]); frame();
+    memcpy(saved, host_screen, sizeof saved);
+    chain_config.fx[0][0] = (chain_fx_t){PX_LPF + 1, 0, 16}; frame();
+    wrong = 0;
+    for (uint32_t k = 0; k < trk_n() && k < NPART; k++) for (uint32_t y = 0; y < SG_ROW_H; y++) for (uint32_t x = 0; x < 240u; x++) {
+        int inside = x >= 9u && x < 63u && y >= 2u && y < 30u;
+        if (inside && (y < 7u || y >= 25u)) {
+            int32_t edge = x - 9u < 62u - x ? (int32_t)(x - 9u) : (int32_t)(62u - x);
+            if (edge < 5) inside = rr_cov(5, edge, y < 7u ? y - 2u : 29u - y) != 0;
+        }
+        uint32_t i = (SG_ROW_Y + k * SG_ROW_H + y) * 240u + x;
+        if (!inside) wrong += saved[i] != host_screen[i];
+    }
+    bad += check("punch colour cannot escape a rounded block or alter its outline", !wrong);
+    bad += check("punches do not replace any footer or progress pixels", !memcmp(saved + SG_FOOT_Y * 240u, host_screen + SG_FOOT_Y * 240u, (240u - SG_FOOT_Y) * 240u * sizeof *saved));
+    memset(trk[0].step, 0, sizeof trk[0].step); pattern_commit(&trk[0]); frame();
+    memcpy(saved, host_screen, sizeof saved);
+    memset(chain_config.fx[0], 0, sizeof chain_config.fx[0]); frame();
+    bad += check("empty dashed blocks receive no punch overlay", !memcmp(saved + SG_ROW_Y * 240u, host_screen + SG_ROW_Y * 240u, SG_ROW_H * 240u * sizeof *saved));
+    chain_config.fx[0][0] = (chain_fx_t){PX_LPF + 1, 2, 4}; frame();
+    chain_config.fx[0][0].start = 8; frame();
+    memcpy(saved, host_screen, sizeof saved); ui.force = 1; frame();
+    bad += check("section tint follows timing changes even when the FX count is unchanged", !memcmp(saved, host_screen, sizeof saved));
+    trk[0].step[0] = (step_t){.time = ST_NOTE, .n = 1, .note = {60}, .vel = 96};
+    trk[0].p[P_SLEN] = 64; pattern_commit(&trk[0]); chain_config.row[0].repeat = 1;
+    chain_config.fx[0][0] = (chain_fx_t){PX_LPF + 1, 63, 1}; frame();
+    bad += check("a one-step punch at the far edge remains visible inside the rounded block", host_screen[(SG_ROW_Y + 10u) * 240u + 62u] == swap16(bar));
+    chain_config.fx[0][0].start = 0; frame();
+    bad += check("a one-step punch at the first edge remains visible inside the rounded block", host_screen[(SG_ROW_Y + 10u) * 240u + 9u] == swap16(bar));
     return bad;
 }
 static int persistence(void)
@@ -182,6 +262,6 @@ static int persistence(void)
 }
 int main(void)
 {
-    int bad = playback() + overrides_and_restarts() + editing() + visual_controls() + persistence();
+    int bad = playback() + overrides_and_restarts() + editing() + visual_controls() + timeline_pixels() + persistence();
     printf("Song punch: %s\n", bad ? "FAILED" : "passed"); return !!bad;
 }

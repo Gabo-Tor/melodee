@@ -387,7 +387,7 @@ static void sg_lines(int32_t y, int32_t h)              /* the sections' rules a
 }
 static void sg_head(void)
 {
-    if (head_shared_status() || song_edit_status()[0] || head_punch()[0]) { sgv.top = ~0u; draw_head(); return; }
+    if (head_shared_status() || song_edit_status()[0]) { sgv.top = ~0u; draw_head(); return; }
     char b[24], t[12];
     uint32_t secs = chain_div_samples(sg.total + FS / 2u, FS, 0), jam_on = song.playing && !chain.running;
     uint32_t sig = secs * 7u + jam.n * 131u + jam_on * 3u + (uint32_t)(ui.act == 4u) * 5u + ux.gen * 977u + ux.pal * 31u +
@@ -452,6 +452,54 @@ static void sg_labels(void)                             /* elapsed-time ruler an
         cv_rect(sg.px, 18, 2, SG_LAB_H - 18, T_TEXT);
     cv_blit(0, SG_TOP_H);
 }
+/* Paint one vertical time range through the block's fill. Reuse its exact
+ * radius-five coverage, including the anti-aliased corners and selection rim. */
+static void sg_punch_span(int32_t x, int32_t w, int32_t from, int32_t to, uint16_t c, uint16_t under)
+{
+    if (from < x) from = x;
+    if (from >= x + w) from = x + w - 1;
+    if (to > x + w) to = x + w;
+    if (to <= from) to = from + 1;
+    cv_rect(from, 7, to - from, 18, c);
+    for (int32_t px = from; px < to; px++) {
+        int32_t edge = px - x < x + w - 1 - px ? px - x : x + w - 1 - px;
+        for (int32_t y = 0; y < 5; y++) {
+            uint32_t a = edge < 5 ? rr_cov(5, edge, y) : 16u;
+            if (!a) continue;
+            uint16_t fill = a == 16u ? c : ux_mix(under, c, (int32_t)(a * 100u / 16u));
+            cv_pset(px, 2 + y, fill);
+            cv_pset(px, 29 - y, fill);
+        }
+    }
+}
+static void sg_punch_block(uint32_t first, uint32_t last, int32_t x, int32_t w, uint16_t under)
+{
+    for (uint32_t r = first; r < last; r++) {
+        uint32_t steps = song_punch_steps_at(r), repeats = chain_config.row[r].repeat, drawn = 0;
+        /* Later starts/slots paint over earlier punches, matching playback.
+         * Resuming ranges remain visible beneath the overlapping interval. */
+        for (uint32_t pass = 0; pass < CHAIN_FX_EVENTS; pass++) {
+            int32_t next = -1;
+            for (uint32_t j = 0; j < CHAIN_FX_EVENTS; j++) {
+                const chain_fx_t *fx = &chain_config.fx[r][j];
+                if ((drawn & (1u << j)) || !fx->fx || fx->start >= steps) continue;
+                if (next < 0 || fx->start < chain_config.fx[r][next].start) next = (int32_t)j;
+            }
+            if (next < 0) break;
+            drawn |= 1u << next;
+            const chain_fx_t *fx = &chain_config.fx[r][next];
+            uint32_t end = fx->start + fx->length;
+            if (end > steps) end = steps;
+            uint16_t c = ux_mix(punch_color(fx->fx - 1u), T_TEXT, 30);
+            for (uint32_t rep = 0; rep < repeats; rep++) {
+                int32_t left = 8 + (int32_t)(r - sg.first) * SG_COL_W;
+                int32_t from = left + (rep * steps + fx->start) * SG_COL_W / (steps * repeats);
+                int32_t to = left + (rep * steps + end) * SG_COL_W / (steps * repeats);
+                sg_punch_span(x, w, from, to > from ? to : from + 1, c, under);
+            }
+        }
+    }
+}
 /* track k's blocks: a pattern over sections in a row as one (the selected track's block in the row picked alone,
  * outlined); an empty pattern: nothing (picked: dashed); a track not in use: its row's lines alone */
 static void sg_row(uint32_t k)
@@ -462,8 +510,12 @@ static void sg_row(uint32_t k)
     uint32_t j, h = fnv1(2166136261u, sg.first + 16u * sg.ncols + 256u * sg.sel + 4096u * (k == song.sel) +
                                      65536u * (uint32_t)(t->p[P_MUTE] != 0) + 131072u * live);
     h = fnv1(fnv1(h, (uint32_t)(sg.px + 1)), ux.gen * 977u + ux.pal * 31u + t->pattern_gen);
-    for (j = 0; j < cols && sg.first + j < chain_config.count; j++)
-        h = fnv1(h, chain_patterns[sg.first + j][k] + 16u * chain_bank(sg.first + j, k) + 256u * (uint32_t)pattern_used(k, chain_bank(sg.first + j, k)));
+    for (j = 0; j < cols && sg.first + j < chain_config.count; j++) {
+        uint32_t r = sg.first + j;
+        h = fnv1(h, chain_patterns[r][k] + 16u * chain_bank(r, k) + 256u * (uint32_t)pattern_used(k, chain_bank(r, k)));
+        h = fnv(h, chain_config.fx[r], sizeof chain_config.fx[r]);
+        h = fnv1(h, song_punch_steps_at(r) + 128u * chain_config.row[r].repeat);
+    }
     if (!ui.force && h == sgv.row[k])
         return;
     sgv.row[k] = h;
@@ -483,7 +535,10 @@ static void sg_row(uint32_t k)
             if (pick)                                   /* the selected track's, in the row picked: outlined */
                 cv_rrect(x - 1, 1, w + 2, 30, 6, T_TEXT, T_BG);
             cv_rrect(x, 2, w, 28, 5, tc, pick ? T_TEXT : T_BG);
+            sg_punch_block(r, sg.first + e, x, w, pick ? T_TEXT : T_BG);
+            cv_over = 1;
             cv_text_on(x + 6, ty_y(16, TY_LB), TY_LB, l, T_INK, tc);
+            cv_over = 0;
         } else {
             if (p < NPAT || pick) cv_dashed(x, 2, w, 28, 5, tc);
             cv_text_on(x + 6, ty_y(16, TY_LB), TY_LB, l, pick ? tc : T_DIM, T_BG);
@@ -499,7 +554,7 @@ static void sg_foot(void)                               /* the sections and bars
     char b[32];
     uint32_t n = chain_config.count, r = sg.sel;
     uint32_t sig = n * 7u + sg.bars * 131u + sg.play * 1031u + r * 40503u + (uint32_t)(sg.px + 1) * 613u + ux.gen * 977u +
-                   ux.pal * 31u + song.sel * 19u + (r < n ? (chain_block_end(r, song.sel) - chain_origin(r, song.sel)) * 7919u + chain_fx_count(r) * 65537u : 0u) + sg.first * 17u + sg.ncols;
+                   ux.pal * 31u + song.sel * 19u + (r < n ? (chain_block_end(r, song.sel) - chain_origin(r, song.sel)) * 7919u : 0u) + sg.first * 17u + sg.ncols;
     if (!ui.force && sig == sgv.foot)
         return;
     sgv.foot = sig;
@@ -513,11 +568,6 @@ static void sg_foot(void)                               /* the sections and bars
         fmt_int(b, r + 1u); str_cpy(b + str_len(b), "/", 2); fmt_int(b + str_len(b), n);
         cv_text_on(8, ty_y(17, TY_LB), TY_LB, b, T_MID, T_BG);
         if (r < n) {
-            uint32_t punches = chain_fx_count(r);
-            if (punches) {
-                str_cpy(b, "FX ", sizeof b); fmt_int(b + 3, punches);
-                cv_text_on(80, ty_y(17, TY_LB), TY_LB, b, T_THEME, T_BG);
-            }
             uint32_t bank = chain_bank(r, song.sel);
             str_cpy(b, bank < NPAT ? "LEN " : "REST", sizeof b);
             if (bank < NPAT) fmt_int(b + 4, chain_block_end(r, song.sel) - chain_origin(r, song.sel));
